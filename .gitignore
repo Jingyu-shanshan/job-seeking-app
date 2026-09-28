@@ -1,0 +1,17 @@
+# 本地个人资料、申请材料和凭据不进版本库
+/vault/
+/app-data/
+/artifacts/
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+
+# 开发产物
+node_modules/
+dist/
+coverage/
+.angular/
+.DS_Store
