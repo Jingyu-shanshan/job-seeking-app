@@ -1,52 +1,50 @@
 # 开发文档与技术决策
 
-更新：2026-09-28。本文是本轮仓库决策；[原始方案](PRODUCT_PLAN.md) 是产品设计输入，其中数量、预算、技术选项和版本路线并非用户已确认的个人默认值。当前只建立框架，不编写或运行产品代码。
+更新：2026-09-29。本文是本仓库的实施决策；[原始方案](PRODUCT_PLAN.md) 保留原文。原方案中的本地优先、Markdown 主数据和 SQLite 是此前设计；本轮为了后续部署到 Railway + Neon，按**云端 PostgreSQL 为主数据**规划。Markdown 仍可导入/导出。完全离线版若仍需要，应另行设计同步和冲突处理，不在 V0.1 同时维护两套数据库。当前没有产品代码或依赖。
 
-## 目标与边界
+## V0.1 范围
 
-V0.1 只处理用户手动提供的一份 JD。用户确认个人事实，系统展示硬条件、未知项和事实依据，生成可审核的英文申请材料，导出可检查的 PDF，并记录用户实际投出的版本及本地备份。事实未确认时不得进入正式材料；生成/导出/打开申请页不算“已申请”；用户自行完成投递。
+先处理用户手动提供的一份 JD：确认个人事实 → 显示匹配证据和未知项 → 生成简历/求职信 → 人工审核和 PDF → 冻结实际投递版本 → 验证完整导出/恢复。生成、导出或打开申请页都不代表已申请；投递由用户自行完成。
 
-V0.2 才开始按关注公司接入一个公开 ATS 来源。Electron、公司研究、DeepSeek Harness、同步、图谱、多用户和复杂多 Agent 都由真实使用需求触发，不是 V0.1 的依赖。
+V0.2 再按关注公司接入一种公开 ATS 来源。Electron、公司研究、DeepSeek Harness、离线同步、图谱和多用户都不阻塞 V0.1。
 
 ## 已选技术栈
 
-| 层 | 选择 | 理由与实施边界 |
+| 层 | 选择 | 边界与依据 |
 | --- | --- | --- |
-| Web | Angular 22 + TypeScript 6.0.x | 沿用原方案指定的 Angular 方向；表单、路由先用框架内置能力。Angular 22 要求 Node `^24.15.0` 等受支持版本、TypeScript `>=6.0.0 <6.1.0`。[兼容表](https://angular.dev/reference/versions) |
-| 运行时 | Node.js 24 LTS（至少 24.15）+ npm | 与 Angular 22 兼容；采用维护中的 LTS，不用双后端。[Node 发行状态](https://nodejs.org/en/about/previous-releases) |
-| 本地 API | Fastify 5，单进程，JSON over loopback | 复用路由、请求大小限制与 JSON Schema 校验，不自写 HTTP 框架；仍需单独校验本地会话、Origin 与业务权限。[Fastify 验证文档](https://fastify.dev/docs/latest/Reference/Validation-and-Serialization/) |
-| 个人事实 | Markdown 文件 + Node 文件 API | 人能直接阅读和迁移；Obsidian 只是可选编辑器。事实 ID、版本、确认状态与公开范围由应用控制。 |
-| 业务状态 | SQLite，先用 Node `node:sqlite` | 单用户本地事务与备份足够；Node 24 的内置模块目前为 **release candidate**，开发时先验证 FTS5、备份和目标系统；若验证失败再换 `better-sqlite3`。[Node SQLite 文档](https://nodejs.org/download/release/latest-v24.x/docs/api/sqlite.html) |
-| 检索 | SQLite FTS5，按实际搜索需求加入 | 不先装向量数据库或图数据库。[FTS5 文档](https://www.sqlite.org/fts5.html) |
-| 模型 | V0.1 固定步骤的直接调用；供应商待定 | 先用规则与人工确认守住事实边界。模型只建议文本和映射，不能确认事实、扩大来源或提交申请；不先接 dsh。 |
-| PDF | 固定 HTML/CSS 模板 + 浏览器打印先验证 | 若实测不能可靠导出并保存实际投递版，再采用自动 PDF 工具；PDF 质量和文本提取必须验收。 |
+| Web | Angular 22 + TypeScript 6.0.x | 使用框架自带路由/表单；[兼容表](https://angular.dev/reference/versions)要求 Node `^24.15.0` 等受支持版本、TypeScript `>=6.0.0 <6.1.0`。 |
+| 服务 | Node.js 24 LTS + Fastify 5 | 一个进程提供 `/api` 与 Angular 构建产物；按需用 [`@fastify/static`](https://github.com/fastify/fastify-static)，同源会话，不先拆第二个前端服务。 |
+| 数据库 | PostgreSQL；生产使用 Neon | 开发用本地 PostgreSQL 或独立 Neon 开发分支，生产数据不能用于测试。事实、JD 快照、材料、申请和审核记录均有同一主数据位置。 |
+| 数据访问 | [`pg`/node-postgres](https://node-postgres.com/features/pooling) 的小连接池 | Railway 是常驻 Node 服务，可直接使用标准 PostgreSQL TCP 连接；先用 Neon **direct** `DATABASE_URL`。处理 idle `error` 和 Neon 休眠后的重连；连接压力确有需要时再改用 pooler。无需额外 serverless 驱动或 ORM。 |
+| 迁移 | [`node-pg-migrate`](https://salsita.github.io/node-pg-migrate/) + 版本化 SQL | 复用迁移状态与并发锁，生产迁移在 Railway pre-deploy 独立执行；使用 Neon direct URL，不在每次请求或服务启动时改 schema。 |
+| 身份验证 | [Better Auth](https://better-auth.com/docs/integrations/fastify) + PostgreSQL | 复用会话与密码处理；生产关闭公开注册，首次账户由受控初始化流程创建。[生成的认证 SQL](https://better-auth.com/docs/concepts/database) 纳入同一版本化迁移，不在生产启动时自动修改 schema。所有资料 API 都必须检查会话。 |
+| 附件与便携格式 | PostgreSQL `TEXT`/`JSONB`，小文件用限额 `BYTEA`；Markdown/JSON/PDF 导出 | 已确认事实的正文和版本在数据库；Obsidian Vault 作为导入/导出格式。原始 JD、实际投递 PDF 均持久化并保留哈希。若文件规模使数据库成本或备份不可接受，再用 [Railway Storage Bucket](https://docs.railway.com/storage-buckets)，不把容器目录当主数据。 |
+| 检索 | PostgreSQL 全文检索，实际需要时建索引 | 不继续使用 SQLite FTS5，也不预装向量库。 |
+| 模型/PDF | 固定步骤直接调用；HTML/CSS + 浏览器打印先验证 | 供应商待定。模型不能确认事实；PDF 质量、文本提取和实际投递文件归档仍须验收。 |
 
-具体 npm 补丁版本、锁文件和安装命令在第一个编码任务中确定；本轮没有 `package.json` 或依赖安装。候选库、许可和可复用位置见 [开源调研](OPEN_SOURCE_REUSE.md)。
+具体补丁版本和锁文件在第一个编码任务确定。候选库与许可证见 [开源复用清单](OPEN_SOURCE_REUSE.md)，部署拓扑与步骤见 [部署文档](DEPLOYMENT.md)。
 
 ## 最小结构与数据归属
 
 ```text
 apps/web/       Angular 页面：资料、JD、匹配、审核、申请记录
-apps/server/    本地 API：业务规则、文件/SQLite、模型调用、导出
-docs/           原方案、决策、任务和复用调研
-vault/          运行时个人事实 Markdown（忽略 Git）
-app-data/       运行时 SQLite 与索引（忽略 Git）
-artifacts/      运行时草稿、PDF 与冻结申请包（忽略 Git）
+apps/server/    Fastify API：规则、PostgreSQL、模型、导出；生产托管 Web 静态产物
+docs/           原方案、决策、任务、复用调研和部署步骤
 ```
 
-`vault/` 的确认事实为个人资料主数据；SQLite 中的申请状态与历史也是主数据，不能只备份 Markdown。原始 JD、研究来源和实际投递文件保留版本，不原地改写。数据库只保存可重建索引的说法不适用于申请记录。三类运行时目录由应用启动时按明确的数据位置创建，当前不放个人资料或示例简历进仓库。
+V0.1 只需 `Fact`、`JobSnapshot`、`Match`、`Artifact`、`Application` 等真实业务对象；不为平台化预建服务。事实保留来源、确认状态、公开范围、正文哈希和版本。原始 JD 与投递材料不能原地覆盖；用户在应用外修改最终文件时，应导入实际发送的版本。数据库中的 PDF/原件要限制单文件大小，并与结构化记录一同进入备份/恢复验证。
 
-V0.1 开发顺序见 [TASKS.md](TASKS.md)。业务对象先覆盖 `Fact`、`JobSnapshot`、`Match`、`Artifact`、`Application`，不要为未来平台化先拆服务或建立通用 Agent 框架。新增字段时以真实 JD 和验收用例核对。
+原方案的 `vault/`、`app-data/`、`artifacts/` 目录不作为 Railway 生产主数据。Railway 可以附加持久卷，但这会增加部署和扩容约束；目前一个 Neon 数据库即可承载个人 MVP 的结构化资料与有界附件。[Railway 卷说明](https://docs.railway.com/volumes)
 
-## 必须守住的规则
+## 不可省略的规则
 
-- 只有本人确认且允许公开的事实可进入正式材料；正文改动使旧确认失效，历史投递版本仍冻结。
-- 硬条件的未知值单独呈现，不当作满足；模型分数不能推翻已知不满足的硬条件。
-- 外部 JD、网页、邮件和模型输出均是数据，不能成为工具授权或系统指令。
-- 本地服务仅监听 loopback；请求校验会话、Origin、大小和内容；模型只接收本次必要资料，密钥不入 Vault、日志或 Git。
-- PDF 和导出草稿不等于实际投递文件；“已申请”只能由用户确认并记录时间/版本。
-- 备份必须包含 Markdown、SQLite、原始快照和投递文件；V0.1 做一次真实恢复验证。
+- 本人确认且允许公开的事实才可进入正式材料；正文变化使旧确认失效，历史投递版本保持冻结。
+- 硬条件未知单独呈现，不算通过；模型分数不能覆盖已知不满足的硬条件。
+- 外部 JD、网页、邮件和模型输出都是不可信数据，不能授权读取密钥、改变规则或发送申请。
+- 云端必须先有登录和服务端会话校验；同源、HTTPS、Origin 校验、请求大小限制和敏感字段最小外发同时落实。Neon 连接只在服务端，不能进入 Angular 构建产物。
+- 凭据只放 Railway 服务变量/本地受保护环境，不进 Git、导出包或日志。Railway 变量也会进入**构建环境**，构建脚本不得把它们嵌入 Angular 产物，发布前检查 bundle。Neon TLS 保持证书校验，不设置 `rejectUnauthorized: false`。
+- 备份既覆盖数据库中的事实、状态、快照与附件，也提供用户可迁移的 Markdown/JSON/PDF 导出；至少执行一次隔离恢复验证。
 
-## 待使用者确认的输入
+## 开发前仍需真实输入
 
-这些是开发开始前需要的真实资料或偏好，不从原方案示例自动填入：首个有权使用的 JD、可确认的个人经历样本、目标运行系统、模型供应商与可接受费用、实际数据/备份位置。职位来源优先级和 DOCX 需求留到对应阶段再问。原方案的“20 个职位 / 5 套材料 / 3 个申请 / €2”仅是示例。
+首个有权使用的 JD、可确认的个人经历样本、账户初始化方式/实际域名、模型供应商和预算、数据保留及备份位置仍需确定。原方案的“20 个职位 / 5 套材料 / 3 个申请 / €2”仅是例子，不自动写成默认值。
