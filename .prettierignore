@@ -1,0 +1,13 @@
+# generated
+dist/
+.angular/
+coverage/
+package-lock.json
+
+# personal, git-ignored
+vault/
+scratch/
+artifacts/
+
+# docs are hand-formatted; Prettier would rewrap the long Chinese tables
+*.md

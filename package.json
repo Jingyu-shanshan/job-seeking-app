@@ -1,0 +1,32 @@
+{
+  "name": "job-seeking-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^24.15.0 || >=26.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @jsa/shared && npm run build -w @jsa/server && npm run build -w @jsa/web",
+    "start": "npm start -w @jsa/server",
+    "dev:server": "npm run build -w @jsa/shared && npm run dev -w @jsa/server",
+    "dev:web": "npm run dev -w @jsa/web",
+    "test": "npm run build -w @jsa/shared && npm test -w @jsa/shared -w @jsa/server -w @jsa/web",
+    "typecheck": "npm run build -w @jsa/shared && npm run typecheck -w @jsa/shared -w @jsa/server",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.0",
+    "angular-eslint": "^22.5.0",
+    "eslint": "^10.11.0",
+    "prettier": "^3.9.9",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.71.0"
+  }
+}

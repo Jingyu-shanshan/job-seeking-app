@@ -19,7 +19,7 @@
 
 | 项目 / 来源 | 已核对许可 | 可复用位置 | 触发条件 |
 | --- | --- | --- | --- |
-| Fastify 类型提供者（如 TypeBox 一类的 schema→类型工具）；测试运行器（Node 内置 `node:test` 或 Vitest） | 待核对 | `packages/shared` 中共用的 schema/类型，以及服务端与共享包的测试。 | T01 决定；锁定版本并核对许可，以及与 Fastify 5、TypeScript 6.0.x 的兼容性。Angular 端用 CLI 当时的默认测试运行器。本行是候选，尚未核对。 |
+| [TypeBox](https://github.com/sinclairzx81/typebox) + [`@fastify/type-provider-typebox`](https://github.com/fastify/fastify-type-provider-typebox)；Node 内置 `node:test`；[typescript-eslint](https://github.com/typescript-eslint/typescript-eslint)、[angular-eslint](https://github.com/angular-eslint/angular-eslint)、[Prettier](https://github.com/prettier/prettier) | 均为 MIT（2026-09-30 按 npm 元数据核对） | `packages/shared` 中共用的 schema/类型，服务端与共享包的测试，以及 lint/格式化。 | T01 已采用：`typebox` 1.x、类型提供者 6.x，与 Fastify 5、TypeScript 6.0.x 一起通过构建和测试。Angular 端用 CLI 默认的 Vitest。 |
 | [Ajv](https://github.com/ajv-validator/ajv) | MIT | 校验外部 JSON、模型结构化输出。 | Fastify 自带的 JSON Schema 校验不能覆盖该输入路径时再直接安装；模型结果还需校验事实 ID、权限和业务规则。 |
 | [OpenAI Node SDK](https://github.com/openai/openai-node) · [DeepSeek 官方兼容示例](https://api-docs.deepseek.com/guides/harness) | SDK Apache-2.0 | 供应商已定为 DeepSeek API（2026-09-30）；若其兼容接口可用，复用该 SDK 的超时/重试/调用协议。 | T05 首次接入前按当时的官方文档核对接口与兼容性；API Key 由用户提供。供应商的 JSON 输出也不能代替事实校验。[DeepSeek JSON 模式说明](https://api-docs.deepseek.com/guides/json_mode/) |
 | [gray-matter](https://github.com/jonschlinkert/gray-matter) | MIT | 解析导入/导出的 Obsidian 风格 Markdown front matter。 | T04 真正需要该格式时再引入；Markdown 不再是云端主数据。 |

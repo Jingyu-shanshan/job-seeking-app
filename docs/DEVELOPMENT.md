@@ -60,10 +60,10 @@ S0 已完成：一次性脚本（`/scratch/` + `/vault/`，均不入 Git）跑�
 | PDF | HTML/CSS + 浏览器打印先验证 | PDF 质量、文本提取和实际投递文件归档仍须验收。 |
 | 职位来源 | 来源目录 + 逐个适配器，原生 `fetch` | 接入方式四种：`board_api`、`official_api`、`email_alert`、`manual`。先做 Greenhouse 公开招聘板块接口，第二种做 Ashby（2026-09-30 决定）；每个来源记录接入方式、条款核对日期和限流。不写通用爬虫。 |
 | 投递执行器 | 本地 Node 进程 + [Playwright](https://playwright.dev/)，可见浏览器窗口 | npm 工作区 `apps/runner`（T17 创建），不部署到 Railway。用可撤销的令牌向 API 领取已批准的任务并回传预览、结果和回执。先做 Greenhouse 托管的申请表，第二种做 Ashby。 |
-| 共享契约 | npm 工作区 `packages/shared` | Web 与 API 共用的 JSON Schema/类型：Fastify 用它校验入参，Angular 用它生成类型，避免接口漂移。类型提供者在 T01 核对许可后选定。 |
-| 测试与质量 | T01 决定 | 服务端/共享包候选 Node 内置 `node:test` 或 Vitest，Angular 用 CLI 当时的默认运行器；另定 lint/格式化与 CI。不用 ORM，所以数据层测试必须连真实 PostgreSQL（本地容器或独立 Neon 分支），不用 mock 代替。 |
+| 共享契约 | npm 工作区 `packages/shared` + [TypeBox](https://github.com/sinclairzx81/typebox)（MIT） | Web 与 API 共用的 schema/类型：Fastify 通过 `@fastify/type-provider-typebox` 用它校验和序列化，Angular 只导入类型（TypeBox 不进浏览器包）。共享包以构建产物 `dist/` 被引用，改动后需重新构建。 |
+| 测试与质量 | `node:test`（服务端、共享包）+ Vitest（Angular CLI 默认）；ESLint + Prettier；GitHub Actions | T01 已定。服务端和共享包直接用 Node 的类型剥离运行 TypeScript，不装 ts-node/tsx，因此相对导入带 `.ts` 后缀且只用可擦除语法。ESLint 禁止 `apps/server/src/rules/` 导入 Fastify 或 `pg`。CI 依次执行 lint、typecheck、build、test。不用 ORM，所以数据层测试必须连真实 PostgreSQL（本地容器或独立 Neon 分支），不用 mock 代替。真实命令见 `CLAUDE.md`。 |
 
-具体补丁版本和锁文件在第一个编码任务确定。候选库与许可证见 [开源复用清单](OPEN_SOURCE_REUSE.md)，部署拓扑与步骤见 [部署文档](DEPLOYMENT.md)。
+具体版本以 `package-lock.json` 为准（T01 确定）。候选库与许可证见 [开源复用清单](OPEN_SOURCE_REUSE.md)，部署拓扑与步骤见 [部署文档](DEPLOYMENT.md)。
 
 ## 最小结构与数据归属
 
