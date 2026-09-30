@@ -1,6 +1,6 @@
 # Railway + Neon 部署计划
 
-更新：2026-09-29。**这是未来发布步骤，尚无可运行应用、Railway 项目或 Neon 数据库；下列 npm 脚本名称须在 T01/T02 实现后核对。** 源码仍只在本地 Git，当前不发布。
+更新：2026-09-30。**这是未来发布步骤，尚无可运行应用、Railway 项目或 Neon 数据库；下列 npm 脚本名称须在 T01/T02 实现后核对。** 源码仍只在本地 Git，当前不发布。骨架（T01–T03）完成后先做一次不含个人数据的预部署演练（T03a），更早暴露 Railway、Neon、Better Auth 和 pre-deploy 迁移的问题；正式发布仍是 T12。
 
 ## 拓扑
 
@@ -20,7 +20,12 @@
 
 模型供应商确定后再添加其 API Key。变量放在 [Railway Service Variables](https://docs.railway.com/variables)；这些变量**在构建和运行阶段都可见**，因此 Angular 构建脚本不得读取或内嵌数据库 URL、会话密钥或模型密钥，发布前检查最终 JS bundle。保留 Neon URL 的 TLS 证书校验，不使用 `rejectUnauthorized: false`。
 
-V0.1 单用户、单服务先用 direct URL，避免多余连接配置。若连接数或实例数确实需要 Neon pooler，届时改为 pooled `DATABASE_URL`（主机含 `-pooler`），另加 direct `DIRECT_URL` 供迁移、备份与需要会话特性的操作；两者职责参考[本地参考项目的部署手册](/Users/wass/Workspace/freelance-web-platform/docs/runbooks/deployment.md)，使用前再核对所选迁移工具。[Neon pooled/direct 说明](https://github.com/neondatabase/website/blob/main/content/docs/get-started/connect-neon.md)
+V0.1 单用户、单服务先用 direct URL，避免多余连接配置。若连接数或实例数确实需要 Neon pooler，届时改为 pooled `DATABASE_URL`（主机含 `-pooler`），另加 direct `DIRECT_URL` 供迁移、备份与需要会话特性的操作；两者职责的用法见文末“从参考仓库借用的流程”，使用前再核对所选迁移工具。[Neon pooled/direct 说明](https://github.com/neondatabase/website/blob/main/content/docs/get-started/connect-neon.md)
+
+## 区域与备份
+
+- **区域**：Neon 项目和 Railway 服务在创建时选择区域，两者应彼此靠近，并按数据合规选择。若在欧盟求职，个人经历数据宜留在欧盟区域，并把 GDPR 与模型供应商所在地一并考虑。事后更换区域可能要迁移数据，因此在 T03a 创建演练环境时就确定。
+- **备份**：Neon 的时间点恢复窗口取决于所选套餐，在 T02 前核对并记录在本文。此外定期用 direct URL 执行 `pg_dump`，存到用户控制、且与 Neon 不同提供方的存储，并验证能恢复到隔离库；T10 以此为验收。
 
 ## 发布顺序（T12 才执行）
 
@@ -34,4 +39,4 @@ Railway 已[弃用 `railway.toml`/`railway.json`](https://docs.railway.com/confi
 
 ## 从参考仓库借用的流程
 
-本机 `freelance-web-platform` 的 [`docs/runbooks/deployment.md`](/Users/wass/Workspace/freelance-web-platform/docs/runbooks/deployment.md) 和 API 配置证明了 `PORT`、独立迁移、`/health`、`/health/ready`、pooled/direct URL 分工及回滚流程的用法。该项目没有现成 Railway 配置文件；它的 Next/Medusa/多 Demo 服务和定时重置数据流程不适用于这个单用户工作台，不复制到本仓库。
+作者本机的 `freelance-web-platform` 项目（未纳入本仓库，他人无法打开）中的 `docs/runbooks/deployment.md` 和 API 配置证明了 `PORT`、独立迁移、`/health`、`/health/ready`、pooled/direct URL 分工及回滚流程的用法。该项目没有现成 Railway 配置文件；它的 Next/Medusa/多 Demo 服务和定时重置数据流程不适用于这个单用户工作台，不复制到本仓库。
