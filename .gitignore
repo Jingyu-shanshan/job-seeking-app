@@ -10,6 +10,11 @@
 *.sqlite
 *.sqlite3
 
+# 个人简历源文件：按文件名兜底，即使误放到 /vault/ 之外也不入库
+CV-template.md
+CV-assessment.md
+resume_template.md
+
 # 开发产物
 node_modules/
 dist/
