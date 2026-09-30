@@ -1,6 +1,6 @@
 # 开源复用清单
 
-核对日期：2026-09-28；Railway + Neon 适配补充于 2026-09-29。以下链接指向项目主仓或官方文档；**当前均未安装或复制进本仓库**。实施时锁定具体版本/commit，复核该版本的许可证和 API。2026-09-29 的云端主数据决策覆盖了原清单中的 SQLite/本地 Vault 选择。
+核对日期：2026-09-28；Railway + Neon 适配补充于 2026-09-29。以下链接指向项目主仓或官方文档；**当前均未安装或复制进本仓库**。实施时锁定具体版本/commit，复核该版本的许可证和 API。2026-09-29 的云端主数据决策覆盖了原清单中的 SQLite/本地 Vault 选择。2026-09-30 新增的候选标注“待核对”，尚未核对许可与版本兼容性。
 
 ## V0.1：直接复用
 
@@ -19,6 +19,7 @@
 
 | 项目 / 来源 | 已核对许可 | 可复用位置 | 触发条件 |
 | --- | --- | --- | --- |
+| Fastify 类型提供者（如 TypeBox 一类的 schema→类型工具）；测试运行器（Node 内置 `node:test` 或 Vitest） | 待核对 | `packages/shared` 中共用的 schema/类型，以及服务端与共享包的测试。 | T01 决定；锁定版本并核对许可，以及与 Fastify 5、TypeScript 6.0.x 的兼容性。Angular 端用 CLI 当时的默认测试运行器。本行是候选，尚未核对。 |
 | [Ajv](https://github.com/ajv-validator/ajv) | MIT | 校验外部 JSON、模型结构化输出。 | Fastify 自带的 JSON Schema 校验不能覆盖该输入路径时再直接安装；模型结果还需校验事实 ID、权限和业务规则。 |
 | [OpenAI Node SDK](https://github.com/openai/openai-node) · [DeepSeek 官方兼容示例](https://api-docs.deepseek.com/guides/harness) | SDK Apache-2.0 | 当选用兼容接口的模型供应商时，复用超时/重试/调用协议。 | T06–T07 确认供应商和数据发送范围后；本项目不预设用户已有 DeepSeek Key。供应商的 JSON 输出也不能代替事实校验。[DeepSeek JSON 模式说明](https://api-docs.deepseek.com/guides/json_mode/) |
 | [gray-matter](https://github.com/jonschlinkert/gray-matter) | MIT | 解析导入/导出的 Obsidian 风格 Markdown front matter。 | T04 真正需要该格式时再引入；Markdown 不再是云端主数据。 |

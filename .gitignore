@@ -2,6 +2,7 @@
 /vault/
 /app-data/
 /artifacts/
+/scratch/
 .env
 .env.*
 !.env.example
