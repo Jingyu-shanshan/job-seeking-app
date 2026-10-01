@@ -12,7 +12,7 @@
 | [`@fastify/static`](https://github.com/fastify/fastify-static) | MIT | 在同一个 Railway 服务中提供 Angular 构建产物及 SPA 路由回退。 | T01；按 Fastify 5 兼容版本引入，不先开第二个 Web 服务。 |
 | [PostgreSQL](https://www.postgresql.org/docs/current/) + [`pg`](https://node-postgres.com/features/pooling) · [LICENSE](https://github.com/brianc/node-postgres/blob/master/LICENSE) | PostgreSQL License；`pg` MIT | Neon 使用标准 PostgreSQL，`pg.Pool` 供常驻 Fastify 服务连接。 | T02 已采用：`pg` 8.23（MIT，2026-10-01 按 npm 元数据核对），5 个连接的小连接池 + direct URL，连接压力出现再使用 Neon pooler；不加 ORM。 |
 | [`node-pg-migrate`](https://github.com/salsita/node-pg-migrate) | MIT | 版本化 SQL 迁移、迁移记录及并发控制。 | T02 已采用：`node-pg-migrate` 9.0（MIT），只写 SQL 迁移文件；在 Railway pre-deploy 使用 direct URL，不自写迁移状态。 |
-| [Better Auth](https://better-auth.com/docs/integrations/fastify) · [PostgreSQL 适配](https://better-auth.com/docs/adapters/postgresql) | [MIT](https://github.com/better-auth/better-auth/blob/main/packages/better-auth/package.json) | 云端单用户会话、密码和 Cookie；通用客户端可用于 Angular。 | T03；生产关闭公开注册，所有资料 API 在服务端验证会话。 |
+| [Better Auth](https://better-auth.com/docs/integrations/fastify) · [PostgreSQL 适配](https://better-auth.com/docs/adapters/postgresql) | [MIT](https://github.com/better-auth/better-auth/blob/main/packages/better-auth/package.json) | 云端单用户会话、密码和 Cookie；通用客户端可用于 Angular。 | T03 已采用：`better-auth` 1.7.7（MIT，2026-10-01 按 npm 元数据核对），只在服务端使用 Kysely 适配器接 `pg` 连接池；公开注册关闭，所有资料 API 在服务端验证会话。前端没有引入它的客户端库，三个接口直接用 `HttpClient` 调用。 |
 | Node `crypto` / `fetch` | Node 内置 | 内容哈希、后续公开 ATS API 请求。 | 能用标准库就不加哈希或 HTTP 客户端包装；生产文件不持久化在容器目录。 |
 
 ## V0.1：出现明确需求时再引入

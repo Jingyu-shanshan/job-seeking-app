@@ -6,6 +6,11 @@ main {
 }
 
 header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
   border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
 }
 
@@ -18,4 +23,14 @@ header a {
 header a:hover,
 header a:focus-visible {
   text-decoration: underline;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.account button {
+  font: inherit;
 }

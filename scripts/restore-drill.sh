@@ -54,6 +54,12 @@ insert into application (job_snapshot_id, status, submitted_at) values (:'snapsh
   returning id as application_id \gset
 insert into application_artifact values (:'application_id', :'artifact_id');
 insert into application_fact_version values (:'application_id', :'fact_version_id');
+insert into "user" (id, name, email, "emailVerified") values ('drill-user', 'Drill', 'drill@example.test', false);
+insert into account (id, "accountId", "providerId", "userId", password, "updatedAt")
+  values ('drill-account', 'drill-user', 'credential', 'drill-user', 'not-a-real-hash', now());
+insert into session (id, "expiresAt", token, "updatedAt", "userId")
+  values ('drill-session', now() + interval '1 day', 'drill-token', now(), 'drill-user');
+insert into verification (id, identifier, value, "expiresAt") values ('drill-verification', 'drill', 'drill', now());
 SQL
 
 pg_dump --format=custom --no-owner --file "$work/backup.dump" "$source_url"

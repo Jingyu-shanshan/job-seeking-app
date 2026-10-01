@@ -1,0 +1,31 @@
+form {
+  display: grid;
+  gap: 0.25rem;
+  max-width: 22rem;
+}
+
+label {
+  margin-top: 0.75rem;
+  font-weight: 600;
+}
+
+input {
+  font: inherit;
+  padding: 0.4rem 0.5rem;
+}
+
+button {
+  justify-self: start;
+  margin-top: 1rem;
+  font: inherit;
+  padding: 0.4rem 1rem;
+}
+
+.error {
+  margin: 0;
+  color: light-dark(#b00020, #ff8a80);
+}
+
+.error:empty {
+  display: none;
+}

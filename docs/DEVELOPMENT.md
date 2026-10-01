@@ -1,6 +1,6 @@
 # 开发文档与技术决策
 
-更新：2026-09-30（新增：先验证核心回路、不可变事实版本、共享契约与工程约定、隐私与备份；同日产品方向调整为发现职位并在逐个批准后代为提交，见下节）；2026-10-01 补充 T02 的数据库实现。本文是本仓库的实施决策；[原始方案](PRODUCT_PLAN.md) 保留原文。原方案中的本地优先、Markdown 主数据和 SQLite 是此前设计；本轮为了后续部署到 Railway + Neon，按**云端 PostgreSQL 为主数据**规划。Markdown 仍可导入/导出。完全离线版若仍需要，应另行设计同步和冲突处理，不在 V0.1 同时维护两套数据库。当前已有 T01 骨架和 T02 的数据库表与迁移，尚无业务功能。
+更新：2026-09-30（新增：先验证核心回路、不可变事实版本、共享契约与工程约定、隐私与备份；同日产品方向调整为发现职位并在逐个批准后代为提交，见下节）；2026-10-01 补充 T02 的数据库实现和 T03 的认证实现。本文是本仓库的实施决策；[原始方案](PRODUCT_PLAN.md) 保留原文。原方案中的本地优先、Markdown 主数据和 SQLite 是此前设计；本轮为了后续部署到 Railway + Neon，按**云端 PostgreSQL 为主数据**规划。Markdown 仍可导入/导出。完全离线版若仍需要，应另行设计同步和冲突处理，不在 V0.1 同时维护两套数据库。当前已有 T01 骨架、T02 的数据库表与迁移和 T03 的单用户登录，尚无业务功能。
 
 ## 产品方向调整（2026-09-30）
 
@@ -53,7 +53,7 @@ S0 已完成：一次性脚本（`/scratch/` + `/vault/`，均不入 Git）跑�
 | 数据库 | PostgreSQL；生产使用 Neon | 开发用本地 PostgreSQL 或独立 Neon 开发分支，生产数据不能用于测试。事实、JD 快照、材料、申请和审核记录均有同一主数据位置。本地容器和 CI 用 PostgreSQL 18（Neon 支持 14–18，2026-10-01 核对）；创建 Neon 项目时选同一主版本，否则同步修改 CI 镜像和本地命令。 |
 | 数据访问 | [`pg`/node-postgres](https://node-postgres.com/features/pooling) 的小连接池 | Railway 是常驻 Node 服务，可直接使用标准 PostgreSQL TCP 连接；先用 Neon **direct** `DATABASE_URL`。处理 idle `error` 和 Neon 休眠后的重连；连接压力确有需要时再改用 pooler。无需额外 serverless 驱动或 ORM。URL 必须带 `sslmode=verify-full`：`pg` 目前把 `require` 当作 `verify-full`，但已声明下个大版本改为 libpq 语义（不校验证书），所以生产环境下服务拒绝其他取值。 |
 | 迁移 | [`node-pg-migrate`](https://salsita.github.io/node-pg-migrate/) + 版本化 SQL | 复用迁移状态与并发锁，生产迁移在 Railway pre-deploy 独立执行（`npm run db:migrate`）；使用 Neon direct URL，不在每次请求或服务启动时改 schema。迁移是 `apps/server/migrations/` 下只含 up 部分的 SQL 文件，已执行过的文件不再修改。 |
-| 身份验证 | [Better Auth](https://better-auth.com/docs/integrations/fastify) + PostgreSQL | 复用会话与密码处理；生产关闭公开注册，首次账户由受控初始化流程创建。[生成的认证 SQL](https://better-auth.com/docs/concepts/database) 纳入同一版本化迁移，不在生产启动时自动修改 schema。所有资料 API 都必须检查会话。 |
+| 身份验证 | [Better Auth](https://better-auth.com/docs/integrations/fastify) + PostgreSQL | 复用会话与密码处理；生产关闭公开注册，首次账户由受控初始化流程创建。[生成的认证 SQL](https://better-auth.com/docs/concepts/database) 纳入同一版本化迁移，不在生产启动时自动修改 schema。所有资料 API 都必须检查会话。T03 已实现（Better Auth 1.7.7）：邮箱 + 密码、一个账户（数据库唯一索引保证），公开注册在所有环境关闭，账户只能用 `npm run auth:create-account` 在终端创建；`/api` 下除 `/api/auth/*` 外默认要求会话，所有写请求要求受信 `Origin`。前端直接用 `HttpClient` 调 Better Auth 接口，不引入其客户端库。 |
 | 附件与便携格式 | PostgreSQL `TEXT`/`JSONB`，小文件用限额 `BYTEA`；Markdown/JSON/PDF 导出 | 已确认事实的正文和版本在数据库；Obsidian Vault 作为导入/导出格式。原始 JD、实际投递 PDF 均持久化并保留哈希。若文件规模使数据库成本或备份不可接受，再用 [Railway Storage Bucket](https://docs.railway.com/storage-buckets)，不把容器目录当主数据。 |
 | 检索 | PostgreSQL 全文检索，实际需要时建索引 | 不继续使用 SQLite FTS5，也不预装向量库。 |
 | 模型 | DeepSeek API（2026-09-30 用户选定），固定步骤直接调用 | 用于 JD 要求抽取与总结、匹配解释、材料草稿、表单问题到已有答案的映射。接口与 JSON 输出方式在 T05 接入前核对当时的官方文档，并限制每次运行的请求数和费用。模型不能确认事实，也不能替用户回答新问题。数据会离开欧盟处理，因此只发送标记为可外发的事实（见下方规则）。 |
