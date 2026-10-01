@@ -63,6 +63,24 @@ describe('App', () => {
     expect(heading(harness)).toBe('Job Search Workbench');
   });
 
+  it('shows the sources page to the signed-in user', async () => {
+    user.set({ email: 'owner@example.com' });
+    const harness = await RouterTestingHarness.create('/sources');
+
+    expect(heading(harness)).toBe('Sources and search scope');
+  });
+
+  it('links the sources page from the header once signed in', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const nav = () => (fixture.nativeElement as HTMLElement).querySelector('nav a');
+    expect(nav()).toBeNull();
+
+    user.set({ email: 'owner@example.com' });
+    fixture.detectChanges();
+    expect(nav()?.getAttribute('href')).toBe('/sources');
+  });
+
   it('shows who is signed in and signs out', async () => {
     user.set({ email: 'owner@example.com' });
     const fixture = TestBed.createComponent(App);

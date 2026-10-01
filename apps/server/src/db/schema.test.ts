@@ -266,4 +266,42 @@ describe('schema', needsDatabase, () => {
       code: '23514',
     });
   });
+
+  describe('sources', () => {
+    test('are unique per catalog entry and parameter', async () => {
+      await client.query(`insert into source (catalog_id, param) values ('some_board', 'acme')`);
+      await client.query(`insert into source (catalog_id, param) values ('some_board', 'other')`);
+      await assert.rejects(
+        client.query(`insert into source (catalog_id, param) values ('some_board', 'acme')`),
+        { code: '23505' },
+      );
+      await client.query(`insert into source (catalog_id) values ('some_alert')`);
+      await assert.rejects(client.query(`insert into source (catalog_id) values ('some_alert')`), {
+        code: '23505',
+      });
+    });
+
+    test('record a failure with its reason, never one without the other', async () => {
+      const insert = `insert into source (catalog_id, param, last_failure_at, last_failure_reason)
+                      values ('pair_board', $1, $2, $3)`;
+      await client.query(insert, ['a', new Date(), 'HTTP 404']);
+      await assert.rejects(client.query(insert, ['b', new Date(), null]), { code: '23514' });
+      await assert.rejects(client.query(insert, ['c', null, 'HTTP 404']), { code: '23514' });
+    });
+  });
+
+  test('the search scope is one row, Helsinki without remote jobs by default', async () => {
+    assert.deepEqual((await client.query('select area, include_remote from search_scope')).rows, [
+      { area: 'helsinki', include_remote: false },
+    ]);
+    await assert.rejects(client.query('insert into search_scope default values'), {
+      code: '23505',
+    });
+    await assert.rejects(client.query('insert into search_scope (singleton) values (false)'), {
+      code: '23514',
+    });
+    await assert.rejects(client.query(`update search_scope set area = 'everywhere'`), {
+      code: '23514',
+    });
+  });
 });
