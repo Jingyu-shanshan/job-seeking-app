@@ -20,3 +20,15 @@ export {
   type SourcesResponse,
   type UpdateSourceRequest,
 } from './sources.ts';
+export {
+  DiscoveryRunSchema,
+  JobSchema,
+  JobsResponseSchema,
+  LocationVerdictSchema,
+  SourceRunSchema,
+  type DiscoveryRun,
+  type Job,
+  type JobsResponse,
+  type LocationVerdict,
+  type SourceRun,
+} from './jobs.ts';
