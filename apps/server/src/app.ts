@@ -8,6 +8,7 @@ import Fastify from 'fastify';
 import { type Auth, createAuth } from './auth.ts';
 import type { Config } from './config.ts';
 import { checkDatabase, createPool } from './db/pool.ts';
+import { sourceRoutes } from './sources/routes.ts';
 
 export type AppOptions = Pick<Config, 'webRoot' | 'appUrl' | 'trustedOrigins'> &
   Partial<Pick<Config, 'databaseUrl' | 'authSecret'>> & {
@@ -106,6 +107,11 @@ export function buildApp({
     const session = await auth?.api.getSession({ headers: fromNodeHeaders(request.headers) });
     if (!session) return reply.code(401).send({ error: 'Unauthorized' });
   });
+
+  // Data routes. Without a database nobody can sign in, so the hook above refuses them anyway.
+  if (pool) {
+    app.register(sourceRoutes, { prefix: '/api', pool });
+  }
 
   // Without a web build (API-only dev, tests) the server still runs; `ng serve` proxies to it.
   const hasWeb = existsSync(join(webRoot, 'index.html'));

@@ -21,8 +21,17 @@ header a {
 }
 
 header a:hover,
-header a:focus-visible {
+header a:focus-visible,
+header a.active {
   text-decoration: underline;
+}
+
+nav {
+  margin-right: auto;
+}
+
+nav a {
+  font-weight: 400;
 }
 
 .account {

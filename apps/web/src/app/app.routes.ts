@@ -10,7 +10,14 @@ export const routes: Routes = [
     // Every page of the app goes in here, so it needs a signed-in user.
     path: '',
     canActivateChild: [requireSignIn],
-    children: [{ path: '', component: Home, title: 'Job Search Workbench' }],
+    children: [
+      { path: '', component: Home, title: 'Job Search Workbench' },
+      {
+        path: 'sources',
+        loadComponent: () => import('./sources/sources').then((m) => m.Sources),
+        title: 'Sources and search scope',
+      },
+    ],
   },
   { path: '**', component: NotFound, title: 'Page not found' },
 ];
