@@ -1,8 +1,16 @@
 import { Routes } from '@angular/router';
+import { requireSignIn } from './auth/require-sign-in';
 import { Home } from './home/home';
+import { Login } from './login/login';
 import { NotFound } from './not-found/not-found';
 
 export const routes: Routes = [
-  { path: '', component: Home, title: 'Job Search Workbench' },
+  { path: 'login', component: Login, title: 'Sign in' },
+  {
+    // Every page of the app goes in here, so it needs a signed-in user.
+    path: '',
+    canActivateChild: [requireSignIn],
+    children: [{ path: '', component: Home, title: 'Job Search Workbench' }],
+  },
   { path: '**', component: NotFound, title: 'Page not found' },
 ];

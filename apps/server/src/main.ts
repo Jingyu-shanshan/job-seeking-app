@@ -2,11 +2,7 @@ import { buildApp } from './app.ts';
 import { loadConfig } from './config.ts';
 
 const config = loadConfig();
-const app = buildApp({
-  webRoot: config.webRoot,
-  databaseUrl: config.databaseUrl,
-  logger: true,
-});
+const app = buildApp({ ...config, logger: true });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {

@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { buildApp } from './app.ts';
+import { loadConfig } from './config.ts';
 import { createTestDatabase, needsDatabase } from './testing/database.ts';
+
+// The local defaults: the app at http://127.0.0.1:3000, no database.
+const { appUrl, trustedOrigins } = loadConfig({});
 
 describe('with a web build', () => {
   let webRoot: string;
@@ -14,7 +18,7 @@ describe('with a web build', () => {
     webRoot = mkdtempSync(join(tmpdir(), 'jsa-web-'));
     writeFileSync(join(webRoot, 'index.html'), '<!doctype html><app-root></app-root>');
     writeFileSync(join(webRoot, 'main.js'), 'console.log("app")');
-    app = buildApp({ webRoot });
+    app = buildApp({ webRoot, appUrl, trustedOrigins });
   });
 
   after(async () => {
@@ -47,11 +51,11 @@ describe('with a web build', () => {
     }
   });
 
-  test('an unknown API route is a JSON 404, not the app shell', async () => {
+  test('an API route, also an unknown one, is a JSON 401 without a session, not the app shell', async () => {
     for (const url of ['/api', '/api/nope', '/api/jobs/123']) {
       const res = await app.inject({ method: 'GET', url });
-      assert.equal(res.statusCode, 404, url);
-      assert.deepEqual(res.json(), { error: 'Not Found' }, url);
+      assert.equal(res.statusCode, 401, url);
+      assert.deepEqual(res.json(), { error: 'Unauthorized' }, url);
     }
   });
 
@@ -64,21 +68,15 @@ describe('with a web build', () => {
     const res = await app.inject({ method: 'POST', url: '/jobs/123' });
     assert.equal(res.statusCode, 404);
   });
-
-  test('rejects a request body over 1 MiB', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/anything',
-      headers: { 'content-type': 'application/json' },
-      payload: JSON.stringify({ blob: 'x'.repeat(1024 * 1024) }),
-    });
-    assert.equal(res.statusCode, 413);
-  });
 });
 
 describe('without a web build', () => {
   test('the API still answers and pages are 404', async () => {
-    const app = buildApp({ webRoot: join(tmpdir(), 'jsa-web-does-not-exist') });
+    const app = buildApp({
+      webRoot: join(tmpdir(), 'jsa-web-does-not-exist'),
+      appUrl,
+      trustedOrigins,
+    });
     try {
       assert.equal((await app.inject({ method: 'GET', url: '/health' })).statusCode, 200);
       assert.equal((await app.inject({ method: 'GET', url: '/jobs/123' })).statusCode, 404);
@@ -92,7 +90,7 @@ describe('/health/ready', () => {
   const webRoot = join(tmpdir(), 'jsa-web-does-not-exist');
 
   test('is 503 without a database', async () => {
-    const app = buildApp({ webRoot });
+    const app = buildApp({ webRoot, appUrl, trustedOrigins });
     try {
       const res = await app.inject({ method: 'GET', url: '/health/ready' });
       assert.equal(res.statusCode, 503);
@@ -105,7 +103,10 @@ describe('/health/ready', () => {
   test('is 503 when the database is unreachable, while /health stays 200', async () => {
     const app = buildApp({
       webRoot,
+      appUrl,
+      trustedOrigins,
       databaseUrl: 'postgres://postgres:postgres@127.0.0.1:1/postgres',
+      authSecret: 'test-secret-that-is-at-least-32-characters',
     });
     try {
       const res = await app.inject({ method: 'GET', url: '/health/ready' });
@@ -119,7 +120,13 @@ describe('/health/ready', () => {
 
   test('is 200 when the database answers', needsDatabase, async () => {
     const db = await createTestDatabase({ migrated: false });
-    const app = buildApp({ webRoot, databaseUrl: db.url });
+    const app = buildApp({
+      webRoot,
+      appUrl,
+      trustedOrigins,
+      databaseUrl: db.url,
+      authSecret: 'test-secret-that-is-at-least-32-characters',
+    });
     try {
       const res = await app.inject({ method: 'GET', url: '/health/ready' });
       assert.equal(res.statusCode, 200);

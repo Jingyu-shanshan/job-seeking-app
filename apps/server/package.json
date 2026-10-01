@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=../../.env dist/main.js",
     "migrate": "node --env-file-if-exists=../../.env src/migrate.ts",
+    "create-account": "node --env-file-if-exists=../../.env src/create-account.ts",
     "migrate:create": "node-pg-migrate create --migrations-dir migrations --migration-file-language sql",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --env-file-if-exists=../../.env --test \"src/**/*.test.ts\""
@@ -16,6 +17,7 @@
     "@fastify/static": "^10.1.5",
     "@fastify/type-provider-typebox": "^6.1.0",
     "@jsa/shared": "*",
+    "better-auth": "^1.7.7",
     "fastify": "^5.12.5",
     "node-pg-migrate": "^9.0.0",
     "pg": "^8.23.1",
