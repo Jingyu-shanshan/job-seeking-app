@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { buildApp } from './app.ts';
+import { createTestDatabase, needsDatabase } from './testing/database.ts';
 
 describe('with a web build', () => {
   let webRoot: string;
@@ -83,6 +84,49 @@ describe('without a web build', () => {
       assert.equal((await app.inject({ method: 'GET', url: '/jobs/123' })).statusCode, 404);
     } finally {
       await app.close();
+    }
+  });
+});
+
+describe('/health/ready', () => {
+  const webRoot = join(tmpdir(), 'jsa-web-does-not-exist');
+
+  test('is 503 without a database', async () => {
+    const app = buildApp({ webRoot });
+    try {
+      const res = await app.inject({ method: 'GET', url: '/health/ready' });
+      assert.equal(res.statusCode, 503);
+      assert.deepEqual(res.json(), { status: 'unavailable' });
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('is 503 when the database is unreachable, while /health stays 200', async () => {
+    const app = buildApp({
+      webRoot,
+      databaseUrl: 'postgres://postgres:postgres@127.0.0.1:1/postgres',
+    });
+    try {
+      const res = await app.inject({ method: 'GET', url: '/health/ready' });
+      assert.equal(res.statusCode, 503);
+      assert.deepEqual(res.json(), { status: 'unavailable' });
+      assert.equal((await app.inject({ method: 'GET', url: '/health' })).statusCode, 200);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('is 200 when the database answers', needsDatabase, async () => {
+    const db = await createTestDatabase({ migrated: false });
+    const app = buildApp({ webRoot, databaseUrl: db.url });
+    try {
+      const res = await app.inject({ method: 'GET', url: '/health/ready' });
+      assert.equal(res.statusCode, 200);
+      assert.deepEqual(res.json(), { status: 'ok' });
+    } finally {
+      await app.close();
+      await db.drop();
     }
   });
 });

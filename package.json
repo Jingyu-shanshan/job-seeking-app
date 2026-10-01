@@ -13,6 +13,8 @@
   "scripts": {
     "build": "npm run build -w @jsa/shared && npm run build -w @jsa/server && npm run build -w @jsa/web",
     "start": "npm start -w @jsa/server",
+    "db:migrate": "npm run migrate -w @jsa/server",
+    "db:restore-drill": "bash scripts/restore-drill.sh",
     "dev:server": "npm run build -w @jsa/shared && npm run dev -w @jsa/server",
     "dev:web": "npm run dev -w @jsa/web",
     "test": "npm run build -w @jsa/shared && npm test -w @jsa/shared -w @jsa/server -w @jsa/web",
