@@ -6,3 +6,10 @@ export const HealthResponseSchema = Type.Object({
 });
 
 export type HealthResponse = Static<typeof HealthResponseSchema>;
+
+/** Response of `GET /health/ready`: `ok` (200) when the database answers, else `unavailable` (503). */
+export const ReadyResponseSchema = Type.Object({
+  status: Type.Union([Type.Literal('ok'), Type.Literal('unavailable')]),
+});
+
+export type ReadyResponse = Static<typeof ReadyResponseSchema>;

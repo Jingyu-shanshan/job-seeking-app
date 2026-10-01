@@ -1,1 +1,6 @@
-export { HealthResponseSchema, type HealthResponse } from './health.ts';
+export {
+  HealthResponseSchema,
+  ReadyResponseSchema,
+  type HealthResponse,
+  type ReadyResponse,
+} from './health.ts';

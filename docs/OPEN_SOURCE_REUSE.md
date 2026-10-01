@@ -1,6 +1,6 @@
 # 开源复用清单
 
-核对日期：2026-09-28；Railway + Neon 适配补充于 2026-09-29。以下链接指向项目主仓或官方文档；**当前均未安装或复制进本仓库**。实施时锁定具体版本/commit，复核该版本的许可证和 API。2026-09-29 的云端主数据决策覆盖了原清单中的 SQLite/本地 Vault 选择。2026-09-30 新增的候选标注“待核对”，尚未核对许可与版本兼容性。同日产品方向调整后，公开职位来源和 Playwright 进入 V0.1，模型供应商定为 DeepSeek。
+核对日期：2026-09-28；Railway + Neon 适配补充于 2026-09-29。以下链接指向项目主仓或官方文档；**除标明“已采用”的行外，均未安装或复制进本仓库**。实施时锁定具体版本/commit，复核该版本的许可证和 API。2026-09-29 的云端主数据决策覆盖了原清单中的 SQLite/本地 Vault 选择。2026-09-30 新增的候选标注“待核对”，尚未核对许可与版本兼容性。同日产品方向调整后，公开职位来源和 Playwright 进入 V0.1，模型供应商定为 DeepSeek。
 
 ## V0.1：直接复用
 
@@ -10,8 +10,8 @@
 | [Angular Material/CDK](https://github.com/angular/components) · [LICENSE](https://github.com/angular/components/blob/main/LICENSE) | MIT | 按需要用现成输入、对话框、表格和无障碍交互。 | T04–T08 按页面引入，不复制组件源码或一次装满扩展。 |
 | [Fastify](https://github.com/fastify/fastify) · [验证文档](https://fastify.dev/docs/latest/Reference/Validation-and-Serialization/) | MIT | HTTP 路由、JSON Schema 入参校验及响应约束。 | T01；选择稳定的 5.x。生产仍需会话、Origin 与业务权限检查。 |
 | [`@fastify/static`](https://github.com/fastify/fastify-static) | MIT | 在同一个 Railway 服务中提供 Angular 构建产物及 SPA 路由回退。 | T01；按 Fastify 5 兼容版本引入，不先开第二个 Web 服务。 |
-| [PostgreSQL](https://www.postgresql.org/docs/current/) + [`pg`](https://node-postgres.com/features/pooling) · [LICENSE](https://github.com/brianc/node-postgres/blob/master/LICENSE) | PostgreSQL License；`pg` MIT | Neon 使用标准 PostgreSQL，`pg.Pool` 供常驻 Fastify 服务连接。 | T02；先用小连接池和 direct URL，连接压力出现再使用 Neon pooler；不加 ORM。 |
-| [`node-pg-migrate`](https://github.com/salsita/node-pg-migrate) | MIT | 版本化 SQL 迁移、迁移记录及并发控制。 | T02；在 Railway pre-deploy 使用 direct URL，不自写迁移状态。 |
+| [PostgreSQL](https://www.postgresql.org/docs/current/) + [`pg`](https://node-postgres.com/features/pooling) · [LICENSE](https://github.com/brianc/node-postgres/blob/master/LICENSE) | PostgreSQL License；`pg` MIT | Neon 使用标准 PostgreSQL，`pg.Pool` 供常驻 Fastify 服务连接。 | T02 已采用：`pg` 8.23（MIT，2026-10-01 按 npm 元数据核对），5 个连接的小连接池 + direct URL，连接压力出现再使用 Neon pooler；不加 ORM。 |
+| [`node-pg-migrate`](https://github.com/salsita/node-pg-migrate) | MIT | 版本化 SQL 迁移、迁移记录及并发控制。 | T02 已采用：`node-pg-migrate` 9.0（MIT），只写 SQL 迁移文件；在 Railway pre-deploy 使用 direct URL，不自写迁移状态。 |
 | [Better Auth](https://better-auth.com/docs/integrations/fastify) · [PostgreSQL 适配](https://better-auth.com/docs/adapters/postgresql) | [MIT](https://github.com/better-auth/better-auth/blob/main/packages/better-auth/package.json) | 云端单用户会话、密码和 Cookie；通用客户端可用于 Angular。 | T03；生产关闭公开注册，所有资料 API 在服务端验证会话。 |
 | Node `crypto` / `fetch` | Node 内置 | 内容哈希、后续公开 ATS API 请求。 | 能用标准库就不加哈希或 HTTP 客户端包装；生产文件不持久化在容器目录。 |
 

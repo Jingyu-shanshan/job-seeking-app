@@ -1,6 +1,6 @@
 # 开发文档与技术决策
 
-更新：2026-09-30（新增：先验证核心回路、不可变事实版本、共享契约与工程约定、隐私与备份；同日产品方向调整为发现职位并在逐个批准后代为提交，见下节）。本文是本仓库的实施决策；[原始方案](PRODUCT_PLAN.md) 保留原文。原方案中的本地优先、Markdown 主数据和 SQLite 是此前设计；本轮为了后续部署到 Railway + Neon，按**云端 PostgreSQL 为主数据**规划。Markdown 仍可导入/导出。完全离线版若仍需要，应另行设计同步和冲突处理，不在 V0.1 同时维护两套数据库。当前没有产品代码或依赖。
+更新：2026-09-30（新增：先验证核心回路、不可变事实版本、共享契约与工程约定、隐私与备份；同日产品方向调整为发现职位并在逐个批准后代为提交，见下节）；2026-10-01 补充 T02 的数据库实现。本文是本仓库的实施决策；[原始方案](PRODUCT_PLAN.md) 保留原文。原方案中的本地优先、Markdown 主数据和 SQLite 是此前设计；本轮为了后续部署到 Railway + Neon，按**云端 PostgreSQL 为主数据**规划。Markdown 仍可导入/导出。完全离线版若仍需要，应另行设计同步和冲突处理，不在 V0.1 同时维护两套数据库。当前已有 T01 骨架和 T02 的数据库表与迁移，尚无业务功能。
 
 ## 产品方向调整（2026-09-30）
 
@@ -50,9 +50,9 @@ S0 已完成：一次性脚本（`/scratch/` + `/vault/`，均不入 Git）跑�
 | --- | --- | --- |
 | Web | Angular 22 + TypeScript 6.0.x | 使用框架自带路由/表单；[兼容表](https://angular.dev/reference/versions)要求 Node `^24.15.0` 等受支持版本、TypeScript `>=6.0.0 <6.1.0`。 |
 | 服务 | Node.js 24 LTS + Fastify 5 | 一个进程提供 `/api` 与 Angular 构建产物；按需用 [`@fastify/static`](https://github.com/fastify/fastify-static)，同源会话，不先拆第二个前端服务。 |
-| 数据库 | PostgreSQL；生产使用 Neon | 开发用本地 PostgreSQL 或独立 Neon 开发分支，生产数据不能用于测试。事实、JD 快照、材料、申请和审核记录均有同一主数据位置。 |
-| 数据访问 | [`pg`/node-postgres](https://node-postgres.com/features/pooling) 的小连接池 | Railway 是常驻 Node 服务，可直接使用标准 PostgreSQL TCP 连接；先用 Neon **direct** `DATABASE_URL`。处理 idle `error` 和 Neon 休眠后的重连；连接压力确有需要时再改用 pooler。无需额外 serverless 驱动或 ORM。 |
-| 迁移 | [`node-pg-migrate`](https://salsita.github.io/node-pg-migrate/) + 版本化 SQL | 复用迁移状态与并发锁，生产迁移在 Railway pre-deploy 独立执行；使用 Neon direct URL，不在每次请求或服务启动时改 schema。 |
+| 数据库 | PostgreSQL；生产使用 Neon | 开发用本地 PostgreSQL 或独立 Neon 开发分支，生产数据不能用于测试。事实、JD 快照、材料、申请和审核记录均有同一主数据位置。本地容器和 CI 用 PostgreSQL 18（Neon 支持 14–18，2026-10-01 核对）；创建 Neon 项目时选同一主版本，否则同步修改 CI 镜像和本地命令。 |
+| 数据访问 | [`pg`/node-postgres](https://node-postgres.com/features/pooling) 的小连接池 | Railway 是常驻 Node 服务，可直接使用标准 PostgreSQL TCP 连接；先用 Neon **direct** `DATABASE_URL`。处理 idle `error` 和 Neon 休眠后的重连；连接压力确有需要时再改用 pooler。无需额外 serverless 驱动或 ORM。URL 必须带 `sslmode=verify-full`：`pg` 目前把 `require` 当作 `verify-full`，但已声明下个大版本改为 libpq 语义（不校验证书），所以生产环境下服务拒绝其他取值。 |
+| 迁移 | [`node-pg-migrate`](https://salsita.github.io/node-pg-migrate/) + 版本化 SQL | 复用迁移状态与并发锁，生产迁移在 Railway pre-deploy 独立执行（`npm run db:migrate`）；使用 Neon direct URL，不在每次请求或服务启动时改 schema。迁移是 `apps/server/migrations/` 下只含 up 部分的 SQL 文件，已执行过的文件不再修改。 |
 | 身份验证 | [Better Auth](https://better-auth.com/docs/integrations/fastify) + PostgreSQL | 复用会话与密码处理；生产关闭公开注册，首次账户由受控初始化流程创建。[生成的认证 SQL](https://better-auth.com/docs/concepts/database) 纳入同一版本化迁移，不在生产启动时自动修改 schema。所有资料 API 都必须检查会话。 |
 | 附件与便携格式 | PostgreSQL `TEXT`/`JSONB`，小文件用限额 `BYTEA`；Markdown/JSON/PDF 导出 | 已确认事实的正文和版本在数据库；Obsidian Vault 作为导入/导出格式。原始 JD、实际投递 PDF 均持久化并保留哈希。若文件规模使数据库成本或备份不可接受，再用 [Railway Storage Bucket](https://docs.railway.com/storage-buckets)，不把容器目录当主数据。 |
 | 检索 | PostgreSQL 全文检索，实际需要时建索引 | 不继续使用 SQLite FTS5，也不预装向量库。 |
@@ -61,7 +61,7 @@ S0 已完成：一次性脚本（`/scratch/` + `/vault/`，均不入 Git）跑�
 | 职位来源 | 来源目录 + 逐个适配器，原生 `fetch` | 接入方式四种：`board_api`、`official_api`、`email_alert`、`manual`。先做 Greenhouse 公开招聘板块接口，第二种做 Ashby（2026-09-30 决定）；每个来源记录接入方式、条款核对日期和限流。不写通用爬虫。 |
 | 投递执行器 | 本地 Node 进程 + [Playwright](https://playwright.dev/)，可见浏览器窗口 | npm 工作区 `apps/runner`（T17 创建），不部署到 Railway。用可撤销的令牌向 API 领取已批准的任务并回传预览、结果和回执。先做 Greenhouse 托管的申请表，第二种做 Ashby。 |
 | 共享契约 | npm 工作区 `packages/shared` + [TypeBox](https://github.com/sinclairzx81/typebox)（MIT） | Web 与 API 共用的 schema/类型：Fastify 通过 `@fastify/type-provider-typebox` 用它校验和序列化，Angular 只导入类型（TypeBox 不进浏览器包）。共享包以构建产物 `dist/` 被引用，改动后需重新构建。 |
-| 测试与质量 | `node:test`（服务端、共享包）+ Vitest（Angular CLI 默认）；ESLint + Prettier；GitHub Actions | T01 已定。服务端和共享包直接用 Node 的类型剥离运行 TypeScript，不装 ts-node/tsx，因此相对导入带 `.ts` 后缀且只用可擦除语法。ESLint 禁止 `apps/server/src/rules/` 导入 Fastify 或 `pg`。CI 依次执行 lint、typecheck、build、test。不用 ORM，所以数据层测试必须连真实 PostgreSQL（本地容器或独立 Neon 分支），不用 mock 代替。真实命令见 `CLAUDE.md`。 |
+| 测试与质量 | `node:test`（服务端、共享包）+ Vitest（Angular CLI 默认）；ESLint + Prettier；GitHub Actions | T01 已定。服务端和共享包直接用 Node 的类型剥离运行 TypeScript，不装 ts-node/tsx，因此相对导入带 `.ts` 后缀且只用可擦除语法。ESLint 禁止 `apps/server/src/rules/` 导入 Fastify 或 `pg`。CI 依次执行 lint、typecheck、build、test。不用 ORM，所以数据层测试必须连真实 PostgreSQL（本地容器或独立 Neon 分支），不用 mock 代替：测试从 `TEST_DATABASE_URL` 指向的服务器上为每个测试文件新建并删除临时库；本地未设置时跳过，CI 用 PostgreSQL 服务容器，未设置则直接失败。真实命令见 `CLAUDE.md`。 |
 
 具体版本以 `package-lock.json` 为准（T01 确定）。候选库与许可证见 [开源复用清单](OPEN_SOURCE_REUSE.md)，部署拓扑与步骤见 [部署文档](DEPLOYMENT.md)。
 
@@ -77,6 +77,8 @@ docs/           原方案、决策、任务、复用调研和部署步骤
 ```
 
 V0.1 的业务对象是 `Fact`、`Source`、`JobSnapshot`、`Match`、`Artifact`、`ProfileAnswer`（表单答案）、`Approval` 和 `Application`；不为平台化预建服务。事实采用不可变版本：`fact` 是稳定身份，只追加的 `fact_version` 保存正文、哈希、来源、确认状态和可见性；确认绑定到版本，编辑正文即产生新的 proposed 版本，“正文变化使旧确认失效”因此无需额外逻辑。材料中的每条陈述和冻结的申请以外键引用 `fact_version` ID 而不复制正文，历史不会漂移。可见性拆为两个独立开关：“可发送给模型供应商”与“可出现在正式材料”。原始 JD 与投递材料不能原地覆盖；用户在应用外修改最终文件时，应导入实际发送的版本。数据库中的 PDF/原件要限制单文件大小，并与结构化记录一同进入备份/恢复验证。
+
+T02 建立的最小表（2026-10-01）：`fact`/`fact_version`；`job`（职位身份）/`job_snapshot`（抓取或粘贴的原文）/`job_requirement`（要求、JD 原文引用及子串校验结果）；`match`（合格/待确认/不合格）/`match_requirement`（每条要求的符合/不符合/未知）/`match_evidence`（支持该结论的事实版本）；`artifact`（简历或求职信）/`artifact_claim`（有序陈述）/`artifact_claim_fact`（陈述引用的事实版本）；`application`（只在已提交或待核实时存在）/`application_artifact`/`application_fact_version`。数据库直接保证的只有数据完整性：`fact_version` 只能改状态（proposed/confirmed/retired）和两个可见性开关、不能删除；`job_snapshot` 不能修改，同一职位的相同正文只存一份，被引用时不能删除；两者的 SHA-256 由触发器计算；新事实版本默认 proposed 且两个开关为否；所有引用都是外键，默认禁止删除被引用的行。哪些事实可以被引用、状态如何流转等需要判断的规则仍放在纯规则模块。事实类型、要求类型、匹配理由、渲染后的文件、批准、来源和表单答案由各自任务的迁移添加；材料和申请的冻结（T09）也在那时补上。
 
 原方案的 `vault/`、`app-data/`、`artifacts/` 目录不作为 Railway 生产主数据。Railway 可以附加持久卷，但这会增加部署和扩容约束；目前一个 Neon 数据库即可承载个人 MVP 的结构化资料与有界附件。[Railway 卷说明](https://docs.railway.com/volumes)
 

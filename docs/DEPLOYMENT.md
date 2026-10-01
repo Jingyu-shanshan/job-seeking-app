@@ -1,6 +1,6 @@
 # Railway + Neon 部署计划
 
-更新：2026-09-30。**这是未来发布步骤，尚无 Railway 项目或 Neon 数据库；`npm ci`、`npm run build`、`npm start` 已在 T01 实现，迁移脚本待 T02。** 源码在 GitHub `Jingyu-shanshan/job-seeking-app`（公开仓库），当前不发布。骨架（T01–T03）完成后先做一次不含个人数据的预部署演练（T03a），更早暴露 Railway、Neon、Better Auth 和 pre-deploy 迁移的问题；正式发布仍是 T12。
+更新：2026-10-01。**这是未来发布步骤，尚无 Railway 项目或 Neon 数据库；`npm ci`、`npm run build`、`npm start` 已在 T01 实现，迁移命令 `npm run db:migrate` 已在 T02 实现。** 源码在 GitHub `Jingyu-shanshan/job-seeking-app`（公开仓库），当前不发布。骨架（T01–T03）完成后先做一次不含个人数据的预部署演练（T03a），更早暴露 Railway、Neon、Better Auth 和 pre-deploy 迁移的问题；正式发布仍是 T12。
 
 ## 拓扑
 
@@ -12,7 +12,7 @@
 
 | 变量 | 位置 | 用途 |
 | --- | --- | --- |
-| `DATABASE_URL` | Railway 服务变量；仅后端代码读取 | 先使用 Neon **direct** PostgreSQL URL，包含 `sslmode=require`；小 `pg.Pool` 用于运行时，迁移也用该 URL。开发与生产必须指向不同数据库/分支。[Neon 连接说明](https://github.com/neondatabase/website/blob/main/content/docs/get-started/connect-neon.md) |
+| `DATABASE_URL` | Railway 服务变量；仅后端代码读取 | 先使用 Neon **direct** PostgreSQL URL，并把 Neon 给出的 `sslmode=require` 改为 `sslmode=verify-full`：`pg` 下个大版本会让 `require` 不再校验证书，因此 `NODE_ENV=production` 时服务和迁移都拒绝其他取值（URL 中其他参数如 `channel_binding` 在 T03a 时核对）。小 `pg.Pool` 用于运行时，迁移也用该 URL。开发与生产必须指向不同数据库/分支。[Neon 连接说明](https://github.com/neondatabase/website/blob/main/content/docs/get-started/connect-neon.md) |
 | `BETTER_AUTH_SECRET` | Railway 服务变量；仅后端代码读取 | 高熵会话密钥；不写进前端或 Git。[Better Auth 安装说明](https://better-auth.com/docs/installation) |
 | `BETTER_AUTH_URL` | Railway 服务变量；仅后端代码读取 | 实际 HTTPS 应用来源；本地使用本地地址，生产使用 Railway/自定义域名。 |
 | `NODE_ENV=production` | Railway 服务端 | 生产行为与安全 Cookie。 |
@@ -30,14 +30,15 @@ V0.1 单用户、单服务先用 direct URL，避免多余连接配置。若连�
 ## 区域与备份
 
 - **区域**：Neon 项目和 Railway 服务在创建时选择区域，两者应彼此靠近，并按数据合规选择。若在欧盟求职，个人经历数据宜留在欧盟区域，并把 GDPR 与模型供应商所在地一并考虑。事后更换区域可能要迁移数据，因此在 T03a 创建演练环境时就确定。
-- **备份**：Neon 的时间点恢复窗口取决于所选套餐，在 T02 前核对并记录在本文。此外定期用 direct URL 执行 `pg_dump`，存到用户控制、且与 Neon 不同提供方的存储，并验证能恢复到隔离库；T10 以此为验收。
+- **PostgreSQL 版本**：Neon 支持 14–18（2026-10-01 核对）。本地容器和 CI 用 18，创建 Neon 项目时选 18；若选其他主版本，同步修改 `.github/workflows/ci.yml` 和 `CLAUDE.md` 中的容器镜像。
+- **备份**：Neon 的时间点恢复窗口（2026-10-01 核对 [Neon 套餐说明](https://neon.com/docs/introduction/plans)）：Free 为 6 小时且不可调；Launch 默认 1 天、最长 7 天；Scale 默认 1 天、最长 30 天。付费套餐按变更历史另计 $0.20/GB-月，且只有根分支能做时间点恢复。Free 套餐的计算节点闲置 5 分钟后休眠且不能关闭（Launch 可关闭，Scale 可配置），所以 `/health/ready` 和连接超时要容纳唤醒。不论哪种套餐，都定期用 direct URL 执行 `pg_dump`，存到用户控制、且与 Neon 不同提供方的存储，并验证能恢复到隔离库；T10 以此为验收。T02 的 `npm run db:restore-drill` 已在本地对样例数据演练过 `pg_dump` → 隔离库 `pg_restore` → 逐表比对，T10 在此基础上做真实数据和定期备份。
 
 ## 发布顺序（T12 才执行）
 
 1. 建独立 Neon 开发/生产分支或项目；在非生产库验证**业务和 Better Auth 认证表**的版本化 SQL 迁移、首次登录与隔离恢复。准备受控的首次账户创建，生产关闭公开注册。
 2. 远程仓库是 GitHub `Jingyu-shanshan/job-seeking-app`。实际发布时由用户决定让 Railway 连接该仓库，或改用 [Railway CLI 发布](https://docs.railway.com/cli/deploying)；Railway 建**一个**服务，以项目根目录为构建上下文。T01 已提供 `npm ci`、`npm run build`、`npm start`，其中构建包含共享包、服务和 Angular，启动只运行 Fastify。构建需要 devDependencies（TypeScript、Angular CLI）：若构建阶段已带 `NODE_ENV=production`，`npm ci` 会跳过它们而导致构建失败，届时安装命令改为 `npm ci --include=dev`，在 T03a 演练时确认。[构建/启动设置](https://docs.railway.com/builds/build-and-start-commands)
-3. 在服务端配置上述变量。**每次生产迁移前确认 Neon 恢复点/备份可用**；T02/T03 提供包含业务与认证表的生产迁移脚本，以 Railway [Pre-Deploy Command](https://docs.railway.com/deployments/pre-deploy-command)独立运行，失败则停止发布。迁移工具必须存在于预部署镜像中。生产不运行 reset、`db push`、开发迁移或示例 seed。
-4. 服务提供 `/health`（进程）与 `/health/ready`（含有界数据库查询）；`pg.Pool` 处理 idle 连接错误及 Neon 休眠唤醒后的重连。Railway 发布健康检查使用 `/health/ready`，超时须容纳数据库唤醒；该检查只覆盖部署切流，日常可用性需另行监测。[Railway 健康检查](https://docs.railway.com/deployments/healthchecks)
+3. 在服务端配置上述变量。**每次生产迁移前确认 Neon 恢复点/备份可用**；业务表迁移已由 T02 提供，认证表由 T03 加入同一套迁移；Pre-Deploy Command 为 `npm run db:migrate`，以 Railway [Pre-Deploy Command](https://docs.railway.com/deployments/pre-deploy-command)独立运行，失败则停止发布（迁移在单个事务内执行，失败不留半套 schema）。迁移工具必须存在于预部署镜像中。生产不运行 reset、`db push`、开发迁移或示例 seed。
+4. 服务提供 `/health`（进程）与 `/health/ready`（5 秒内完成的数据库查询，失败返回 503）；`pg.Pool` 处理 idle 连接错误及 Neon 休眠唤醒后的重连。Railway 发布健康检查使用 `/health/ready`，超时须容纳数据库唤醒；该检查只覆盖部署切流，日常可用性需另行监测。[Railway 健康检查](https://docs.railway.com/deployments/healthchecks)
 5. 发布后检查 HTTPS、登录/退出、未授权访问、JD 导入、事实确认、PDF 归档与导出，以及本地执行器用令牌领取任务、吊销令牌后被拒；执行一次备份到隔离数据库的恢复。应用回滚到上个构建时保持数据库迁移向前兼容，不对生产做破坏性 down migration。
 
 Railway 已[弃用 `railway.toml`/`railway.json`](https://docs.railway.com/config-as-code)，新服务不能启用旧格式；本仓库不创建空配置。未来确需配置即代码时采用 [`.railway/railway.ts`](https://docs.railway.com/infrastructure-as-code) 并以当前文档核对。
