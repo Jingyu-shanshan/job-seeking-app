@@ -16,7 +16,7 @@ import { sourceRoutes } from './sources/routes.ts';
 export type AppOptions = Pick<Config, 'webRoot' | 'appUrl' | 'trustedOrigins'> &
   Partial<Pick<Config, 'databaseUrl' | 'authSecret' | 'deepseekApiKey'>> & {
     logger?: boolean;
-    /** What the server requests job sources and DeepSeek with; tests pass a fake. */
+    /** What discovery requests job sources with; tests pass a fake. */
     fetch?: typeof globalThis.fetch;
   };
 
@@ -117,7 +117,6 @@ export function buildApp({
 
   // Data routes. Without a database nobody can sign in, so the hook above refuses them anyway.
   if (pool) {
-    // 发现运行和读取职位原文共用一个限流器，对同一网站的请求合起来不超过目录项的限额。
     const limiter = new RateLimiter();
     app.register(sourceRoutes, { prefix: '/api', pool });
     app.register(discoveryRoutes, { prefix: '/api', pool, fetch, limiter });

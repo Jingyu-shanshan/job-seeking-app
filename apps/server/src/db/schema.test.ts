@@ -40,7 +40,6 @@ describe('schema', needsDatabase, () => {
     );
   }
 
-  // 插入快照时必填的来源列，顺序对应 $2 之后的参数。
   const snapshotColumns = 'job_id, body, catalog_id, title, source_url';
   const snapshotSource = ['paste', 'Billing engineer', 'https://example.com/jobs/1'];
 
@@ -163,7 +162,6 @@ describe('schema', needsDatabase, () => {
         ]),
         immutable,
       );
-      // 只有再次读到相同原文的时间可以改。
       await row('update job_snapshot set last_captured_at = now() where id = $1 returning id', [
         snapshot.id,
       ]);
@@ -273,7 +271,6 @@ describe('schema', needsDatabase, () => {
       const snapshot = await newSnapshot();
       const ok = await row(callInsert, [snapshot.id, 3000, 1000, 800, '0.001234', null]);
       assert.equal(ok.cost_usd, '0.001234');
-      // 供应商没有回答时没有用量；回答了但格式不对时有用量和失败原因。
       await row(callInsert, [snapshot.id, null, null, null, null, 'Could not reach DeepSeek.']);
       await row(callInsert, [snapshot.id, 10, 0, 5, '0', 'The answer was not JSON.']);
       for (const values of [

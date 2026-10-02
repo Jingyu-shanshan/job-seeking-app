@@ -4,10 +4,8 @@ import { Router, RouterLink } from '@angular/router';
 import { errorMessage } from '../sources/sources-api';
 import { JobsApi } from './jobs-api';
 
-// 与共享的 maxJobTextLength 相同；前端只导入共享包的类型，所以在这里写明。
 const maxTextLength = 100_000;
 
-/** 粘贴一个职位的链接和原文（T05），任何网站都可以。保存后打开该职位，在那里总结。 */
 @Component({
   selector: 'app-paste-job',
   imports: [FormField, FormRoot, RouterLink],

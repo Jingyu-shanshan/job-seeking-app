@@ -48,14 +48,12 @@ test('the rate limiter keeps concurrent callers within the limit', async () => {
   const sentAt: number[] = [];
   const limiter = new RateLimiter({
     now: () => clock,
-    // 像真实时间一样：同时开始的等待同时结束。
     sleep: async (ms: number) => {
       const until = clock + ms;
       await new Promise((resolve) => setTimeout(resolve));
       clock = Math.max(clock, until);
     },
   });
-  // 发现运行和读取职位原文可能同时请求同一网站。
   await Promise.all(
     [1, 2, 3].map(() =>
       limiter.wait('a', { requests: 1, perSeconds: 2 }).then(() => sentAt.push(clock)),

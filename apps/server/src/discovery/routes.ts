@@ -91,7 +91,6 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
       });
     }
 
-    // 粘贴的职位（T05）：没有来源，按当前快照描述，发现时间是第一次粘贴的时间。
     const pasted = await pool.query<{
       job_id: string;
       title: string;

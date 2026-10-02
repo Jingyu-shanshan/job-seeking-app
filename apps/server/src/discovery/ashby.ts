@@ -15,8 +15,6 @@ import { tidyText } from './html.ts';
 // checked 2026-10-01 and 2026-10-02): one request lists every job of a board. No key, no login.
 // Board names are not case-sensitive; an unknown board answers 404. The answer always includes
 // the job text, which is not kept here: it goes into a JD snapshot in T05. It names no company.
-// 读取单个职位的原文（T05）：这个接口没有单个职位的地址，所以读取整个板块再按 id 找到该职位，
-// 用 Ashby 自己给出的纯文本 `descriptionPlain`。
 
 const AddressSchema = maybe(
   Type.Object({
@@ -60,7 +58,6 @@ function place(location: string | null | undefined, country: string | null | und
   return text === '' ? name : `${text}, ${name}`;
 }
 
-/** 列表和单个职位共用的字段。 */
 function describe(name: string, job: Job) {
   // `workplaceType` is the newer field; `isRemote` is all that older jobs have.
   const remote = job.workplaceType ? job.workplaceType === 'Remote' : job.isRemote === true;
@@ -83,7 +80,6 @@ function describe(name: string, job: Job) {
   };
 }
 
-/** 读取一个板块的全部职位，未列出的除外：未列出的职位只给知道直接链接的人看。 */
 async function listedJobs(board: string, fetch: typeof globalThis.fetch): Promise<Job[]> {
   let body: unknown;
   try {
@@ -100,6 +96,7 @@ async function listedJobs(board: string, fetch: typeof globalThis.fetch): Promis
   if (!Value.Check(BoardSchema, body)) {
     throw new DiscoveryError('Ashby answered with something other than a list of jobs.');
   }
+  // An unlisted job is meant to be reached only through its direct link.
   return body.jobs.filter((job) => job.isListed !== false);
 }
 

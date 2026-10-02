@@ -22,7 +22,6 @@ test('asks for JSON without thinking, and returns the answer with its usage and 
   const result = await call(deepseek.fetch);
   assert.deepEqual(result, {
     answer: { ok: true },
-    // 1000 × 0.006 + 2000 × 0.3 + 500 × 1.2 = 1206 微美元
     usage: { inputTokens: 3000, cachedInputTokens: 1000, outputTokens: 500, costUsd: 0.001206 },
   });
   const [request] = deepseek.requests;
@@ -108,13 +107,11 @@ test('says plainly why a call failed, with the usage when DeepSeek did answer', 
     'The answer from DeepSeek is not JSON.',
     true,
   );
-  // 供应商的错误说明只进日志，不含密钥。
   assert.ok(JSON.stringify(warnings).includes('Made up'));
   assert.ok(!JSON.stringify(warnings).includes('sk-test'));
 });
 
 test('gives up on an answer that takes too long', async () => {
-  // 与真实的 fetch 一样，在超时信号触发时放弃请求。
   const never = ((_: unknown, init?: RequestInit) =>
     new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));

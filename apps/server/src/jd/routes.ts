@@ -23,10 +23,6 @@ import { sourcesToRequest } from '../rules/sources.ts';
 import { catalog, findCatalogEntry } from '../sources/catalog.ts';
 import { summariseSnapshot } from './summarise.ts';
 
-// JD 导入与总结（T05）。发现到的职位从来源读取原文，粘贴的职位由用户给出原文，两者都存成不可修改的
-// 快照；总结由用户逐个触发，每次最多一次模型请求。与所有 /api 路由一样，需要会话，写请求需要受信的
-// Origin（app.ts 的钩子）。
-
 export interface JdRoutesOptions {
   pool: Pool;
   fetch: typeof globalThis.fetch;
@@ -79,7 +75,6 @@ interface RequirementRow {
   created_at: Date;
 }
 
-/** 一个职位的全部 job_posting，及其来源；最早发现的在前。 */
 async function postingsOf(pool: Pool, jobId: string): Promise<PostingRow[]> {
   const { rows } = await pool.query<PostingRow>(
     `select p.title, p.company, p.location, p.url, p.closed_at, p.external_id,
@@ -92,10 +87,6 @@ async function postingsOf(pool: Pool, jobId: string): Promise<PostingRow[]> {
   return rows;
 }
 
-/**
- * 能读取该职位原文的来源：仍列出它的、`sourcesToRequest` 允许请求的、有适配器的来源，最早的在前。
- * 与发现运行一样，停用的来源、提醒邮件和粘贴的来源永远不会被请求。
- */
 function importSources(postings: PostingRow[]) {
   const open = postings
     .filter((p) => p.closed_at === null)
@@ -106,7 +97,6 @@ function importSources(postings: PostingRow[]) {
   });
 }
 
-/** 一个职位的详情：来源上的标题等信息、当前的快照及其总结和要求。没有这个职位时为 undefined。 */
 async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetail | undefined> {
   const postings = await postingsOf(pool, jobId);
   const snapshots = await pool.query<SnapshotRow>(
@@ -118,7 +108,6 @@ async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetail | und
     [jobId],
   );
   const current = snapshots.rows[0];
-  // 发现到的职位按最早发现、仍在使用的那条描述（与职位列表一致），粘贴的职位按当前快照描述。
   const first = postings.find((p) => p.closed_at === null && p.enabled) ?? postings[0];
   const head = first
     ? { title: first.title, company: first.company, location: first.location, url: first.url }
@@ -160,7 +149,6 @@ async function loadSnapshot(pool: Pool, row: SnapshotRow): Promise<Snapshot> {
   ]);
   const summary = summaries.rows[0];
 
-  // 按引用在原文中的位置排列，与原文的顺序一致；校验不过的排在最后。
   const find = quoteFinder(row.body);
   const position = (r: RequirementRow) => {
     const at = r.quote_verified ? find(r.quote) : -1;
@@ -200,9 +188,6 @@ async function loadSnapshot(pool: Pool, row: SnapshotRow): Promise<Snapshot> {
   };
 }
 
-/**
- * 保存一次读到的原文。同一职位已有相同原文的快照时不新增，只记下再次读到的时间，它因此成为当前快照。
- */
 async function saveSnapshot(pool: Pool, jobId: string, catalogId: string, job: JobText) {
   await pool.query(
     `insert into job_snapshot (job_id, body, catalog_id, title, company, location, source_url)
@@ -212,7 +197,6 @@ async function saveSnapshot(pool: Pool, jobId: string, catalogId: string, job: J
   );
 }
 
-/** 一个快照所属的职位；没有这个快照时 404。 */
 async function jobOfSnapshot(pool: Pool, snapshotId: string): Promise<string> {
   const { rows } = await pool.query<{ job_id: string }>(
     'select job_id from job_snapshot where id = $1',
@@ -223,14 +207,12 @@ async function jobOfSnapshot(pool: Pool, snapshotId: string): Promise<string> {
   return row.job_id;
 }
 
-/** 写操作之后返回职位的最新详情。 */
 async function detailAfterChange(pool: Pool, jobId: string): Promise<JobDetail> {
   const detail = await loadJobDetail(pool, jobId);
   if (!detail) throw new Error(`job ${jobId} has neither postings nor snapshots`);
   return detail;
 }
 
-/** 从来源读取一个职位的原文；来源的问题以 502 和用户能看懂的原因返回。 */
 async function readFromSource(
   postings: PostingRow[],
   {
@@ -264,7 +246,6 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
   app,
   { pool, fetch, limiter, deepseekApiKey },
 ) => {
-  // 正在总结的快照：同一快照同时只发一次模型请求，避免重复计费。
   const summarising = new Set<string>();
 
   app.get(
@@ -277,7 +258,6 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
     },
   );
 
-  // 粘贴一个职位：新建职位和它的第一个快照。
   app.post(
     '/jobs',
     { schema: { body: PasteJobRequestSchema, response: { 201: JobDetailSchema } } },
@@ -300,7 +280,6 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
     },
   );
 
-  // 从来源读取一个发现到的职位的当前原文。原文没变时不新增快照。
   app.post(
     '/jobs/:id/snapshots',
     { schema: { params: IdParamsSchema, response: { 200: JobDetailSchema } } },
@@ -319,7 +298,6 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
     },
   );
 
-  // 用 DeepSeek 总结一个快照：一次请求，结果不可修改，每个快照最多一份。
   app.post(
     '/snapshots/:id/summary',
     { schema: { params: IdParamsSchema, response: { 200: JobDetailSchema } } },
@@ -351,7 +329,6 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
     },
   );
 
-  // 用户添加一条要求；给出 `replaces` 时同时移除那一条，即更正。引用同样做子串校验。
   app.post(
     '/snapshots/:id/requirements',
     {
@@ -387,7 +364,6 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
     },
   );
 
-  // 移除一条要求。它不会被删除：以后引用它的匹配仍能读到当时的内容。
   app.delete(
     '/requirements/:id',
     { schema: { params: IdParamsSchema, response: { 200: JobDetailSchema } } },

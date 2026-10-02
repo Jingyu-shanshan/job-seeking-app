@@ -5,7 +5,6 @@ import { errorMessage } from '../sources/sources-api';
 import { JobsApi, usd } from './jobs-api';
 import { RequirementForm } from './requirement-form';
 
-// 字段名与顺序；类型保证与共享的 SummaryFields 一一对应。
 const fieldLabels: Record<SummaryFieldKey, string> = {
   location: 'Location',
   workplace: 'Remote, hybrid or on-site',
@@ -21,10 +20,6 @@ const kindLabels: Record<Requirement['kind'], string> = {
   nice: 'Nice to have',
 };
 
-/**
- * 一个快照的总结：职责、必须项、加分项和固定字段只列出引用能在原文里找到的条目；
- * 引用找不到的放在“待确认”，不算原文说过的内容。要求可以更正、移除或补充。
- */
 @Component({
   selector: 'app-job-summary',
   imports: [DatePipe, RequirementForm],
@@ -199,12 +194,9 @@ const kindLabels: Record<Requirement['kind'], string> = {
 export class JobSummaryView {
   private readonly api = inject(JobsApi);
 
-  /** 已经总结过的快照。 */
   readonly snapshot = input.required<Snapshot>();
-  /** 要求改变后的职位详情。 */
   readonly changed = output<JobDetail>();
 
-  /** 正在更正的要求，`new` 表示正在添加。 */
   protected readonly editing = signal<string | null>(null);
   protected readonly busy = signal(false);
   protected readonly failure = signal('');

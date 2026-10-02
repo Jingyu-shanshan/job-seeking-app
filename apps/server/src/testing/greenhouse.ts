@@ -7,7 +7,6 @@ export interface FakeJob {
   company_name?: string;
   absolute_url?: string;
   first_published?: string;
-  /** 单个职位接口返回的正文：经过一次 HTML 转义的 HTML，与 Greenhouse 一致。 */
   content?: string;
 }
 
@@ -32,7 +31,6 @@ export function greenhouseJob({ id, location = 'Helsinki, Finland', ...rest }: F
  * A fetch that answers board list requests from `boards` (by lowercase board name, as Greenhouse
  * does): jobs, an HTTP status, or a function for anything else. Unknown boards answer 404.
  * `requested` collects every URL asked for.
- * 单个职位的请求（/jobs/{id}）返回该职位及其 `content`（默认是一段转义过的 HTML），不存在时 404。
  */
 export function fakeGreenhouse(
   boards: Record<string, FakeJob[] | number | (() => Promise<Response>)>,

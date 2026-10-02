@@ -1,9 +1,5 @@
 import { Parser } from 'htmlparser2';
 
-// 把来源给的职位正文变成快照里的纯文本。模型看到的、引用片段校验时对照的都是这份文本。
-// 只产出文本，从不渲染来源的 HTML。
-
-// 前后各空一行的块：段落、标题、列表、表格等。
 const paragraphs = new Set([
   'address',
   'article',
@@ -29,15 +25,9 @@ const paragraphs = new Set([
   'table',
   'ul',
 ]);
-// 只换行的块。
 const lines = new Set(['br', 'caption', 'dd', 'div', 'dt', 'figcaption', 'li', 'summary', 'tr']);
-// 内容不是正文的元素。
 const skipped = new Set(['noscript', 'script', 'style', 'template']);
 
-/**
- * HTML 转纯文本：段落和标题之间空一行，列表项各占一行并以 "- " 开头，表格单元格以空格分隔，
- * 其余标签去掉；实体解码，连续空白合并为一个空格。
- */
 export function htmlToText(html: string): string {
   const out: string[] = [];
   let current = '';
@@ -69,7 +59,6 @@ export function htmlToText(html: string): string {
           current += text;
           return;
         }
-        // <pre> 里的换行保留为换行。
         const [first = '', ...rest] = text.split('\n');
         current += first;
         for (const part of rest) {
@@ -92,10 +81,6 @@ export function htmlToText(html: string): string {
   return tidyText(out.join('\n'));
 }
 
-/**
- * 纯文本整理：统一换行符和 Unicode 写法（NFC），去掉行尾空白，连续空行合并为一行，去掉首尾空行。
- * 来源本身给出纯文本时（如 Ashby）也用它，所以快照文本的格式一致。
- */
 export function tidyText(text: string): string {
   return text
     .normalize('NFC')

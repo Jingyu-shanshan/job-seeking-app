@@ -13,7 +13,6 @@ Kehittäjä – 开发者`;
 test('accepts a quote copied from the text, whatever its whitespace', () => {
   const find = quoteFinder(text);
   assert.ok(find('5+ years of Python') >= 0);
-  // 跨行的引用：模型常把换行写成空格。
   assert.ok(find('What you bring - 5+ years of Python') >= 0);
   assert.ok(find('  Fluent English;\n Finnish is a plus ') >= 0);
   assert.ok(find('Kehittäjä – 开发者') >= 0);

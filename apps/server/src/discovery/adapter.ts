@@ -18,23 +18,17 @@ export interface Posting {
   publishedAt: string | null;
 }
 
-/** 一个职位此刻在来源上的原文，以及来源给出的标题等信息（T05）。 */
 export interface JobText {
   title: string;
   company: string | null;
-  /** 与 `Posting.location` 的写法相同。 */
   location: string;
-  /** 总是 https。 */
   url: string;
-  /** 纯文本（见 html.ts），不为空，最多 `maxJobTextLength` 个字符。 */
   text: string;
 }
 
-/** Reads one kind of source, given the source's parameter (e.g. a board name). */
+/** Reads every open job of one source, given the source's parameter (e.g. a board name). */
 export interface Adapter {
-  /** Reads every open job of the source. */
   listJobs(param: string, fetch: typeof globalThis.fetch): Promise<Posting[]>;
-  /** 读取来源上一个职位的原文；`externalId` 是 `Posting.externalId`。 */
   readJob(param: string, externalId: string, fetch: typeof globalThis.fetch): Promise<JobText>;
 }
 
@@ -116,7 +110,6 @@ export function httpsUrl(value: string | null | undefined): string | null {
   return url.protocol === 'https:' ? url.href : null;
 }
 
-/** 检查来源给的职位原文：不能为空，也不能超过快照的上限。`site` 是写进提示里的网站名。 */
 export function checkJobText(text: string, site: string): string {
   if (text === '') throw new DiscoveryError(`${site} gives no text for this job.`);
   if (text.length > maxJobTextLength) {

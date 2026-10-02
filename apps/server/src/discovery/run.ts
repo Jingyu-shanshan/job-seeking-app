@@ -22,7 +22,6 @@ type RateLimit = NonNullable<CatalogEntry['rateLimit']>;
 /**
  * Spaces requests per site so that none goes over the catalog entry's limit. One instance lives
  * as long as the server, so back-to-back runs share it.
- * 发现运行和读取职位原文（T05）共用同一个实例；同一网站的请求按调用顺序排队，所以并发调用也不会超限。
  */
 export class RateLimiter {
   readonly #sent = new Map<string, number[]>();

@@ -4,7 +4,6 @@ import type { JobDetail, Requirement, RequirementKind } from '@jsa/shared';
 import { errorMessage } from '../sources/sources-api';
 import { JobsApi } from './jobs-api';
 
-/** 添加一条要求，或更正 `replaces` 那一条（服务端同时移除旧的）。引用同样要能在原文里找到。 */
 @Component({
   selector: 'app-requirement-form',
   imports: [FormField, FormRoot],
@@ -70,7 +69,6 @@ export class RequirementForm {
   private readonly api = inject(JobsApi);
 
   readonly snapshotId = input.required<string>();
-  /** 更正时是被更正的那一条；添加时不给。 */
   readonly replaces = input<Requirement>();
   readonly saved = output<JobDetail>();
   readonly cancelled = output();

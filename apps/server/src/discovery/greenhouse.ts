@@ -15,9 +15,7 @@ import { htmlToText } from './html.ts';
 // Greenhouse's public Job Board API (https://docs.greenhouse.io/job-board.html, checked
 // 2026-10-01): one request lists every published job of a board. No key, no login. Board names
 // are not case-sensitive. Only the fields the app uses are checked; others are ignored. The job
-// text (`?content=true`) is not requested by the list: it goes into a JD snapshot in T05.
-// 读取单个职位的原文（T05）用同一接口的 GET /v1/boards/{board}/jobs/{id}：`content` 是经过一次
-// HTML 转义的 HTML，所以先解码实体再转成纯文本。
+// text (`?content=true`) is not requested here: it goes into a JD snapshot in T05.
 
 const JobSchema = Type.Object({
   id: Type.Integer({ minimum: 1 }),
@@ -34,7 +32,6 @@ const BoardSchema = Type.Object({
 
 const JobWithContentSchema = Type.Intersect([JobSchema, Type.Object({ content: Type.String() })]);
 
-/** 列表和单个职位共用的字段。 */
 function describe(name: string, job: Static<typeof JobSchema>) {
   return {
     title: job.title.trim(),
@@ -45,7 +42,6 @@ function describe(name: string, job: Static<typeof JobSchema>) {
   };
 }
 
-/** GET 一个 Greenhouse 地址；404 时用 `notFound` 作为提示。 */
 async function get(url: string, fetch: typeof globalThis.fetch, notFound: string) {
   try {
     return await fetchJson(fetch, url);

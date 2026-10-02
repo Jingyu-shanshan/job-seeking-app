@@ -3,10 +3,7 @@ import { Component, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { Job } from '@jsa/shared';
 
-/**
- * Jobs as links to their pages in the app and at the source, with where, when, and why they are
- * grouped where they are.
- */
+/** Jobs as links to their pages, with where, when, and why they are grouped where they are. */
 @Component({
   selector: 'app-job-list',
   imports: [DatePipe, RouterLink],

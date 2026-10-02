@@ -140,7 +140,6 @@ test('reads one listed job’s text from the board', async () => {
     text: 'About us\n\nYou   know SQL.',
   });
   assert.deepEqual(requested, ['https://api.ashbyhq.com/posting-api/job-board/Acme']);
-  // 未列出的职位只给知道直接链接的人看，应用也不读取它。
   await assert.rejects(ashbyBoard.readJob('acme', 'a3', fetch), {
     message: 'The Ashby board acme no longer lists this job.',
   });

@@ -84,7 +84,6 @@ const usage: ModelUsage = {
   outputTokens: 1500,
 };
 
-/** 让完成的请求的后续处理跑完，再让 Angular 渲染；不等待仍未完成的请求。 */
 async function settle() {
   await new Promise((resolve) => setTimeout(resolve));
   TestBed.tick();
@@ -103,7 +102,6 @@ describe('JobDetailPage', () => {
   const listUnder = (heading: string) => {
     const h3 = [...page().querySelectorAll('h3')].find((h) => text(h) === heading);
     let el = h3?.nextElementSibling;
-    // 只看这个标题下、下一个标题之前的列表。
     while (el && el.tagName !== 'UL' && el.tagName !== 'H3') el = el.nextElementSibling;
     if (el?.tagName !== 'UL') return [];
     return [...el.querySelectorAll(':scope > li')].map((li) => text(li));

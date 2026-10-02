@@ -127,7 +127,6 @@ describe('Jobs', () => {
       'Sales Lead acme · Berlin, Germany · Job page Found 1 Oct 2026 Not in Helsinki or Espoo.',
     ]);
 
-    // 标题打开应用里的职位页，“Job page” 在新窗口打开来源上的页面。
     const [title, external] = section('In scope')!.querySelectorAll('a');
     expect(title!.getAttribute('href')).toBe(`/jobs/${jobs[0]!.id}`);
     expect(external!.getAttribute('href')).toBe('https://job-boards.example.com/acme/jobs/1');

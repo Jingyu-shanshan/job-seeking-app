@@ -30,7 +30,6 @@ This role is based in our Helsinki office.`;
 
 const nullFields = Object.fromEntries(summaryFieldKeys.map((key) => [key, null]));
 
-/** 一份编造的模型回答：一条引用正确的职责、三条要求（其中一条引用不在原文里）和一个字段。 */
 const goodAnswer = {
   responsibilities: [
     { text: 'Keep invoices correct', quote: 'You will keep our invoices correct.' },
@@ -53,7 +52,6 @@ describe('JD import and summary', needsDatabase, () => {
   let cookie: string;
   const boards: Parameters<typeof fakeGreenhouse>[0] = {};
   const greenhouse = fakeGreenhouse(boards);
-  // 测试之间改变假 DeepSeek 的回答。
   let answer: () => Promise<Response> = async () => chatCompletion(JSON.stringify(goodAnswer));
   const deepseek = fakeDeepSeek(() => answer(), greenhouse.fetch);
 
@@ -179,7 +177,6 @@ describe('JD import and summary', needsDatabase, () => {
       ['Billing Engineer', [], null, 'in_scope'],
     );
 
-    // 粘贴的职位没有来源可读。
     const res = await call({ method: 'POST', url: `/api/jobs/${job.id}/snapshots` });
     assert.equal(res.statusCode, 409);
   });
@@ -239,7 +236,6 @@ describe('JD import and summary', needsDatabase, () => {
     assert.notEqual(changed.snapshot?.id, first.snapshot?.id);
     assert.equal(changed.earlierSnapshots, 1);
 
-    // 原文改回以前的版本时不新增快照，以前的快照重新成为当前快照。
     job.content = '&lt;p&gt;You know SQL.&lt;/p&gt;';
     const reverted = (await importText()).json<JobDetail>();
     assert.deepEqual([reverted.snapshot?.id, reverted.earlierSnapshots], [first.snapshot?.id, 1]);
@@ -250,7 +246,6 @@ describe('JD import and summary', needsDatabase, () => {
     assert.equal(failed.json().message, 'boards-api.greenhouse.io answered HTTP 503.');
     boards['acme'] = [job];
 
-    // 停用的来源不会被请求。
     await call({ method: 'PATCH', url: `/api/sources/${source.id}`, payload: { enabled: false } });
     const requests = greenhouse.requested.length;
     const disabled = await importText();
@@ -282,7 +277,6 @@ describe('JD import and summary', needsDatabase, () => {
     assert.equal(res.statusCode, 200, res.body);
     const snapshot = res.json<JobDetail>().snapshot!;
 
-    // 请求里只有职位原文。
     const sent = deepseek.requests.at(-1)!;
     assert.equal(sent.body.messages[1]?.content, `<jd>\n${pastedText}\n</jd>`);
     assert.match(sent.body.messages[0]!.content, /JSON/);
@@ -310,7 +304,6 @@ describe('JD import and summary', needsDatabase, () => {
         },
       },
     );
-    // 按原文中的位置排列，引用校验不过的在最后。
     assert.deepEqual(
       snapshot.requirements.map((r) => [r.text, r.kind, r.quoteVerified, r.origin]),
       [
@@ -356,7 +349,6 @@ describe('JD import and summary', needsDatabase, () => {
 
     const after = await usage();
     assert.deepEqual([after.calls, after.failed], [before.calls + 2, before.failed + 2]);
-    // 回答了但形状不对的调用已经计费，所以计入费用。
     assert.equal(after.costUsd, Number((before.costUsd + 0.001206).toFixed(6)));
     assert.equal((await detail(job.id)).snapshot?.summary, null);
     const { rows } = await pool.query(
@@ -404,7 +396,6 @@ describe('JD import and summary', needsDatabase, () => {
       ],
     );
 
-    // 已经被更正的要求不能再被更正。
     const twice = await add({ text: 'K8s', quote: '', kind: 'nice', replaces: kubernetes.id });
     assert.equal(twice.statusCode, 404);
 
@@ -417,7 +408,6 @@ describe('JD import and summary', needsDatabase, () => {
     const again = await call({ method: 'DELETE', url: `/api/requirements/${finnish.id}` });
     assert.equal(again.statusCode, 404);
 
-    // 移除和更正都不删除行。
     const { rows } = await pool.query(
       `select body from job_requirement
        where job_snapshot_id = $1 and removed_at is not null order by body`,

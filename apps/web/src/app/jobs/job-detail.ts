@@ -9,10 +9,6 @@ import { JobsApi, usd } from './jobs-api';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-/**
- * 一个职位（T05）：读取或查看原文，用 DeepSeek 总结，查看和更正总结里的要求。
- * 每次总结是用户点击触发的一次模型请求，请求里只有职位原文。
- */
 @Component({
   selector: 'app-job-detail',
   imports: [DatePipe, JobSummaryView, RouterLink],
@@ -104,7 +100,6 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 export class JobDetailPage {
   private readonly api = inject(JobsApi);
 
-  /** 路由参数里的职位 ID。 */
   readonly id = input.required<string>();
 
   protected readonly data = httpResource<JobDetail>(() => `/api/jobs/${this.id()}`);
@@ -145,7 +140,6 @@ export class JobDetailPage {
     await this.run('Summarising with DeepSeek. This can take a minute.', () =>
       this.api.summarise(snapshot.id),
     );
-    // 成功或失败都记了一次调用。
     this.usage.reload();
   }
 

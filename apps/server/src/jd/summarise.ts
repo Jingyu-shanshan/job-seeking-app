@@ -5,10 +5,6 @@ import { httpError } from '../http-error.ts';
 import { ModelError, chatJson, deepseek, type CallUsage } from '../model/deepseek.ts';
 import { checkSummaryAnswer, summaryFieldKeys } from '../rules/job-summary.ts';
 
-// 用 DeepSeek 总结一个快照（T05）：一次请求抽取职责、要求和固定字段，每一条都要引用原文。
-// 请求里只有职位原文，没有任何个人事实。每次调用，无论成败，都记进 model_call；
-// 回答经过形状检查和逐条的子串校验后，与总结和要求在同一条语句里保存。
-
 const fieldDescriptions: Record<SummaryFieldKey, string> = {
   location: 'where the job is based',
   workplace: 'remote, hybrid or on-site work, and how often on site',
@@ -55,7 +51,6 @@ Rules:
 ${summaryFieldKeys.map((key) => `   - "${key}": ${fieldDescriptions[key]}`).join('\n')}
 5. "text" and "value" are short, in English, and say only what their quote says. Add nothing that is not in the JD.`;
 
-/** 回答的 token 上限：足够容纳几十条要求，又能防止回答失控。 */
 const maxAnswerTokens = 8000;
 
 export interface SummariseOptions {
@@ -66,9 +61,6 @@ export interface SummariseOptions {
   snapshotId: string;
 }
 
-/**
- * 总结一个快照并保存总结和要求。已有总结时返回 409；模型调用失败或回答不能用时记录失败并返回 502。
- */
 export async function summariseSnapshot({
   pool,
   fetch,
@@ -151,7 +143,6 @@ export async function summariseSnapshot({
   );
 }
 
-/** 记录一次失败的调用；供应商已回答时连同用量和费用。 */
 async function recordFailedCall(
   pool: Pool,
   {
