@@ -131,7 +131,9 @@ describe('JobDetailPage', () => {
     expect(text(page().querySelector('h1'))).toBe('Backend Engineer');
     expect(text()).toContain('Listed by acme.');
     expect(text(section('Job text')!)).toContain('The job text has not been read yet.');
-    expect(section('Summary')).toBeUndefined();
+    expect(text(section('Summary')!)).toContain(
+      'The app reads the job text from the job board first.',
+    );
 
     button('Read the job text')!.click();
     const request = http.expectOne(`/api/jobs/${jobId}/snapshots`);
@@ -269,5 +271,24 @@ describe('JobDetailPage', () => {
     expect(text()).toContain('You pasted this job.');
     expect(text(section('Job text')!)).toContain('Pasted 2 Oct 2026.');
     expect(button('Check for a newer version')).toBeUndefined();
+  });
+
+  it('reads the text first when summarising a job whose text was not read yet', async () => {
+    await load(detail());
+    button('Summarise with DeepSeek')!.click();
+    http.expectOne(`/api/jobs/${jobId}/snapshots`).flush(detail({ snapshot: snapshot() }));
+    await settle();
+    const request = http.expectOne(`/api/snapshots/${snapshotId}/summary`);
+    expect(request.request.method).toBe('POST');
+    request.flush(summarised([requirement({})]));
+    await settle();
+    http.expectOne('/api/model-usage').flush(usage);
+    await settle();
+    expect(listUnder('Must have')).toEqual(['Python “5+ years of Python” Correct Remove']);
+  });
+
+  it('shows no summary when the text cannot be read from anywhere', async () => {
+    await load(detail({ sources: [], canImport: false }));
+    expect(section('Summary')).toBeUndefined();
   });
 });
