@@ -4,7 +4,7 @@ import { fakeGreenhouse } from '../testing/greenhouse.ts';
 import { greenhouseBoard } from './greenhouse.ts';
 
 const failsWith = (fetch: typeof globalThis.fetch, message: string, board = 'acme') =>
-  assert.rejects(greenhouseBoard(board, fetch), { name: 'Error', message });
+  assert.rejects(greenhouseBoard.listJobs(board, fetch), { name: 'Error', message });
 
 test('lists a board’s jobs with the fields the app keeps', async () => {
   const { fetch, requested } = fakeGreenhouse({
@@ -13,7 +13,7 @@ test('lists a board’s jobs with the fields the app keeps', async () => {
       { id: 12, title: 'Designer', location: '', company_name: '' },
     ],
   });
-  assert.deepEqual(await greenhouseBoard('Acme', fetch), [
+  assert.deepEqual(await greenhouseBoard.listJobs('Acme', fetch), [
     {
       externalId: '11',
       title: 'Backend Engineer',
@@ -43,7 +43,7 @@ test('keeps a company’s own https careers page, and links the board page inste
       { id: 3, absolute_url: 'http://careers.example.com/jobs/3' },
     ],
   });
-  const urls = (await greenhouseBoard('acme', fetch)).map((p) => p.url);
+  const urls = (await greenhouseBoard.listJobs('acme', fetch)).map((p) => p.url);
   assert.deepEqual(urls, [
     'https://careers.example.com/jobs/?gh_jid=1',
     'https://job-boards.greenhouse.io/acme/jobs/2',
@@ -56,7 +56,7 @@ test('accepts the missing fields Greenhouse may leave out', async () => {
     Response.json({
       jobs: [{ id: 5, title: 'Engineer', location: null, absolute_url: null }],
     })) as typeof globalThis.fetch;
-  const [posting] = await greenhouseBoard('acme', fetch);
+  const [posting] = await greenhouseBoard.listJobs('acme', fetch);
   assert.deepEqual(posting, {
     externalId: '5',
     title: 'Engineer',
@@ -98,7 +98,7 @@ test('says plainly why a board could not be read', async () => {
 test('cuts a location too long to save, without losing the job', async () => {
   const location = Array.from({ length: 400 }, (_, i) => `Town ${i}, Germany`).join('; ');
   const { fetch } = fakeGreenhouse({ acme: [{ id: 1, location }] });
-  const [posting] = await greenhouseBoard('acme', fetch);
+  const [posting] = await greenhouseBoard.listJobs('acme', fetch);
   assert.ok(posting!.location.length <= 5000);
   assert.ok(posting!.location.endsWith(', Germany; …'), posting!.location.slice(-20));
 });
@@ -117,4 +117,47 @@ test('stops reading an answer larger than 20 MB', async () => {
     'The answer from boards-api.greenhouse.io is larger than 20 MB.',
   );
   assert.ok(sent < 25, `read ${sent} MB`);
+});
+
+test('reads one job’s text from its HTML-escaped content', async () => {
+  const { fetch, requested } = fakeGreenhouse({
+    acme: [
+      {
+        id: 7,
+        title: ' Backend Engineer ',
+        location: 'Helsinki, Finland',
+        content:
+          '&lt;h2&gt;About&lt;/h2&gt;&lt;p&gt;Payments &amp;amp; more.&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Python&lt;/li&gt;&lt;/ul&gt;',
+      },
+    ],
+  });
+  assert.deepEqual(await greenhouseBoard.readJob('Acme', '7', fetch), {
+    title: 'Backend Engineer',
+    company: 'Acme',
+    location: 'Helsinki, Finland',
+    url: 'https://job-boards.greenhouse.io/acme/jobs/7',
+    text: 'About\n\nPayments & more.\n\n- Python',
+  });
+  assert.deepEqual(requested, ['https://boards-api.greenhouse.io/v1/boards/Acme/jobs/7']);
+});
+
+test('says plainly why a job’s text could not be read', async () => {
+  const readFails = (fetch: typeof globalThis.fetch, message: string) =>
+    assert.rejects(greenhouseBoard.readJob('acme', '7', fetch), { name: 'Error', message });
+  await readFails(
+    fakeGreenhouse({ acme: [] }).fetch,
+    'The Greenhouse board acme no longer lists this job.',
+  );
+  await readFails(
+    fakeGreenhouse({ acme: [{ id: 7, content: '&lt;p&gt; &lt;/p&gt;' }] }).fetch,
+    'Greenhouse gives no text for this job.',
+  );
+  await readFails(
+    fakeGreenhouse({ acme: [{ id: 7, content: 'x'.repeat(100_001) }] }).fetch,
+    'The job text from Greenhouse is longer than 100,000 characters.',
+  );
+  await readFails(
+    (async () => Response.json({ id: 7, title: 'Engineer' })) as typeof globalThis.fetch,
+    'Greenhouse answered with something other than a job.',
+  );
 });

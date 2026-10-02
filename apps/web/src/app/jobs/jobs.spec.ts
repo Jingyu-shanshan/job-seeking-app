@@ -114,23 +114,34 @@ describe('Jobs', () => {
 
     expect(text()).toContain('Scope: Helsinki and Espoo, remote jobs not included.');
     expect(items('In scope (1)')).toEqual([
-      'Backend Engineer Acme · Helsinki, Finland Posted 20 Sep 2026 · Found 1 Oct 2026',
+      'Backend Engineer Acme · Helsinki, Finland · Job page Posted 20 Sep 2026 · Found 1 Oct 2026',
     ]);
     expect(items('To confirm (1)')).toEqual([
-      'Designer Acme · No location given Posted 20 Sep 2026 · Found 1 Oct 2026 · Listed by 2 of your sources No location given.',
+      'Designer Acme · No location given · Job page Posted 20 Sep 2026 · Found 1 Oct 2026 · Listed by 2 of your sources No location given.',
     ]);
     // Out of scope is collapsed, and names the board when the source gives no company.
     const out = section('Out of scope (1)')!;
     expect(out.tagName).toBe('DETAILS');
     expect(out.hasAttribute('open')).toBe(false);
     expect(items('Out of scope (1)')).toEqual([
-      'Sales Lead acme · Berlin, Germany Found 1 Oct 2026 Not in Helsinki or Espoo.',
+      'Sales Lead acme · Berlin, Germany · Job page Found 1 Oct 2026 Not in Helsinki or Espoo.',
     ]);
 
-    const link = section('In scope')!.querySelector('a')!;
-    expect(link.getAttribute('href')).toBe('https://job-boards.example.com/acme/jobs/1');
-    expect(link.getAttribute('target')).toBe('_blank');
-    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    // 标题打开应用里的职位页，“Job page” 在新窗口打开来源上的页面。
+    const [title, external] = section('In scope')!.querySelectorAll('a');
+    expect(title!.getAttribute('href')).toBe(`/jobs/${jobs[0]!.id}`);
+    expect(external!.getAttribute('href')).toBe('https://job-boards.example.com/acme/jobs/1');
+    expect(external!.getAttribute('target')).toBe('_blank');
+    expect(external!.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('marks a pasted job, which has no source', async () => {
+    await load([job({ title: 'Pasted Engineer', company: null, sources: [], publishedAt: null })]);
+
+    expect(items('In scope (1)')).toEqual([
+      'Pasted Engineer Company not given · Helsinki, Finland · Job page Pasted 1 Oct 2026',
+    ]);
+    expect(page().querySelector('a[href="/jobs/paste"]')).not.toBeNull();
   });
 
   it('shows only the in-scope group while there are no jobs', async () => {

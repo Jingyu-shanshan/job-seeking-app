@@ -13,7 +13,19 @@ export const LocationVerdictSchema = Type.Union([
 
 export type LocationVerdict = Static<typeof LocationVerdictSchema>;
 
-/** An open job that discovery found. A job listed by several sources appears once. */
+/** One of the user's sources that lists a job, e.g. one Greenhouse board. */
+export const JobSourceSchema = Type.Object({
+  id: Type.String({ format: 'uuid' }),
+  catalogId: Type.String(),
+  param: Type.String(),
+});
+
+export type JobSource = Static<typeof JobSourceSchema>;
+
+/**
+ * An open job that discovery found, or a job the user pasted. A job listed by several sources
+ * appears once.
+ */
 export const JobSchema = Type.Object({
   id: Type.String({ format: 'uuid' }),
   title: Type.String(),
@@ -25,16 +37,10 @@ export const JobSchema = Type.Object({
   url: Type.String(),
   /** When the source first published the job; null when it does not say. */
   publishedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
-  /** When a discovery run first found the job. */
+  /** When a discovery run first found the job, or when the user pasted it. */
   firstSeenAt: Type.String({ format: 'date-time' }),
-  /** The user's sources that list the job, e.g. one Greenhouse board. */
-  sources: Type.Array(
-    Type.Object({
-      id: Type.String({ format: 'uuid' }),
-      catalogId: Type.String(),
-      param: Type.String(),
-    }),
-  ),
+  /** The user's sources that list the job; empty for a pasted job. */
+  sources: Type.Array(JobSourceSchema),
   verdict: LocationVerdictSchema,
   /** Why the job is out of scope or to be confirmed; '' when it is in scope. */
   reason: Type.String(),

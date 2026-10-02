@@ -4,7 +4,7 @@ import type { Pool } from 'pg';
 import { httpError } from '../http-error.ts';
 import { classifyLocation } from '../rules/location.ts';
 import { findCatalogEntry } from '../sources/catalog.ts';
-import { RateLimiter, runDiscovery } from './run.ts';
+import { type RateLimiter, runDiscovery } from './run.ts';
 
 // Discovery (T13): a run reads the user's sources, and the job list shows what they list now.
 // Like every /api route, these need a session and, for writes, a trusted Origin (app.ts).
@@ -12,6 +12,7 @@ import { RateLimiter, runDiscovery } from './run.ts';
 export interface DiscoveryRoutesOptions {
   pool: Pool;
   fetch: typeof globalThis.fetch;
+  limiter: RateLimiter;
 }
 
 interface PostingRow {
@@ -29,9 +30,8 @@ interface PostingRow {
 
 export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> = async (
   app,
-  { pool, fetch },
+  { pool, fetch, limiter },
 ) => {
-  const limiter = new RateLimiter();
   // One run at a time: the app has one user and runs in one process.
   let running = false;
 
@@ -87,6 +87,34 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
         publishedAt: row.published_at?.toISOString() ?? null,
         firstSeenAt: row.first_seen_at.toISOString(),
         sources: [source],
+        ...classifyLocation(row.location, scope),
+      });
+    }
+
+    // 粘贴的职位（T05）：没有来源，按当前快照描述，发现时间是第一次粘贴的时间。
+    const pasted = await pool.query<{
+      job_id: string;
+      title: string;
+      company: string | null;
+      location: string;
+      source_url: string;
+      first_seen_at: Date;
+    }>(
+      `select distinct on (job_id) job_id, title, company, location, source_url,
+         min(captured_at) over (partition by job_id) as first_seen_at
+       from job_snapshot where catalog_id = 'paste'
+       order by job_id, last_captured_at desc, captured_at desc`,
+    );
+    for (const row of pasted.rows) {
+      jobs.set(row.job_id, {
+        id: row.job_id,
+        title: row.title,
+        company: row.company,
+        location: row.location,
+        url: row.source_url,
+        publishedAt: null,
+        firstSeenAt: row.first_seen_at.toISOString(),
+        sources: [],
         ...classifyLocation(row.location, scope),
       });
     }

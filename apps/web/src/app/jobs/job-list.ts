@@ -1,24 +1,30 @@
 import { DatePipe } from '@angular/common';
 import { Component, input } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import type { Job } from '@jsa/shared';
 
-/** Jobs as links to their pages, with where, when, and why they are grouped where they are. */
+/**
+ * Jobs as links to their pages in the app and at the source, with where, when, and why they are
+ * grouped where they are.
+ */
 @Component({
   selector: 'app-job-list',
-  imports: [DatePipe],
+  imports: [DatePipe, RouterLink],
   template: `
     <ul>
       @for (job of jobs(); track job.id) {
         <li>
-          <a [href]="job.url" target="_blank" rel="noopener noreferrer">{{ job.title }}</a>
+          <a class="title" [routerLink]="['/jobs', job.id]">{{ job.title }}</a>
           <span class="meta">
-            {{ job.company ?? job.sources[0]?.param }} · {{ job.location || 'No location given' }}
+            {{ job.company ?? job.sources[0]?.param ?? 'Company not given' }} ·
+            {{ job.location || 'No location given' }} ·
+            <a [href]="job.url" target="_blank" rel="noopener noreferrer">Job page</a>
           </span>
           <span class="meta">
             @if (job.publishedAt) {
               Posted {{ job.publishedAt | date: dateFormat }} ·
             }
-            Found {{ job.firstSeenAt | date: dateFormat }}
+            {{ job.sources.length ? 'Found' : 'Pasted' }} {{ job.firstSeenAt | date: dateFormat }}
             @if (job.sources.length > 1) {
               · Listed by {{ job.sources.length }} of your sources
             }
@@ -38,7 +44,7 @@ import type { Job } from '@jsa/shared';
     li {
       margin-bottom: 0.75rem;
     }
-    a {
+    .title {
       font-weight: 600;
     }
     .meta,

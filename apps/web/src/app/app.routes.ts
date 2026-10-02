@@ -18,6 +18,17 @@ export const routes: Routes = [
         title: 'Jobs',
       },
       {
+        path: 'jobs/paste',
+        loadComponent: () => import('./jobs/paste-job').then((m) => m.PasteJob),
+        title: 'Paste a job',
+      },
+      {
+        // 路由参数 id 通过 withComponentInputBinding 传给组件的 id 输入。
+        path: 'jobs/:id',
+        loadComponent: () => import('./jobs/job-detail').then((m) => m.JobDetailPage),
+        title: 'Job',
+      },
+      {
         path: 'sources',
         loadComponent: () => import('./sources/sources').then((m) => m.Sources),
         title: 'Sources and search scope',

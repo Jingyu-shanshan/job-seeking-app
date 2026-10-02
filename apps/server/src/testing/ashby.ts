@@ -11,6 +11,7 @@ export interface FakeAshbyJob {
   workplaceType?: string | null;
   jobUrl?: string;
   publishedAt?: string;
+  descriptionPlain?: string;
 }
 
 const address = (country: string | null | undefined) => ({

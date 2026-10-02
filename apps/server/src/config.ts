@@ -13,6 +13,8 @@ export interface Config {
   appUrl: string;
   /** Origins allowed to send write requests to `/api`. */
   trustedOrigins: string[];
+  /** DeepSeek 的 API 密钥；没有时不能总结职位，其余功能不受影响。 */
+  deepseekApiKey: string | undefined;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -45,6 +47,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
             'http://localhost:4200',
           ]),
         ],
+    deepseekApiKey: env.DEEPSEEK_API_KEY || undefined,
   };
 }
 

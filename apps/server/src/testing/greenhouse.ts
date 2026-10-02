@@ -7,6 +7,8 @@ export interface FakeJob {
   company_name?: string;
   absolute_url?: string;
   first_published?: string;
+  /** 单个职位接口返回的正文：经过一次 HTML 转义的 HTML，与 Greenhouse 一致。 */
+  content?: string;
 }
 
 /** A job as Greenhouse lists it, with made-up defaults for the fields not given. */
@@ -30,6 +32,7 @@ export function greenhouseJob({ id, location = 'Helsinki, Finland', ...rest }: F
  * A fetch that answers board list requests from `boards` (by lowercase board name, as Greenhouse
  * does): jobs, an HTTP status, or a function for anything else. Unknown boards answer 404.
  * `requested` collects every URL asked for.
+ * 单个职位的请求（/jobs/{id}）返回该职位及其 `content`（默认是一段转义过的 HTML），不存在时 404。
  */
 export function fakeGreenhouse(
   boards: Record<string, FakeJob[] | number | (() => Promise<Response>)>,
@@ -38,13 +41,19 @@ export function fakeGreenhouse(
   const fetch = async (input: string | URL | Request): Promise<Response> => {
     const url = String(input instanceof Request ? input.url : input);
     requested.push(url);
-    const board = /^https:\/\/boards-api\.greenhouse\.io\/v1\/boards\/([^/]+)\/jobs$/.exec(
-      url,
-    )?.[1];
+    const [, board, jobId] =
+      /^https:\/\/boards-api\.greenhouse\.io\/v1\/boards\/([^/]+)\/jobs(?:\/(\d+))?$/.exec(url) ??
+      [];
     const answer = board === undefined ? 404 : (boards[board.toLowerCase()] ?? 404);
     if (typeof answer === 'function') return answer();
-    if (typeof answer === 'number') {
-      return Response.json({ status: answer, error: 'Job not found' }, { status: answer });
+    const notFound = (status: number) =>
+      Response.json({ status, error: 'Job not found' }, { status });
+    if (typeof answer === 'number') return notFound(answer);
+    if (jobId !== undefined) {
+      const job = answer.find((j) => String(j.id) === jobId);
+      if (!job) return notFound(404);
+      const content = job.content ?? '&lt;p&gt;Made up job text.&lt;/p&gt;';
+      return Response.json({ ...greenhouseJob(job), content, departments: [], offices: [] });
     }
     const jobs = answer.map(greenhouseJob);
     return Response.json({ jobs, meta: { total: jobs.length } });

@@ -1,0 +1,275 @@
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import type { JobDetail, ModelUsage, Requirement, Snapshot, SummaryFields } from '@jsa/shared';
+import { JobDetailPage } from './job-detail';
+
+const jobId = '00000000-0000-4000-8000-000000000001';
+const snapshotId = '00000000-0000-4000-8000-000000000002';
+
+const nullFields: SummaryFields = {
+  location: null,
+  workplace: null,
+  employmentType: null,
+  languages: null,
+  seniority: null,
+  salary: null,
+  visaSponsorship: null,
+};
+
+const requirement = (fields: Partial<Requirement>): Requirement => ({
+  id: '00000000-0000-4000-8000-000000000010',
+  text: 'Python',
+  quote: '5+ years of Python',
+  quoteVerified: true,
+  kind: 'must',
+  origin: 'model',
+  ...fields,
+});
+
+const snapshot = (fields: Partial<Snapshot> = {}): Snapshot => ({
+  id: snapshotId,
+  capturedAt: '2026-10-02T08:00:00.000Z',
+  catalogId: 'greenhouse_board',
+  title: 'Backend Engineer',
+  company: 'Acme',
+  location: 'Helsinki, Finland',
+  url: 'https://job-boards.example.com/acme/jobs/1',
+  text: 'You will build APIs.\n- 5+ years of Python',
+  summary: null,
+  requirements: [],
+  ...fields,
+});
+
+const detail = (fields: Partial<JobDetail> = {}): JobDetail => ({
+  id: jobId,
+  title: 'Backend Engineer',
+  company: 'Acme',
+  location: 'Helsinki, Finland',
+  url: 'https://job-boards.example.com/acme/jobs/1',
+  sources: [{ id: '00000000-0000-4000-8000-000000000003', catalogId: 'b', param: 'acme' }],
+  canImport: true,
+  snapshot: null,
+  earlierSnapshots: 0,
+  ...fields,
+});
+
+const summarised = (requirements: Requirement[]) =>
+  detail({
+    snapshot: snapshot({
+      summary: {
+        createdAt: '2026-10-02T08:05:00.000Z',
+        model: 'deepseek-flash',
+        costUsd: 0.0012,
+        responsibilities: [
+          { text: 'Build APIs', quote: 'You will build APIs.', quoteVerified: true },
+          { text: 'Lead a team', quote: 'You will lead a team.', quoteVerified: false },
+        ],
+        fields: {
+          ...nullFields,
+          location: { value: 'Helsinki', quote: 'Helsinki office', quoteVerified: false },
+          languages: { value: 'English', quote: 'We work in English.', quoteVerified: true },
+        },
+      },
+      requirements,
+    }),
+  });
+
+const usage: ModelUsage = {
+  calls: 3,
+  failed: 1,
+  costUsd: 0.0042,
+  inputTokens: 9000,
+  outputTokens: 1500,
+};
+
+/** 让完成的请求的后续处理跑完，再让 Angular 渲染；不等待仍未完成的请求。 */
+async function settle() {
+  await new Promise((resolve) => setTimeout(resolve));
+  TestBed.tick();
+}
+
+describe('JobDetailPage', () => {
+  let fixture: ComponentFixture<JobDetailPage>;
+  let http: HttpTestingController;
+
+  const page = () => fixture.nativeElement as HTMLElement;
+  const text = (el: Element | null = page()) => el?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+  const button = (label: string) =>
+    [...page().querySelectorAll('button')].find((b) => text(b) === label);
+  const section = (heading: string) =>
+    [...page().querySelectorAll('section')].find((s) => text(s.querySelector('h2')) === heading);
+  const listUnder = (heading: string) => {
+    const h3 = [...page().querySelectorAll('h3')].find((h) => text(h) === heading);
+    let el = h3?.nextElementSibling;
+    // 只看这个标题下、下一个标题之前的列表。
+    while (el && el.tagName !== 'UL' && el.tagName !== 'H3') el = el.nextElementSibling;
+    if (el?.tagName !== 'UL') return [];
+    return [...el.querySelectorAll(':scope > li')].map((li) => text(li));
+  };
+
+  async function load(job: JobDetail) {
+    http.expectOne(`/api/jobs/${jobId}`).flush(job);
+    http.expectOne('/api/model-usage').flush(usage);
+    await fixture.whenStable();
+  }
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      imports: [JobDetailPage],
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
+    });
+    fixture = TestBed.createComponent(JobDetailPage);
+    fixture.componentRef.setInput('id', jobId);
+    http = TestBed.inject(HttpTestingController);
+    fixture.detectChanges();
+  });
+
+  afterEach(() => http.verify());
+
+  it('reads a discovered job’s text, then offers a summary with the cost so far', async () => {
+    await load(detail());
+    expect(text(page().querySelector('h1'))).toBe('Backend Engineer');
+    expect(text()).toContain('Listed by acme.');
+    expect(text(section('Job text')!)).toContain('The job text has not been read yet.');
+    expect(section('Summary')).toBeUndefined();
+
+    button('Read the job text')!.click();
+    const request = http.expectOne(`/api/jobs/${jobId}/snapshots`);
+    expect(request.request.method).toBe('POST');
+    request.flush(detail({ snapshot: snapshot(), earlierSnapshots: 1 }));
+    await settle();
+
+    expect(text(section('Job text')!)).toContain(
+      'Read from the job board 2 Oct 2026. 1 earlier version kept.',
+    );
+    expect(text(page().querySelector('pre'))).toBe('You will build APIs. - 5+ years of Python');
+    expect(button('Check for a newer version')).toBeDefined();
+    expect(text(section('Summary')!)).toContain(
+      'DeepSeek use so far: 3 requests, 1 failed, about $0.0042.',
+    );
+  });
+
+  it('shows the summary with only quoted points, and what is still to confirm', async () => {
+    await load(detail({ snapshot: snapshot() }));
+    button('Summarise with DeepSeek')!.click();
+    TestBed.tick();
+    const request = http.expectOne(`/api/snapshots/${snapshotId}/summary`);
+    expect(request.request.method).toBe('POST');
+    expect(text(page().querySelector('[role=status]'))).toBe(
+      'Summarising with DeepSeek. This can take a minute.',
+    );
+    request.flush(
+      summarised([
+        requirement({}),
+        requirement({
+          id: '00000000-0000-4000-8000-000000000011',
+          text: 'Go',
+          kind: 'nice',
+          quote: 'Go is a plus',
+          origin: 'user',
+        }),
+        requirement({
+          id: '00000000-0000-4000-8000-000000000012',
+          text: 'A degree',
+          quote: 'A degree',
+          quoteVerified: false,
+        }),
+      ]),
+    );
+    await settle();
+    http.expectOne('/api/model-usage').flush({ ...usage, calls: 4 });
+    await settle();
+
+    expect(listUnder('Responsibilities')).toEqual(['Build APIs “You will build APIs.”']);
+    expect(listUnder('Must have')).toEqual(['Python “5+ years of Python” Correct Remove']);
+    expect(listUnder('Nice to have')).toEqual(['Go added by you “Go is a plus” Correct Remove']);
+    expect(listUnder('Requirements to confirm')).toEqual([
+      'Must have A degree “A degree” Correct Remove',
+    ]);
+    expect(listUnder('Responsibilities to confirm')).toEqual([
+      'Lead a team “You will lead a team.”',
+    ]);
+    const details = text(page().querySelector('dl'));
+    expect(details).toContain(
+      'Location Unknown: the quote given for “Helsinki” is not in the job text.',
+    );
+    expect(details).toContain('Working languages English “We work in English.”');
+    expect(details).toContain('Salary Not stated in the job text.');
+    expect(text(section('Summary')!)).toContain(
+      'Summarised by deepseek-flash on 2 Oct 2026, about $0.0012.',
+    );
+  });
+
+  it('says why a summary failed, and counts the failed request', async () => {
+    await load(detail({ snapshot: snapshot() }));
+    button('Summarise with DeepSeek')!.click();
+    http
+      .expectOne(`/api/snapshots/${snapshotId}/summary`)
+      .flush(
+        { message: 'The DeepSeek account has no balance left (HTTP 402).' },
+        { status: 502, statusText: 'Bad Gateway' },
+      );
+    await settle();
+    http.expectOne('/api/model-usage').flush({ ...usage, calls: 4, failed: 2 });
+    await settle();
+
+    expect(text(page().querySelector('[role=alert]'))).toBe(
+      'The DeepSeek account has no balance left (HTTP 402).',
+    );
+    expect(text()).toContain('DeepSeek use so far: 4 requests, 2 failed');
+  });
+
+  it('corrects and removes a requirement', async () => {
+    await load(summarised([requirement({})]));
+
+    button('Correct')!.click();
+    await fixture.whenStable();
+    const form = page().querySelector('app-requirement-form')!;
+    const input = form.querySelector('input')!;
+    expect(input.value).toBe('Python');
+    input.value = 'Python 3';
+    input.dispatchEvent(new Event('input'));
+    form.querySelector<HTMLButtonElement>('button[type=submit]')!.click();
+    await settle();
+
+    const request = http.expectOne(`/api/snapshots/${snapshotId}/requirements`);
+    expect(request.request.body).toEqual({
+      text: 'Python 3',
+      kind: 'must',
+      quote: '5+ years of Python',
+      replaces: '00000000-0000-4000-8000-000000000010',
+    });
+    request.flush(
+      summarised([
+        requirement({
+          id: '00000000-0000-4000-8000-000000000020',
+          text: 'Python 3',
+          origin: 'user',
+        }),
+      ]),
+    );
+    await settle();
+    expect(listUnder('Must have')).toEqual([
+      'Python 3 added by you “5+ years of Python” Correct Remove',
+    ]);
+
+    button('Remove')!.click();
+    const removal = http.expectOne('/api/requirements/00000000-0000-4000-8000-000000000020');
+    expect(removal.request.method).toBe('DELETE');
+    removal.flush(summarised([]));
+    await settle();
+    expect(listUnder('Must have')).toEqual([]);
+    expect(text()).toContain('None found in the job text.');
+  });
+
+  it('cannot read a pasted job’s text from anywhere', async () => {
+    await load(
+      detail({ sources: [], canImport: false, snapshot: snapshot({ catalogId: 'paste' }) }),
+    );
+    expect(text()).toContain('You pasted this job.');
+    expect(text(section('Job text')!)).toContain('Pasted 2 Oct 2026.');
+    expect(button('Check for a newer version')).toBeUndefined();
+  });
+});
