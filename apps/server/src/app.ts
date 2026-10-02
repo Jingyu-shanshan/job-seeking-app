@@ -9,10 +9,12 @@ import { type Auth, createAuth } from './auth.ts';
 import type { Config } from './config.ts';
 import { checkDatabase, createPool } from './db/pool.ts';
 import { discoveryRoutes } from './discovery/routes.ts';
+import { RateLimiter } from './discovery/run.ts';
+import { jdRoutes } from './jd/routes.ts';
 import { sourceRoutes } from './sources/routes.ts';
 
 export type AppOptions = Pick<Config, 'webRoot' | 'appUrl' | 'trustedOrigins'> &
-  Partial<Pick<Config, 'databaseUrl' | 'authSecret'>> & {
+  Partial<Pick<Config, 'databaseUrl' | 'authSecret' | 'deepseekApiKey'>> & {
     logger?: boolean;
     /** What discovery requests job sources with; tests pass a fake. */
     fetch?: typeof globalThis.fetch;
@@ -27,6 +29,7 @@ export function buildApp({
   authSecret,
   appUrl,
   trustedOrigins,
+  deepseekApiKey,
   logger = false,
   fetch = globalThis.fetch,
 }: AppOptions) {
@@ -114,8 +117,10 @@ export function buildApp({
 
   // Data routes. Without a database nobody can sign in, so the hook above refuses them anyway.
   if (pool) {
+    const limiter = new RateLimiter();
     app.register(sourceRoutes, { prefix: '/api', pool });
-    app.register(discoveryRoutes, { prefix: '/api', pool, fetch });
+    app.register(discoveryRoutes, { prefix: '/api', pool, fetch, limiter });
+    app.register(jdRoutes, { prefix: '/api', pool, fetch, limiter, deepseekApiKey });
   }
 
   // Without a web build (API-only dev, tests) the server still runs; `ng serve` proxies to it.

@@ -25,6 +25,7 @@ type RateLimit = NonNullable<CatalogEntry['rateLimit']>;
  */
 export class RateLimiter {
   readonly #sent = new Map<string, number[]>();
+  readonly #queues = new Map<string, Promise<void>>();
   readonly #now: () => number;
   readonly #sleep: (ms: number) => Promise<unknown>;
 
@@ -37,7 +38,13 @@ export class RateLimiter {
   }
 
   /** Waits until one more request to `site` is within `limit`, then counts it as sent. */
-  async wait(site: string, { requests, perSeconds }: RateLimit) {
+  wait(site: string, limit: RateLimit): Promise<void> {
+    const turn = (this.#queues.get(site) ?? Promise.resolve()).then(() => this.#take(site, limit));
+    this.#queues.set(site, turn);
+    return turn;
+  }
+
+  async #take(site: string, { requests, perSeconds }: RateLimit) {
     const sent = this.#sent.get(site) ?? [];
     const oldest = sent.length >= requests ? sent[sent.length - requests] : undefined;
     if (oldest !== undefined) {
@@ -113,7 +120,7 @@ export async function runDiscovery({
     if (entry.rateLimit) await limiter.wait(entry.id, entry.rateLimit);
     requests += 1;
     try {
-      const postings = await adapter(source.param, fetch);
+      const postings = await adapter.listJobs(source.param, fetch);
       const counts = await savePostings(pool, source.id, entry.id, postings);
       results.push({ ...result, ...counts, outcome: 'ok', reason: '' });
     } catch (err) {

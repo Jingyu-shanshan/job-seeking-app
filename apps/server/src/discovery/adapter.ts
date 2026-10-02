@@ -1,3 +1,4 @@
+import { maxJobTextLength } from '@jsa/shared';
 import Type, { type TSchema } from 'typebox';
 
 // What every source adapter returns, and the one way adapters fetch: native fetch with a time
@@ -17,8 +18,19 @@ export interface Posting {
   publishedAt: string | null;
 }
 
+export interface JobText {
+  title: string;
+  company: string | null;
+  location: string;
+  url: string;
+  text: string;
+}
+
 /** Reads every open job of one source, given the source's parameter (e.g. a board name). */
-export type Adapter = (param: string, fetch: typeof globalThis.fetch) => Promise<Posting[]>;
+export interface Adapter {
+  listJobs(param: string, fetch: typeof globalThis.fetch): Promise<Posting[]>;
+  readJob(param: string, externalId: string, fetch: typeof globalThis.fetch): Promise<JobText>;
+}
 
 /**
  * A source failed in a way the user can act on. The message is stored as the source's last
@@ -96,4 +108,14 @@ export function httpsUrl(value: string | null | undefined): string | null {
   if (!value || !URL.canParse(value)) return null;
   const url = new URL(value);
   return url.protocol === 'https:' ? url.href : null;
+}
+
+export function checkJobText(text: string, site: string): string {
+  if (text === '') throw new DiscoveryError(`${site} gives no text for this job.`);
+  if (text.length > maxJobTextLength) {
+    throw new DiscoveryError(
+      `The job text from ${site} is longer than ${maxJobTextLength.toLocaleString('en')} characters.`,
+    );
+  }
+  return text;
 }

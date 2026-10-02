@@ -1,13 +1,15 @@
-import Type from 'typebox';
+import Type, { type Static } from 'typebox';
 import { Value } from 'typebox/value';
 import {
   DiscoveryError,
+  checkJobText,
   fetchJson,
   fitLocation,
   httpsUrl,
   maybe,
   type Adapter,
 } from './adapter.ts';
+import { tidyText } from './html.ts';
 
 // Ashby's public job posting API (https://developers.ashbyhq.com/docs/public-job-posting-api,
 // checked 2026-10-01 and 2026-10-02): one request lists every job of a board. No key, no login.
@@ -20,30 +22,32 @@ const AddressSchema = maybe(
   }),
 );
 
-const BoardSchema = Type.Object({
-  jobs: Type.Array(
-    Type.Object({
-      id: Type.String({ pattern: '\\S', maxLength: 200 }),
-      title: Type.String({ pattern: '\\S', maxLength: 1000 }),
-      location: maybe(Type.String({ maxLength: 1000 })),
-      address: AddressSchema,
-      secondaryLocations: maybe(
-        Type.Array(
-          Type.Object({
-            location: maybe(Type.String({ maxLength: 1000 })),
-            address: AddressSchema,
-          }),
-          { maxItems: 100 },
-        ),
-      ),
-      isListed: maybe(Type.Boolean()),
-      isRemote: maybe(Type.Boolean()),
-      workplaceType: maybe(Type.String()),
-      jobUrl: maybe(Type.String()),
-      publishedAt: maybe(Type.String({ format: 'date-time' })),
-    }),
-    { maxItems: 10_000 },
+const JobSchema = Type.Object({
+  id: Type.String({ pattern: '\\S', maxLength: 200 }),
+  title: Type.String({ pattern: '\\S', maxLength: 1000 }),
+  location: maybe(Type.String({ maxLength: 1000 })),
+  address: AddressSchema,
+  secondaryLocations: maybe(
+    Type.Array(
+      Type.Object({
+        location: maybe(Type.String({ maxLength: 1000 })),
+        address: AddressSchema,
+      }),
+      { maxItems: 100 },
+    ),
   ),
+  isListed: maybe(Type.Boolean()),
+  isRemote: maybe(Type.Boolean()),
+  workplaceType: maybe(Type.String()),
+  jobUrl: maybe(Type.String()),
+  publishedAt: maybe(Type.String({ format: 'date-time' })),
+  descriptionPlain: maybe(Type.String()),
+});
+
+type Job = Static<typeof JobSchema>;
+
+const BoardSchema = Type.Object({
+  jobs: Type.Array(JobSchema, { maxItems: 10_000 }),
 });
 
 /** "Turku" in Finland as "Turku, Finland", so the location rule need not know Finnish towns. */
@@ -54,11 +58,35 @@ function place(location: string | null | undefined, country: string | null | und
   return text === '' ? name : `${text}, ${name}`;
 }
 
-export const ashbyBoard: Adapter = async (board, fetch) => {
-  const name = encodeURIComponent(board);
+function describe(name: string, job: Job) {
+  // `workplaceType` is the newer field; `isRemote` is all that older jobs have.
+  const remote = job.workplaceType ? job.workplaceType === 'Remote' : job.isRemote === true;
+  const places = [
+    place(job.location, job.address?.postalAddress?.addressCountry),
+    ...(job.secondaryLocations ?? []).map((other) =>
+      place(other.location, other.address?.postalAddress?.addressCountry),
+    ),
+  ].filter((text) => text !== '');
+  // The location rule reads "remote" in the text; Ashby says it in a separate field.
+  const marked = remote
+    ? places.map((text) => (/remote/i.test(text) ? text : `Remote - ${text}`))
+    : places;
+  const location = marked.join('; ') || (remote ? 'Remote' : '');
+  return {
+    title: job.title.trim(),
+    company: null,
+    location: fitLocation(location),
+    url: httpsUrl(job.jobUrl) ?? `https://jobs.ashbyhq.com/${name}/${encodeURIComponent(job.id)}`,
+  };
+}
+
+async function listedJobs(board: string, fetch: typeof globalThis.fetch): Promise<Job[]> {
   let body: unknown;
   try {
-    body = await fetchJson(fetch, `https://api.ashbyhq.com/posting-api/job-board/${name}`);
+    body = await fetchJson(
+      fetch,
+      `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(board)}`,
+    );
   } catch (err) {
     if (err instanceof DiscoveryError && err.status === 404) {
       throw new DiscoveryError(`Ashby has no job board called ${board}.`);
@@ -68,34 +96,26 @@ export const ashbyBoard: Adapter = async (board, fetch) => {
   if (!Value.Check(BoardSchema, body)) {
     throw new DiscoveryError('Ashby answered with something other than a list of jobs.');
   }
-  return (
-    body.jobs
-      // An unlisted job is meant to be reached only through its direct link.
-      .filter((job) => job.isListed !== false)
-      .map((job) => {
-        // `workplaceType` is the newer field; `isRemote` is all that older jobs have.
-        const remote = job.workplaceType ? job.workplaceType === 'Remote' : job.isRemote === true;
-        const places = [
-          place(job.location, job.address?.postalAddress?.addressCountry),
-          ...(job.secondaryLocations ?? []).map((other) =>
-            place(other.location, other.address?.postalAddress?.addressCountry),
-          ),
-        ].filter((text) => text !== '');
-        // The location rule reads "remote" in the text; Ashby says it in a separate field.
-        const marked = remote
-          ? places.map((text) => (/remote/i.test(text) ? text : `Remote - ${text}`))
-          : places;
-        const location = marked.join('; ') || (remote ? 'Remote' : '');
-        return {
-          externalId: job.id,
-          title: job.title.trim(),
-          company: null,
-          location: fitLocation(location),
-          url:
-            httpsUrl(job.jobUrl) ??
-            `https://jobs.ashbyhq.com/${name}/${encodeURIComponent(job.id)}`,
-          publishedAt: job.publishedAt ?? null,
-        };
-      })
-  );
+  // An unlisted job is meant to be reached only through its direct link.
+  return body.jobs.filter((job) => job.isListed !== false);
+}
+
+export const ashbyBoard: Adapter = {
+  async listJobs(board, fetch) {
+    const name = encodeURIComponent(board);
+    return (await listedJobs(board, fetch)).map((job) => ({
+      externalId: job.id,
+      ...describe(name, job),
+      publishedAt: job.publishedAt ?? null,
+    }));
+  },
+
+  async readJob(board, externalId, fetch) {
+    const job = (await listedJobs(board, fetch)).find((j) => j.id === externalId);
+    if (!job) throw new DiscoveryError(`The Ashby board ${board} no longer lists this job.`);
+    return {
+      ...describe(encodeURIComponent(board), job),
+      text: checkJobText(tidyText(job.descriptionPlain ?? ''), 'Ashby'),
+    };
+  },
 };

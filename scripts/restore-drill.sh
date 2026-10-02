@@ -38,11 +38,21 @@ insert into fact_version (fact_id, version, body, source, status, may_send_to_mo
   values (:'fact_id', 2, 'Maintained the invoice export service.', 'sample', 'confirmed', true, true)
   returning id as fact_version_id \gset
 insert into job default values returning id as job_id \gset
-insert into job_snapshot (job_id, body, source_url)
-  values (:'job_id', 'Billing engineer (Helsinki). You keep invoices correct. Kehittäjä – 开发者.', 'https://example.com/jobs/1')
+insert into job_snapshot (job_id, body, catalog_id, title, company, location, source_url)
+  values (:'job_id', 'Billing engineer (Helsinki). You keep invoices correct. Kehittäjä – 开发者.',
+    'paste', 'Billing engineer', 'Example Oy', 'Helsinki, Finland', 'https://example.com/jobs/1')
   returning id as snapshot_id \gset
-insert into job_requirement (job_snapshot_id, body, quote, quote_verified)
-  values (:'snapshot_id', 'Invoice correctness', 'You keep invoices correct.', true) returning id as requirement_id \gset
+insert into job_requirement (job_snapshot_id, body, quote, quote_verified, kind, origin)
+  values (:'snapshot_id', 'Invoice correctness', 'You keep invoices correct.', true, 'must', 'model')
+  returning id as requirement_id \gset
+insert into model_call (purpose, job_snapshot_id, model, started_at, duration_ms, input_tokens,
+    cached_input_tokens, output_tokens, cost_usd)
+  values ('job_summary', :'snapshot_id', 'sample-model', now(), 1200, 3000, 1000, 500, 0.001206)
+  returning id as model_call_id \gset
+insert into job_summary (job_snapshot_id, model_call_id, responsibilities, fields)
+  values (:'snapshot_id', :'model_call_id',
+    '[{"text": "Keep invoices correct", "quote": "You keep invoices correct.", "quoteVerified": true}]',
+    '{"location": {"value": "Helsinki", "quote": "(Helsinki)", "quoteVerified": true}, "salary": null}');
 insert into match (job_snapshot_id, verdict) values (:'snapshot_id', 'eligible') returning id as match_id \gset
 insert into match_requirement values (:'match_id', :'requirement_id', 'met');
 insert into match_evidence values (:'match_id', :'requirement_id', :'fact_version_id');

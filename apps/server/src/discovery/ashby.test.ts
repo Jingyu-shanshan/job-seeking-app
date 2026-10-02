@@ -4,7 +4,7 @@ import { fakeAshby } from '../testing/ashby.ts';
 import { ashbyBoard } from './ashby.ts';
 
 const failsWith = (fetch: typeof globalThis.fetch, message: string, board = 'acme') =>
-  assert.rejects(ashbyBoard(board, fetch), { name: 'Error', message });
+  assert.rejects(ashbyBoard.listJobs(board, fetch), { name: 'Error', message });
 
 test('lists a board’s listed jobs with the fields the app keeps', async () => {
   const { fetch, requested } = fakeAshby({
@@ -13,7 +13,7 @@ test('lists a board’s listed jobs with the fields the app keeps', async () => 
       { id: 'a2', isListed: false },
     ],
   });
-  assert.deepEqual(await ashbyBoard('Acme', fetch), [
+  assert.deepEqual(await ashbyBoard.listJobs('Acme', fetch), [
     {
       externalId: 'a1',
       title: 'Backend Engineer',
@@ -43,7 +43,7 @@ test('writes every location with its country, as the location rule reads them', 
     ],
   });
   assert.deepEqual(
-    (await ashbyBoard('acme', fetch)).map((p) => p.location),
+    (await ashbyBoard.listJobs('acme', fetch)).map((p) => p.location),
     [
       'Turku, Finland',
       'London, United Kingdom; Espoo, Finland; Berlin',
@@ -68,7 +68,7 @@ test('marks remote jobs in the location text', async () => {
     ],
   });
   assert.deepEqual(
-    (await ashbyBoard('acme', fetch)).map((p) => p.location),
+    (await ashbyBoard.listJobs('acme', fetch)).map((p) => p.location),
     [
       'Remote - Finland',
       'Remote (EU)',
@@ -86,7 +86,7 @@ test('cuts a very long list of locations so it can be saved, without losing the 
     country: 'Spain',
   }));
   const { fetch } = fakeAshby({ acme: [{ id: '1', secondaryLocations: many }] });
-  const [posting] = await ashbyBoard('acme', fetch);
+  const [posting] = await ashbyBoard.listJobs('acme', fetch);
   assert.ok(posting!.location.length <= 5000);
   assert.ok(posting!.location.startsWith('Helsinki, Finland; Long town name'));
   assert.ok(posting!.location.endsWith('; …'), posting!.location.slice(-20));
@@ -100,7 +100,7 @@ test('links the board page when the job link is not https', async () => {
     ],
   });
   assert.deepEqual(
-    (await ashbyBoard('acme', fetch)).map((p) => p.url),
+    (await ashbyBoard.listJobs('acme', fetch)).map((p) => p.url),
     ['https://jobs.ashbyhq.com/acme/1', 'https://careers.example.com/jobs/2'],
   );
 });
@@ -118,4 +118,37 @@ test('says plainly why a board could not be read', async () => {
       'Ashby answered with something other than a list of jobs.',
     );
   }
+});
+
+test('reads one listed job’s text from the board', async () => {
+  const { fetch, requested } = fakeAshby({
+    acme: [
+      { id: 'a1', descriptionPlain: 'Other job.' },
+      {
+        id: 'a2',
+        title: 'Data Engineer',
+        descriptionPlain: '\r\nAbout us\r\n\r\n\r\nYou   know SQL. \n',
+      },
+      { id: 'a3', isListed: false },
+    ],
+  });
+  assert.deepEqual(await ashbyBoard.readJob('Acme', 'a2', fetch), {
+    title: 'Data Engineer',
+    company: null,
+    location: 'Helsinki, Finland',
+    url: 'https://jobs.ashbyhq.com/acme/a2',
+    text: 'About us\n\nYou   know SQL.',
+  });
+  assert.deepEqual(requested, ['https://api.ashbyhq.com/posting-api/job-board/Acme']);
+  await assert.rejects(ashbyBoard.readJob('acme', 'a3', fetch), {
+    message: 'The Ashby board acme no longer lists this job.',
+  });
+  await assert.rejects(
+    ashbyBoard.readJob(
+      'acme',
+      'a1',
+      fakeAshby({ acme: [{ id: 'a1', descriptionPlain: ' ' }] }).fetch,
+    ),
+    { message: 'Ashby gives no text for this job.' },
+  );
 });

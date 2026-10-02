@@ -13,6 +13,14 @@ export const LocationVerdictSchema = Type.Union([
 
 export type LocationVerdict = Static<typeof LocationVerdictSchema>;
 
+export const JobSourceSchema = Type.Object({
+  id: Type.String({ format: 'uuid' }),
+  catalogId: Type.String(),
+  param: Type.String(),
+});
+
+export type JobSource = Static<typeof JobSourceSchema>;
+
 /** An open job that discovery found. A job listed by several sources appears once. */
 export const JobSchema = Type.Object({
   id: Type.String({ format: 'uuid' }),
@@ -28,13 +36,7 @@ export const JobSchema = Type.Object({
   /** When a discovery run first found the job. */
   firstSeenAt: Type.String({ format: 'date-time' }),
   /** The user's sources that list the job, e.g. one Greenhouse board. */
-  sources: Type.Array(
-    Type.Object({
-      id: Type.String({ format: 'uuid' }),
-      catalogId: Type.String(),
-      param: Type.String(),
-    }),
-  ),
+  sources: Type.Array(JobSourceSchema),
   verdict: LocationVerdictSchema,
   /** Why the job is out of scope or to be confirmed; '' when it is in scope. */
   reason: Type.String(),
