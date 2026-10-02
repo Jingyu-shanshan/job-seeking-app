@@ -1,6 +1,15 @@
 import { join } from 'node:path';
 import type { SavePageResponse, SaveResultsResponse } from '@jsa/shared';
-import { BaseWindow, WebContentsView, app, dialog, ipcMain, session } from 'electron';
+import {
+  BaseWindow,
+  Menu,
+  WebContentsView,
+  app,
+  dialog,
+  ipcMain,
+  session,
+  type MenuItemConstructorOptions,
+} from 'electron';
 import { addressToUrl, isWebAddress } from './address.ts';
 import { postToApp } from './app-api.ts';
 import { appUrlFrom } from './config.ts';
@@ -201,6 +210,33 @@ function createWindow() {
   browser.on('did-stop-loading', sendState);
   browser.on('did-navigate', sendState);
   browser.on('did-navigate-in-page', sendState);
+
+  // Electron's default View menu acts on a window's own page, which this window does not have:
+  // its pages are all in views. Developer tools open for the pane that has the focus.
+  const panes = [appPage, toolbar, browser];
+  const template: MenuItemConstructorOptions[] = [
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Developer Tools for This Pane',
+          accelerator: process.platform === 'darwin' ? 'Alt+Command+I' : 'Ctrl+Shift+I',
+          click: () => {
+            const pane = panes.find((p) => p.isFocused());
+            if (pane?.isDevToolsOpened()) pane.closeDevTools();
+            else pane?.openDevTools({ mode: 'detach' });
+          },
+        },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    { role: 'windowMenu' },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 
   // The toolbar never navigates or opens anything itself.
   toolbar.setWindowOpenHandler(() => ({ action: 'deny' }));
