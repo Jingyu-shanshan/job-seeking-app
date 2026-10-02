@@ -13,6 +13,7 @@ export interface Config {
   appUrl: string;
   /** Origins allowed to send write requests to `/api`. */
   trustedOrigins: string[];
+  deepseekApiKey: string | undefined;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -45,6 +46,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
             'http://localhost:4200',
           ]),
         ],
+    deepseekApiKey: env.DEEPSEEK_API_KEY || undefined,
   };
 }
 

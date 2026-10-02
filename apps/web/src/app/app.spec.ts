@@ -70,15 +70,26 @@ describe('App', () => {
     expect(heading(harness)).toBe('Sources and search scope');
   });
 
-  it('links the sources page from the header once signed in', () => {
+  it('shows the jobs page to the signed-in user', async () => {
+    user.set({ email: 'owner@example.com' });
+    const harness = await RouterTestingHarness.create('/jobs');
+    TestBed.inject(HttpTestingController).expectOne('/api/jobs');
+
+    expect(heading(harness)).toBe('Jobs');
+  });
+
+  it('links the jobs, facts and sources pages from the header once signed in', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
-    const nav = () => (fixture.nativeElement as HTMLElement).querySelector('nav a');
-    expect(nav()).toBeNull();
+    const links = () =>
+      [...(fixture.nativeElement as HTMLElement).querySelectorAll('nav a')].map((a) =>
+        a.getAttribute('href'),
+      );
+    expect(links()).toEqual([]);
 
     user.set({ email: 'owner@example.com' });
     fixture.detectChanges();
-    expect(nav()?.getAttribute('href')).toBe('/sources');
+    expect(links()).toEqual(['/jobs', '/facts', '/sources']);
   });
 
   it('shows who is signed in and signs out', async () => {

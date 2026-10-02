@@ -10,7 +10,8 @@ import type { HealthResponse } from '@jsa/shared';
     <h1>Job Search Workbench</h1>
     <p>
       Choose where jobs come from and which locations count on the
-      <a routerLink="/sources">Sources</a> page. Finding jobs from those sources comes next.
+      <a routerLink="/sources">Sources</a> page, then find jobs on the
+      <a routerLink="/jobs">Jobs</a> page.
     </p>
     <p role="status">
       @if (health.isLoading()) {

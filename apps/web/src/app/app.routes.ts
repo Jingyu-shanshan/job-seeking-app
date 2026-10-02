@@ -13,6 +13,26 @@ export const routes: Routes = [
     children: [
       { path: '', component: Home, title: 'Job Search Workbench' },
       {
+        path: 'jobs',
+        loadComponent: () => import('./jobs/jobs').then((m) => m.Jobs),
+        title: 'Jobs',
+      },
+      {
+        path: 'jobs/paste',
+        loadComponent: () => import('./jobs/paste-job').then((m) => m.PasteJob),
+        title: 'Paste a job',
+      },
+      {
+        path: 'jobs/:id',
+        loadComponent: () => import('./jobs/job-detail').then((m) => m.JobDetailPage),
+        title: 'Job',
+      },
+      {
+        path: 'facts',
+        loadComponent: () => import('./facts/facts').then((m) => m.Facts),
+        title: 'Facts about you',
+      },
+      {
         path: 'sources',
         loadComponent: () => import('./sources/sources').then((m) => m.Sources),
         title: 'Sources and search scope',
