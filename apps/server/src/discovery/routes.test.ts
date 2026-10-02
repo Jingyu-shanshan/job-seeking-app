@@ -186,6 +186,8 @@ describe('/api/discovery-runs and /api/jobs', needsDatabase, () => {
         publishedAt: '2026-09-20T10:00:00.000Z',
         firstSeenAt: undefined,
         sources: undefined,
+        origin: 'discovered',
+        needsText: false,
         verdict: 'in_scope',
         reason: '',
       },

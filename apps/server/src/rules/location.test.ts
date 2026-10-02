@@ -86,6 +86,8 @@ test('remote jobs count only when included, and only from Finland', () => {
     'Remote - Finland',
     'Finland (Remote)',
     'Remote (EU)',
+    'European Union (Remote)',
+    'European Economic Area (Remote)',
     'Remote, Europe',
     'Remote - EMEA',
     'Remote, Nordics',

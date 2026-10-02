@@ -4,7 +4,7 @@ import {
   JobDetailSchema,
   ModelUsageSchema,
   PasteJobRequestSchema,
-  maxJobTextLength,
+  PasteTextRequestSchema,
   type JobDetail,
   type JobSource,
   type JobSummary,
@@ -15,12 +15,12 @@ import type { FastifyBaseLogger } from 'fastify';
 import type { Pool } from 'pg';
 import Type from 'typebox';
 import { DiscoveryError, type JobText } from '../discovery/adapter.ts';
-import { tidyText } from '../discovery/html.ts';
 import { allAdapters, type RateLimiter } from '../discovery/run.ts';
 import { httpError } from '../http-error.ts';
 import { quoteFinder } from '../rules/quote.ts';
 import { sourcesToRequest } from '../rules/sources.ts';
 import { catalog, findCatalogEntry } from '../sources/catalog.ts';
+import { checkJobText } from './job-text.ts';
 import { summariseSnapshot } from './summarise.ts';
 
 export interface JdRoutesOptions {
@@ -43,6 +43,13 @@ interface PostingRow {
   catalog_id: string;
   param: string;
   enabled: boolean;
+}
+
+interface SavedRow {
+  title: string;
+  company: string | null;
+  location: string;
+  url: string;
 }
 
 interface SnapshotRow {
@@ -99,6 +106,13 @@ function importSources(postings: PostingRow[]) {
 
 async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetail | undefined> {
   const postings = await postingsOf(pool, jobId);
+  // The latest save from the desktop app, for a job no posting describes.
+  const saves = await pool.query<SavedRow>(
+    `select title, company, location, url from saved_job where job_id = $1
+     order by last_saved_at desc limit 1`,
+    [jobId],
+  );
+  const saved = saves.rows[0];
   const snapshots = await pool.query<SnapshotRow>(
     `select id, captured_at, catalog_id, title, company, location, source_url, body,
        (count(*) over () - 1)::int as earlier
@@ -108,7 +122,7 @@ async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetail | und
     [jobId],
   );
   const current = snapshots.rows[0];
-  const first = postings.find((p) => p.closed_at === null && p.enabled) ?? postings[0];
+  const first = postings.find((p) => p.closed_at === null && p.enabled) ?? saved ?? postings[0];
   const head = first
     ? { title: first.title, company: first.company, location: first.location, url: first.url }
     : current && {
@@ -128,6 +142,7 @@ async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetail | und
     ...head,
     sources,
     canImport: importSources(postings).length > 0,
+    saved: saved !== undefined,
     snapshot: current ? await loadSnapshot(pool, current) : null,
     earlierSnapshots: current?.earlier ?? 0,
   };
@@ -264,11 +279,7 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
     async (request, reply) => {
       const { title, company, location, url, text } = request.body;
       if (!URL.canParse(url)) throw httpError(400, 'The link is not a valid https address.');
-      const body = tidyText(text);
-      if (body === '') throw httpError(400, 'Paste the job text.');
-      if (body.length > maxJobTextLength) {
-        throw httpError(400, `The job text is longer than ${maxJobTextLength} characters.`);
-      }
+      const body = checkJobText(text, 'Paste the job text.');
       const { rows } = await pool.query<{ job_id: string }>(
         `with new_job as (insert into job default values returning id)
          insert into job_snapshot (job_id, body, catalog_id, title, company, location, source_url)
@@ -277,6 +288,26 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
         [body, title.trim(), company?.trim() || null, location?.trim() ?? '', new URL(url).href],
       );
       return reply.code(201).send(await detailAfterChange(pool, rows[0]!.job_id));
+    },
+  );
+
+  // Text the user pasted for a job the app already has, e.g. one saved from a results page.
+  app.post(
+    '/jobs/:id/text',
+    {
+      schema: {
+        params: IdParamsSchema,
+        body: PasteTextRequestSchema,
+        response: { 200: JobDetailSchema },
+      },
+    },
+    async (request) => {
+      const jobId = request.params.id;
+      const job = await loadJobDetail(pool, jobId);
+      if (!job) throw httpError(404, 'There is no such job.');
+      const text = checkJobText(request.body.text, 'Paste the job text.');
+      await saveSnapshot(pool, jobId, 'paste', { ...job, text });
+      return detailAfterChange(pool, jobId);
     },
   );
 

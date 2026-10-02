@@ -6,12 +6,18 @@ import type { JobDetail, ModelUsage } from '@jsa/shared';
 import { errorMessage } from '../sources/sources-api';
 import { JobSummaryView } from './job-summary';
 import { JobsApi, usd } from './jobs-api';
+import { PasteTextForm } from './paste-text-form';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+const textOrigins: Record<string, string> = {
+  paste: 'Pasted',
+  desktop_save: 'Saved from its page in the desktop app',
+};
+
 @Component({
   selector: 'app-job-detail',
-  imports: [DatePipe, JobSummaryView, RouterLink],
+  imports: [DatePipe, JobSummaryView, PasteTextForm, RouterLink],
   template: `
     <p><a routerLink="/jobs">All jobs</a></p>
     @if (data.hasValue()) {
@@ -28,7 +34,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
         <h2 id="text-heading">Job text</h2>
         @if (job.snapshot; as snapshot) {
           <p>
-            {{ snapshot.catalogId === 'paste' ? 'Pasted' : 'Read from the job board' }}
+            {{ textOrigins[snapshot.catalogId] ?? 'Read from the job board' }}
             {{ snapshot.capturedAt | date: 'd MMM y' }}.
             @if (job.earlierSnapshots) {
               {{ plural(job.earlierSnapshots, 'earlier version') }} kept.
@@ -49,7 +55,17 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
             Read the job text
           </button>
         } @else {
-          <p>None of the sources you use lists this job now, so the app cannot read its text.</p>
+          <p>
+            @if (job.saved) {
+              The app has only what a results page showed about this job, so it does not summarise
+              it yet. Open the job page in the desktop app and press “Save this job”, or paste the
+              job text here.
+            } @else {
+              None of the sources you use lists this job now, so the app cannot read its text. You
+              can paste it here.
+            }
+          </p>
+          <app-paste-text-form [jobId]="job.id" (saved)="data.set($event)" />
         }
       </section>
 
@@ -113,13 +129,17 @@ export class JobDetailPage {
   protected readonly status = signal('');
   protected readonly failure = signal('');
   protected readonly plural = plural;
+  protected readonly textOrigins = textOrigins;
 
   protected readonly listing = computed(() => {
     const job = this.data.value();
     if (!job) return '';
+    const saved = 'You saved this job in the desktop app.';
     if (job.sources.length) {
-      return `Listed by ${job.sources.map((s) => s.param).join(', ')}.`;
+      const listed = `Listed by ${job.sources.map((s) => s.param).join(', ')}.`;
+      return job.saved ? `${listed} ${saved}` : listed;
     }
+    if (job.saved) return saved;
     return job.snapshot?.catalogId === 'paste'
       ? 'You pasted this job.'
       : 'No source you use lists this job now.';

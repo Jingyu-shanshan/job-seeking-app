@@ -11,6 +11,10 @@ export class JobsApi {
     return firstValueFrom(this.http.post<JobDetail>('/api/jobs', job));
   }
 
+  pasteText(jobId: string, text: string): Promise<JobDetail> {
+    return firstValueFrom(this.http.post<JobDetail>(`/api/jobs/${jobId}/text`, { text }));
+  }
+
   importText(jobId: string): Promise<JobDetail> {
     return firstValueFrom(this.http.post<JobDetail>(`/api/jobs/${jobId}/snapshots`, {}));
   }

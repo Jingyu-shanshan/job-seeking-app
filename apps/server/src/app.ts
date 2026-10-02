@@ -12,6 +12,7 @@ import { discoveryRoutes } from './discovery/routes.ts';
 import { RateLimiter } from './discovery/run.ts';
 import { factRoutes } from './facts/routes.ts';
 import { jdRoutes } from './jd/routes.ts';
+import { savedRoutes } from './jd/saved.ts';
 import { sourceRoutes } from './sources/routes.ts';
 
 export type AppOptions = Pick<Config, 'webRoot' | 'appUrl' | 'trustedOrigins'> &
@@ -123,6 +124,7 @@ export function buildApp({
     app.register(factRoutes, { prefix: '/api', pool });
     app.register(discoveryRoutes, { prefix: '/api', pool, fetch, limiter });
     app.register(jdRoutes, { prefix: '/api', pool, fetch, limiter, deepseekApiKey });
+    app.register(savedRoutes, { prefix: '/api', pool });
   }
 
   // Without a web build (API-only dev, tests) the server still runs; `ng serve` proxies to it.

@@ -18,8 +18,9 @@
     "db:restore-drill": "bash scripts/restore-drill.sh",
     "dev:server": "npm run build -w @jsa/shared && npm run dev -w @jsa/server",
     "dev:web": "npm run dev -w @jsa/web",
-    "test": "npm run build -w @jsa/shared && npm test -w @jsa/shared -w @jsa/server -w @jsa/web",
-    "typecheck": "npm run build -w @jsa/shared && npm run typecheck -w @jsa/shared -w @jsa/server",
+    "desktop": "npm run build -w @jsa/shared && npm start -w @jsa/desktop",
+    "test": "npm run build -w @jsa/shared && npm test -w @jsa/shared -w @jsa/server -w @jsa/desktop -w @jsa/web",
+    "typecheck": "npm run build -w @jsa/shared && npm run typecheck -w @jsa/shared -w @jsa/server -w @jsa/desktop",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write ."
   },

@@ -1,7 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import type { Job } from '@jsa/shared';
+import type { Job, JobOrigin } from '@jsa/shared';
 
 /** Jobs as links to their pages, with where, when, and why they are grouped where they are. */
 @Component({
@@ -21,11 +21,14 @@ import type { Job } from '@jsa/shared';
             @if (job.publishedAt) {
               Posted {{ job.publishedAt | date: dateFormat }} ·
             }
-            {{ job.sources.length ? 'Found' : 'Pasted' }} {{ job.firstSeenAt | date: dateFormat }}
+            {{ originLabels[job.origin] }} {{ job.firstSeenAt | date: dateFormat }}
             @if (job.sources.length > 1) {
               · Listed by {{ job.sources.length }} of your sources
             }
           </span>
+          @if (job.needsText) {
+            <span class="reason">Needs the job text: save its page or paste it.</span>
+          }
           @if (job.reason) {
             <span class="reason">{{ job.reason }}</span>
           }
@@ -58,4 +61,9 @@ export class JobList {
   readonly jobs = input.required<Job[]>();
 
   protected readonly dateFormat = 'd MMM y';
+  protected readonly originLabels: Record<JobOrigin, string> = {
+    discovered: 'Found',
+    pasted: 'Pasted',
+    saved: 'Saved',
+  };
 }

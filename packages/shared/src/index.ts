@@ -22,6 +22,7 @@ export {
 } from './sources.ts';
 export {
   DiscoveryRunSchema,
+  JobOriginSchema,
   JobSchema,
   JobSourceSchema,
   JobsResponseSchema,
@@ -29,6 +30,7 @@ export {
   SourceRunSchema,
   type DiscoveryRun,
   type Job,
+  type JobOrigin,
   type JobSource,
   type JobsResponse,
   type LocationVerdict,
@@ -40,6 +42,7 @@ export {
   JobSummarySchema,
   ModelUsageSchema,
   PasteJobRequestSchema,
+  PasteTextRequestSchema,
   QuotedSchema,
   RequirementKindSchema,
   RequirementSchema,
@@ -52,6 +55,7 @@ export {
   type JobSummary,
   type ModelUsage,
   type PasteJobRequest,
+  type PasteTextRequest,
   type Quoted,
   type Requirement,
   type RequirementKind,
@@ -60,6 +64,18 @@ export {
   type SummaryFieldValue,
   type SummaryFields,
 } from './jd.ts';
+export {
+  SavePageRequestSchema,
+  SavePageResponseSchema,
+  SaveResultsRequestSchema,
+  SaveResultsResponseSchema,
+  SavedEntrySchema,
+  type SavePageRequest,
+  type SavePageResponse,
+  type SaveResultsRequest,
+  type SaveResultsResponse,
+  type SavedEntry,
+} from './saved.ts';
 export {
   AddFactRequestSchema,
   EditFactRequestSchema,

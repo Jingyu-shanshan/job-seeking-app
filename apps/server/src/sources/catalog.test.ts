@@ -44,11 +44,12 @@ test('a job board entry always names one board, so no entry searches everything'
   }
 });
 
-test('sites the app does not request explain why, and pasting is always there', () => {
+test('sites the app does not request explain why, and pasting and saving are always there', () => {
   for (const entry of catalog.filter((e) => e.access === 'email_alert')) {
     assert.ok(entry.note.length > 40, entry.id);
     assert.equal(entry.param, null, entry.id);
   }
   assert.equal(findCatalogEntry('paste')?.access, 'manual');
+  assert.equal(findCatalogEntry('desktop_save')?.access, 'manual');
   assert.equal(findCatalogEntry('nope'), undefined);
 });

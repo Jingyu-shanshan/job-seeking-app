@@ -82,6 +82,8 @@ export const JobDetailSchema = Type.Object({
   url: Type.String(),
   sources: Type.Array(JobSourceSchema),
   canImport: Type.Boolean(),
+  /** Whether the user saved the job from a page in the desktop app. */
+  saved: Type.Boolean(),
   snapshot: Type.Union([SnapshotSchema, Type.Null()]),
   earlierSnapshots: Type.Integer({ minimum: 0 }),
 });
@@ -97,6 +99,13 @@ export const PasteJobRequestSchema = Type.Object({
 });
 
 export type PasteJobRequest = Static<typeof PasteJobRequestSchema>;
+
+/** Body of `POST /api/jobs/:id/text`: job text the user pasted for a job the app already has. */
+export const PasteTextRequestSchema = Type.Object({
+  text: Type.String({ pattern: '\\S', maxLength: maxJobTextLength }),
+});
+
+export type PasteTextRequest = Static<typeof PasteTextRequestSchema>;
 
 export const AddRequirementRequestSchema = Type.Object({
   text: Type.String({ pattern: '\\S', maxLength: 1000 }),
