@@ -3,17 +3,17 @@ import { RouterLink } from '@angular/router';
 import type { DiscoveryRun, SourceRun } from '@jsa/shared';
 
 export interface JobCounts {
-  inScope: number;
+  eligible: number;
   toConfirm: number;
-  outOfScope: number;
+  ineligible: number;
 }
 
 const jobs = (n: number) => (n === 1 ? '1 job' : `${n} jobs`);
 const sources = (n: number) => (n === 1 ? '1 source' : `${n} sources`);
 
 /**
- * What the last run did with each source and, when the jobs in scope fall short of what the user
- * wanted, why. The app never adds sources or widens the scope to make up the difference.
+ * What the last run did with each source and, when the eligible jobs fall short of what the user
+ * wanted, why. The app never adds sources or loosens the criteria to make up the difference.
  */
 @Component({
   selector: 'app-run-summary',
@@ -37,8 +37,8 @@ const sources = (n: number) => (n === 1 ? '1 source' : `${n} sources`);
           }
         </ul>
         <p>
-          The app does not add sources or widen the scope on its own. You can change both on the
-          <a routerLink="/sources">Sources</a> page.
+          The app does not add sources or loosen your criteria on its own. You can change them on
+          the <a routerLink="/sources">Sources</a> and <a routerLink="/criteria">Criteria</a> pages.
         </p>
       }
       <ul>
@@ -61,22 +61,20 @@ const sources = (n: number) => (n === 1 ? '1 source' : `${n} sources`);
 export class RunSummary {
   readonly run = input.required<DiscoveryRun>();
   readonly counts = input.required<JobCounts>();
-  /** How many jobs in scope the user wanted; null when they did not say. */
+  /** How many eligible jobs the user wanted; null when they did not say. */
   readonly target = input.required<number | null>();
-  /** The search scope in words, e.g. "Helsinki and Espoo". */
-  readonly scope = input.required<string>();
 
   protected readonly headline = computed(() => {
-    const found = `${jobs(this.counts().inScope)} in scope.`;
+    const found = `${jobs(this.counts().eligible)} eligible.`;
     const target = this.target();
     return target === null ? found : `${found} You wanted ${target}.`;
   });
 
-  /** Only when there is a target and the jobs in scope fall short of it. */
+  /** Only when there is a target and the eligible jobs fall short of it. */
   protected readonly shortfall = computed(() => {
     const target = this.target();
-    const { inScope, toConfirm, outOfScope } = this.counts();
-    if (target === null || inScope >= target) return [];
+    const { eligible, toConfirm, ineligible } = this.counts();
+    if (target === null || eligible >= target) return [];
     const outcomes = this.run().sources.map((s) => s.outcome);
     const failed = outcomes.filter((outcome) => outcome === 'failed').length;
     const skipped = outcomes.filter((outcome) => outcome === 'skipped').length;
@@ -89,15 +87,15 @@ export class RunSummary {
     if (toConfirm) {
       reasons.push(
         toConfirm === 1
-          ? '1 job needs its location checked; it is under To confirm.'
-          : `${toConfirm} jobs need their location checked; they are under To confirm.`,
+          ? '1 job does not say enough for a hard criterion; it is under To confirm.'
+          : `${toConfirm} jobs do not say enough for a hard criterion; they are under To confirm.`,
       );
     }
-    if (outOfScope) {
-      const verb = outOfScope === 1 ? 'is' : 'are';
-      reasons.push(`${jobs(outOfScope)} ${verb} outside the scope (${this.scope()}).`);
+    if (ineligible) {
+      const verb = ineligible === 1 ? 'is' : 'are';
+      reasons.push(`${jobs(ineligible)} ${verb} ruled out by your criteria.`);
     }
-    if (reasons.length === 0) reasons.push('Your sources list no more jobs in scope right now.');
+    if (reasons.length === 0) reasons.push('Your sources list no more eligible jobs right now.');
     return reasons;
   });
 

@@ -2,7 +2,16 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import type { JobDetail, ModelUsage, Requirement, Snapshot, SummaryFields } from '@jsa/shared';
+import type {
+  CriterionResult,
+  Evidence,
+  JobDetail,
+  Match,
+  ModelUsage,
+  Requirement,
+  Snapshot,
+  SummaryFields,
+} from '@jsa/shared';
 import { JobDetailPage } from './job-detail';
 
 const jobId = '00000000-0000-4000-8000-000000000001';
@@ -25,6 +34,7 @@ const requirement = (fields: Partial<Requirement>): Requirement => ({
   quoteVerified: true,
   kind: 'must',
   origin: 'model',
+  evidence: null,
   ...fields,
 });
 
@@ -39,6 +49,7 @@ const snapshot = (fields: Partial<Snapshot> = {}): Snapshot => ({
   text: 'You will build APIs.\n- 5+ years of Python',
   summary: null,
   requirements: [],
+  match: null,
   ...fields,
 });
 
@@ -53,11 +64,19 @@ const detail = (fields: Partial<JobDetail> = {}): JobDetail => ({
   saved: false,
   snapshot: null,
   earlierSnapshots: 0,
+  verdict: 'eligible',
+  criteria: [],
+  factsToSend: 2,
   ...fields,
 });
 
-const summarised = (requirements: Requirement[]) =>
+const summarised = (
+  requirements: Requirement[],
+  fields: Partial<JobDetail> = {},
+  snapshotFields: Partial<Snapshot> = {},
+) =>
   detail({
+    ...fields,
     snapshot: snapshot({
       summary: {
         createdAt: '2026-10-02T08:05:00.000Z',
@@ -74,6 +93,7 @@ const summarised = (requirements: Requirement[]) =>
         },
       },
       requirements,
+      ...snapshotFields,
     }),
   });
 
@@ -184,8 +204,12 @@ describe('JobDetailPage', () => {
     await settle();
 
     expect(listUnder('Responsibilities')).toEqual(['Build APIs “You will build APIs.”']);
-    expect(listUnder('Must have')).toEqual(['Python “5+ years of Python” Correct Remove']);
-    expect(listUnder('Nice to have')).toEqual(['Go added by you “Go is a plus” Correct Remove']);
+    expect(listUnder('Must have')).toEqual([
+      'Python “5+ years of Python” Show in the job text Correct Remove',
+    ]);
+    expect(listUnder('Nice to have')).toEqual([
+      'Go added by you “Go is a plus” Show in the job text Correct Remove',
+    ]);
     expect(listUnder('Requirements to confirm')).toEqual([
       'Must have A degree “A degree” Correct Remove',
     ]);
@@ -253,7 +277,7 @@ describe('JobDetailPage', () => {
     );
     await settle();
     expect(listUnder('Must have')).toEqual([
-      'Python 3 added by you “5+ years of Python” Correct Remove',
+      'Python 3 added by you “5+ years of Python” Show in the job text Correct Remove',
     ]);
 
     button('Remove')!.click();
@@ -285,7 +309,9 @@ describe('JobDetailPage', () => {
     await settle();
     http.expectOne('/api/model-usage').flush(usage);
     await settle();
-    expect(listUnder('Must have')).toEqual(['Python “5+ years of Python” Correct Remove']);
+    expect(listUnder('Must have')).toEqual([
+      'Python “5+ years of Python” Show in the job text Correct Remove',
+    ]);
   });
 
   it('shows no summary when the text cannot be read from anywhere', async () => {
@@ -357,5 +383,172 @@ describe('JobDetailPage', () => {
       );
     await settle();
     expect(text(section('Job text')!)).toContain('The job text is longer than 100000 characters.');
+  });
+
+  const result = (fields: Partial<CriterionResult>): CriterionResult => ({
+    criterion: 'location',
+    strength: 'hard',
+    outcome: 'met',
+    effect: 'none',
+    reason: 'The location is in your search scope.',
+    quote: null,
+    ...fields,
+  });
+
+  const matched: Match = {
+    createdAt: '2026-10-02T09:00:00.000Z',
+    model: 'deepseek-flash',
+    costUsd: 0.0005,
+    factsSent: 2,
+    outdated: [],
+  };
+
+  const evidence = (fields: Partial<Evidence> = {}): Evidence => ({
+    outcome: 'met',
+    note: 'F1 says five years.',
+    facts: [
+      {
+        versionId: '00000000-0000-4000-8000-000000000030',
+        factId: '00000000-0000-4000-8000-000000000031',
+        version: 2,
+        body: 'Five years of Python at Acme.',
+        current: true,
+      },
+    ],
+    ...fields,
+  });
+
+  it('shows how the job fares against each criterion, and jumps to the quotes', async () => {
+    const jd = 'You will build APIs.\n- 5+ years of   Python\nWe work in English.';
+    await load(
+      summarised(
+        [requirement({ quote: '5+ years of Python' })],
+        {
+          verdict: 'to_confirm',
+          criteria: [
+            result({}),
+            result({
+              criterion: 'languages',
+              reason: 'It is done in English.',
+              quote: 'We work in English.',
+            }),
+            result({
+              criterion: 'mustHaves',
+              outcome: 'unknown',
+              effect: 'to_confirm',
+              reason: 'Not matched with your facts yet.',
+            }),
+          ],
+        },
+        { text: jd },
+      ),
+    );
+    const criteria = section('Your criteria')!;
+    expect(text(criteria)).toContain(
+      'To confirm: the job does not say enough for a hard criterion. Change your criteria',
+    );
+    expect([...criteria.querySelectorAll('li')].map((li) => text(li))).toEqual([
+      'Met Location: The location is in your search scope.',
+      'Met Working language: It is done in English. Show in the job text',
+      'Unknown Must-haves unknown: Not matched with your facts yet.',
+    ]);
+    const jdText = page().querySelector('details')!;
+    expect(jdText.open).toBe(false);
+
+    criteria.querySelector('button')!.click();
+    await settle();
+    expect(jdText.open).toBe(true);
+    const mark = () => page().querySelector('mark')!;
+    expect(text(mark())).toBe('We work in English.');
+    expect(document.activeElement).toBe(mark());
+    expect(page().querySelector('pre')!.textContent).toBe(jd);
+
+    // A requirement's quote, found whatever the spacing in the text.
+    page().querySelector<HTMLButtonElement>('[aria-label="Show Python in the job text"]')!.click();
+    await settle();
+    expect(mark().textContent).toBe('5+ years of   Python');
+  });
+
+  it('says when a quote is not in the current text', async () => {
+    await load(
+      summarised([], {
+        criteria: [result({ criterion: 'languages', quote: 'We work in Swedish.' })],
+      }),
+    );
+    section('Your criteria')!.querySelector('button')!.click();
+    await settle();
+    expect(text(page().querySelector('[role=alert]'))).toBe(
+      'That quote is not in the current job text.',
+    );
+    expect(page().querySelector('mark')).toBeNull();
+  });
+
+  it('matches the job with the facts and shows what each requirement rests on', async () => {
+    await load(summarised([requirement({})]));
+    expect(text(section('Match with your facts')!)).toContain(
+      'the 2 facts you allowed to go to DeepSeek, in one request; nothing else about you.',
+    );
+
+    button('Match with my facts')!.click();
+    TestBed.tick();
+    const request = http.expectOne(`/api/snapshots/${snapshotId}/match`);
+    expect(request.request.method).toBe('POST');
+    expect(text(page().querySelector('[role=status]'))).toBe(
+      'Matching with your facts on DeepSeek. This can take a minute.',
+    );
+    request.flush(summarised([requirement({ evidence: evidence() })], {}, { match: matched }));
+    await settle();
+    http.expectOne('/api/model-usage').flush({ ...usage, calls: 4 });
+    await settle();
+
+    expect(listUnder('Must have')).toEqual([
+      'Python “5+ years of Python” Met by your facts F1 says five years. Five years of Python at Acme. (fact version 2) Show in the job text Correct Remove',
+    ]);
+    const matchSection = section('Match with your facts')!;
+    expect(text(matchSection)).toBe(
+      'Match with your facts Matched by deepseek-flash on 2 Oct 2026 with 2 facts, about $0.0005. Each requirement above shows what it found.',
+    );
+    expect(button('Match again')).toBeUndefined();
+  });
+
+  it('offers to match again once the match is out of date', async () => {
+    await load(
+      summarised(
+        [
+          requirement({
+            evidence: evidence({
+              facts: evidence().facts.map((f) => ({ ...f, current: false })),
+            }),
+          }),
+        ],
+        {},
+        {
+          match: {
+            ...matched,
+            outdated: ['The facts that may be sent to DeepSeek have changed since.'],
+          },
+        },
+      ),
+    );
+    expect(listUnder('Must have')[0]).toContain(
+      'Met by your facts a fact it cites has changed, so it counts as unknown',
+    );
+    expect(listUnder('Must have')[0]).toContain('(fact version 2, not current)');
+    expect(text(section('Match with your facts')!)).toContain(
+      'The facts that may be sent to DeepSeek have changed since. Match again to use the change.',
+    );
+    button('Match again')!.click();
+    http.expectOne(`/api/snapshots/${snapshotId}/match`).flush(summarised([requirement({})]));
+    await settle();
+    http.expectOne('/api/model-usage').flush(usage);
+    await settle();
+  });
+
+  it('cannot match before any fact may be sent', async () => {
+    await load(summarised([requirement({})], { factsToSend: 0 }));
+    const matchSection = section('Match with your facts')!;
+    expect(text(matchSection)).toContain('None of your facts may be sent yet.');
+    expect(matchSection.querySelector('a')!.getAttribute('href')).toBe('/facts');
+    expect(button('Match with my facts')!.disabled).toBe(true);
   });
 });

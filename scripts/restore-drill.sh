@@ -53,9 +53,17 @@ insert into job_summary (job_snapshot_id, model_call_id, responsibilities, field
   values (:'snapshot_id', :'model_call_id',
     '[{"text": "Keep invoices correct", "quote": "You keep invoices correct.", "quoteVerified": true}]',
     '{"location": {"value": "Helsinki", "quote": "(Helsinki)", "quoteVerified": true}, "salary": null}');
-insert into match (job_snapshot_id, verdict) values (:'snapshot_id', 'eligible') returning id as match_id \gset
-insert into match_requirement values (:'match_id', :'requirement_id', 'met');
+insert into model_call (purpose, job_snapshot_id, model, started_at, duration_ms, input_tokens,
+    cached_input_tokens, output_tokens, cost_usd)
+  values ('match', :'snapshot_id', 'sample-model', now(), 900, 800, 0, 200, 0.00048)
+  returning id as match_call_id \gset
+insert into match (job_snapshot_id, verdict, model_call_id)
+  values (:'snapshot_id', 'eligible', :'match_call_id') returning id as match_id \gset
+insert into match_fact values (:'match_id', :'fact_version_id');
+insert into match_requirement values (:'match_id', :'requirement_id', 'met', 'The sample fact says so.');
 insert into match_evidence values (:'match_id', :'requirement_id', :'fact_version_id');
+update job_criteria set title_strength = 'hard', title_words = '{engineer}',
+  language_strength = 'preference', languages = '{English}';
 insert into artifact (job_snapshot_id, kind) values (:'snapshot_id', 'resume') returning id as artifact_id \gset
 insert into artifact_claim (artifact_id, position, body)
   values (:'artifact_id', 0, 'Maintained the invoice export service.') returning id as claim_id \gset

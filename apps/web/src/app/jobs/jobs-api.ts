@@ -23,6 +23,10 @@ export class JobsApi {
     return firstValueFrom(this.http.post<JobDetail>(`/api/snapshots/${snapshotId}/summary`, {}));
   }
 
+  match(snapshotId: string): Promise<JobDetail> {
+    return firstValueFrom(this.http.post<JobDetail>(`/api/snapshots/${snapshotId}/match`, {}));
+  }
+
   addRequirement(snapshotId: string, requirement: AddRequirementRequest): Promise<JobDetail> {
     return firstValueFrom(
       this.http.post<JobDetail>(`/api/snapshots/${snapshotId}/requirements`, requirement),

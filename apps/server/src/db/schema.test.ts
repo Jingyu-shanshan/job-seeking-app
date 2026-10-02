@@ -359,26 +359,91 @@ describe('schema', needsDatabase, () => {
         foreignKey,
       );
     });
+  });
 
-    test('match evidence belongs to an outcome recorded for the same match', async () => {
+  describe('matches', () => {
+    async function newMatch(snapshotId: string) {
+      const call = await row(
+        `insert into model_call (purpose, job_snapshot_id, model, started_at, duration_ms)
+         values ('match', $1, 'some-model', now(), 900) returning id`,
+        [snapshotId],
+      );
+      return row(
+        `insert into match (job_snapshot_id, verdict, model_call_id)
+         values ($1, 'eligible', $2) returning id, model_call_id`,
+        [snapshotId, call.id],
+      );
+    }
+
+    const outcomeInsert = `insert into match_requirement (match_id, job_requirement_id, outcome, note)
+      values ($1, $2, 'met', $3)`;
+
+    test('come from one model call each', async () => {
+      const snapshot = await newSnapshot();
+      const match = await newMatch(snapshot.id);
+      const insert =
+        'insert into match (job_snapshot_id, verdict, model_call_id) values ($1, $2, $3)';
+      await assert.rejects(client.query(insert, [snapshot.id, 'eligible', null]), {
+        code: '23502',
+      });
+      await assert.rejects(client.query(insert, [snapshot.id, 'eligible', match.model_call_id]), {
+        code: '23505',
+      });
+    });
+
+    test('cite only fact versions that were sent, for an outcome of the same match', async () => {
+      const sent = await newFactVersion();
+      const notSent = await newFactVersion('Ran the on-call rota.');
+      const snapshot = await newSnapshot();
+      const requirement = await row(`${requirementInsert} returning id`, [snapshot.id]);
+      const match = await newMatch(snapshot.id);
+      const evidence = 'insert into match_evidence values ($1, $2, $3)';
+      await client.query('insert into match_fact values ($1, $2)', [match.id, sent.id]);
+      await assert.rejects(client.query(evidence, [match.id, requirement.id, sent.id]), foreignKey);
+
+      await client.query(outcomeInsert, [match.id, requirement.id, 'Says so.']);
+      await client.query(evidence, [match.id, requirement.id, sent.id]);
+      await assert.rejects(
+        client.query(evidence, [match.id, requirement.id, notSent.id]),
+        foreignKey,
+      );
+    });
+
+    test('keep a short note and never change', async () => {
       const version = await newFactVersion();
       const snapshot = await newSnapshot();
       const requirement = await row(`${requirementInsert} returning id`, [snapshot.id]);
-      const match = await row(
-        `insert into match (job_snapshot_id, verdict) values ($1, 'eligible') returning id`,
-        [snapshot.id],
-      );
-      const evidence = 'insert into match_evidence values ($1, $2, $3)';
+      const match = await newMatch(snapshot.id);
       await assert.rejects(
-        client.query(evidence, [match.id, requirement.id, version.id]),
-        foreignKey,
+        client.query(outcomeInsert, [match.id, requirement.id, 'x'.repeat(1001)]),
+        { code: '23514' },
       );
-
-      await client.query(`insert into match_requirement values ($1, $2, 'met')`, [
+      await client.query(outcomeInsert, [match.id, requirement.id, 'Says so.']);
+      await client.query('insert into match_fact values ($1, $2)', [match.id, version.id]);
+      await client.query('insert into match_evidence values ($1, $2, $3)', [
         match.id,
         requirement.id,
+        version.id,
       ]);
-      await client.query(evidence, [match.id, requirement.id, version.id]);
+
+      await assert.rejects(
+        client.query(`update match set verdict = 'ineligible' where id = $1`, [match.id]),
+        immutable,
+      );
+      await assert.rejects(client.query('delete from match where id = $1', [match.id]), {
+        message: /cannot be deleted/,
+      });
+      for (const change of [
+        `update match_requirement set outcome = 'unmet'`,
+        'delete from match_requirement',
+        'delete from match_evidence',
+        'update match_fact set fact_version_id = fact_version_id',
+        'delete from match_fact',
+      ]) {
+        await assert.rejects(client.query(`${change} where match_id = $1`, [match.id]), {
+          message: /cannot be changed or deleted/,
+        });
+      }
     });
   });
 
@@ -459,18 +524,49 @@ describe('schema', needsDatabase, () => {
     });
   });
 
-  test('the search scope is one row, Helsinki without remote jobs by default', async () => {
-    assert.deepEqual((await client.query('select area, include_remote from search_scope')).rows, [
-      { area: 'helsinki', include_remote: false },
-    ]);
-    await assert.rejects(client.query('insert into search_scope default values'), {
+  test('the criteria are one row: a hard location in Helsinki, the must-haves a preference', async () => {
+    assert.deepEqual(
+      (
+        await client.query(
+          `select area, include_remote, location_strength, location_if_unknown, title_strength,
+             title_words, must_have_strength from job_criteria`,
+        )
+      ).rows,
+      [
+        {
+          area: 'helsinki',
+          include_remote: false,
+          location_strength: 'hard',
+          location_if_unknown: 'to_confirm',
+          title_strength: 'off',
+          title_words: [],
+          must_have_strength: 'preference',
+        },
+      ],
+    );
+    await assert.rejects(client.query('insert into job_criteria default values'), {
       code: '23505',
     });
-    await assert.rejects(client.query('insert into search_scope (singleton) values (false)'), {
+    await assert.rejects(client.query('insert into job_criteria (singleton) values (false)'), {
       code: '23514',
     });
-    await assert.rejects(client.query(`update search_scope set area = 'everywhere'`), {
-      code: '23514',
-    });
+    for (const change of [
+      `area = 'everywhere'`,
+      `title_strength = 'must'`,
+      `location_if_unknown = 'ignore'`,
+      // A criterion in use needs something to compare with.
+      `title_strength = 'hard'`,
+      `language_strength = 'preference'`,
+      `employment_strength = 'hard', employment_types = '{weekly}'`,
+    ]) {
+      await assert.rejects(
+        client.query(`update job_criteria set ${change}`),
+        { code: '23514' },
+        change,
+      );
+    }
+    await client.query(
+      `update job_criteria set title_strength = 'hard', title_words = '{backend}'`,
+    );
   });
 });

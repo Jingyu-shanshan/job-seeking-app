@@ -1,11 +1,9 @@
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import {
   AddSourceRequestSchema,
-  SearchScopeSchema,
   SourceSchema,
   SourcesResponseSchema,
   UpdateSourceRequestSchema,
-  type SearchScope,
   type Source,
 } from '@jsa/shared';
 import type { Pool } from 'pg';
@@ -13,9 +11,10 @@ import Type from 'typebox';
 import { httpError } from '../http-error.ts';
 import { catalog, findCatalogEntry } from './catalog.ts';
 
-// The user's sources and search scope (T15). Nothing here requests a source; discovery (T13)
-// does that, and only for what `sourcesToRequest` in rules/sources.ts returns. Like every /api
-// route, these need a session and, for writes, a trusted Origin (the hook in app.ts).
+// The user's sources (T15); the search scope is one of the criteria since T06
+// (matching/criteria.ts). Nothing here requests a source; discovery (T13) does that, and only for
+// what `sourcesToRequest` in rules/sources.ts returns. Like every /api route, these need a session
+// and, for writes, a trusted Origin (the hook in app.ts).
 
 export interface SourceRoutesOptions {
   pool: Pool;
@@ -122,29 +121,4 @@ export const sourceRoutes: FastifyPluginAsyncTypebox<SourceRoutesOptions> = asyn
     if (!rowCount) throw httpError(404, 'There is no such source.');
     return reply.code(204).send();
   });
-
-  app.get('/search-scope', { schema: { response: { 200: SearchScopeSchema } } }, async () => {
-    const { rows } = await pool.query<{ area: SearchScope['area']; include_remote: boolean }>(
-      'select area, include_remote from search_scope',
-    );
-    const row = rows[0];
-    // The migration inserts the only row; nothing deletes it.
-    if (!row) throw new Error('search_scope has no row');
-    return { area: row.area, includeRemote: row.include_remote };
-  });
-
-  app.put(
-    '/search-scope',
-    { schema: { body: SearchScopeSchema, response: { 200: SearchScopeSchema } } },
-    async (request) => {
-      const { area, includeRemote } = request.body;
-      await pool.query(
-        `insert into search_scope (area, include_remote) values ($1, $2)
-         on conflict (singleton) do update
-         set area = excluded.area, include_remote = excluded.include_remote, updated_at = now()`,
-        [area, includeRemote],
-      );
-      return { area, includeRemote };
-    },
-  );
 };

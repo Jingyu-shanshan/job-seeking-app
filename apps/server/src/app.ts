@@ -13,6 +13,7 @@ import { RateLimiter } from './discovery/run.ts';
 import { factRoutes } from './facts/routes.ts';
 import { jdRoutes } from './jd/routes.ts';
 import { savedRoutes } from './jd/saved.ts';
+import { criteriaRoutes } from './matching/criteria.ts';
 import { sourceRoutes } from './sources/routes.ts';
 
 export type AppOptions = Pick<Config, 'webRoot' | 'appUrl' | 'trustedOrigins'> &
@@ -122,6 +123,7 @@ export function buildApp({
     const limiter = new RateLimiter();
     app.register(sourceRoutes, { prefix: '/api', pool });
     app.register(factRoutes, { prefix: '/api', pool });
+    app.register(criteriaRoutes, { prefix: '/api', pool });
     app.register(discoveryRoutes, { prefix: '/api', pool, fetch, limiter });
     app.register(jdRoutes, { prefix: '/api', pool, fetch, limiter, deepseekApiKey });
     app.register(savedRoutes, { prefix: '/api', pool });

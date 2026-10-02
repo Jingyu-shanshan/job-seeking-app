@@ -14,7 +14,7 @@ const areaLabels: Record<SearchScope['area'], string> = {
   worldwide: 'anywhere',
 };
 
-/** The jobs the user's sources list now, grouped by the search scope, and a way to look again. */
+/** The jobs the user's sources list now, grouped by the user's criteria, and a way to look again. */
 @Component({
   selector: 'app-jobs',
   imports: [FormField, FormRoot, JobList, RouterLink, RunSummary],
@@ -22,8 +22,9 @@ const areaLabels: Record<SearchScope['area'], string> = {
     <h1>Jobs</h1>
     <p>
       Open jobs on the job boards you use, and jobs you pasted or saved, sorted by when they were
-      posted. Choose the boards and the search scope on the <a routerLink="/sources">Sources</a>
-      page. Open a job to read and summarise its text.
+      posted and grouped by your hard <a routerLink="/criteria">criteria</a>. Choose the boards on
+      the <a routerLink="/sources">Sources</a> page. Open a job to read, summarise and match it with
+      your facts.
     </p>
     <p>
       <a routerLink="/jobs/paste">Paste a job</a> from any other site, or browse the site in the
@@ -32,7 +33,7 @@ const areaLabels: Record<SearchScope['area'], string> = {
 
     <form [formRoot]="runForm">
       <label>
-        Jobs in scope you want (optional)
+        Eligible jobs you want (optional)
         <input type="number" step="1" [formField]="runForm.target" />
       </label>
       <button type="submit" [disabled]="runForm().submitting()">Find jobs</button>
@@ -52,38 +53,37 @@ const areaLabels: Record<SearchScope['area'], string> = {
     @if (lastRun(); as run) {
       <section aria-labelledby="run-heading">
         <h2 id="run-heading">Last run</h2>
-        <app-run-summary
-          [run]="run"
-          [counts]="counts()"
-          [target]="runTarget()"
-          [scope]="scopeLabel()"
-        />
+        <app-run-summary [run]="run" [counts]="counts()" [target]="runTarget()" />
       </section>
     }
 
     @if (data.hasValue()) {
-      <p>Scope: {{ scopeLabel() }}.</p>
-      <section aria-labelledby="in-scope-heading">
-        <h2 id="in-scope-heading">In scope ({{ groups().inScope.length }})</h2>
-        @if (groups().inScope.length) {
-          <app-job-list [jobs]="groups().inScope" />
+      <p>Location: {{ scopeLabel() }}.</p>
+      <section aria-labelledby="eligible-heading">
+        <h2 id="eligible-heading">Eligible ({{ groups().eligible.length }})</h2>
+        @if (groups().eligible.length) {
+          <app-job-list [jobs]="groups().eligible" />
         } @else {
-          <p>No jobs in scope yet.</p>
+          <p>No eligible jobs yet.</p>
         }
       </section>
       @if (groups().toConfirm.length) {
         <section aria-labelledby="to-confirm-heading">
           <h2 id="to-confirm-heading">To confirm ({{ groups().toConfirm.length }})</h2>
-          <p>The location is missing or unclear, so these are not ruled out. Check the job page.</p>
+          <p>
+            The job does not say enough for a hard criterion, so it is not ruled out. Summarise it,
+            match it with your facts, or check the job page.
+          </p>
           <app-job-list [jobs]="groups().toConfirm" />
         </section>
       }
-      @if (groups().outOfScope.length) {
+      @if (groups().ineligible.length) {
         <details>
           <summary>
-            <h2>Out of scope ({{ groups().outOfScope.length }})</h2>
+            <h2>Ruled out ({{ groups().ineligible.length }})</h2>
           </summary>
-          <app-job-list [jobs]="groups().outOfScope" />
+          <p>Each says which hard criterion ruled it out.</p>
+          <app-job-list [jobs]="groups().ineligible" />
         </details>
       }
     } @else if (data.isLoading()) {
@@ -128,18 +128,18 @@ export class Jobs {
   protected readonly groups = computed(() => {
     const jobs = this.data.value()?.jobs ?? [];
     return {
-      inScope: jobs.filter((job) => job.verdict === 'in_scope'),
+      eligible: jobs.filter((job) => job.verdict === 'eligible'),
       toConfirm: jobs.filter((job) => job.verdict === 'to_confirm'),
-      outOfScope: jobs.filter((job) => job.verdict === 'out_of_scope'),
+      ineligible: jobs.filter((job) => job.verdict === 'ineligible'),
     };
   });
 
   protected readonly counts = computed(() => {
-    const { inScope, toConfirm, outOfScope } = this.groups();
+    const { eligible, toConfirm, ineligible } = this.groups();
     return {
-      inScope: inScope.length,
+      eligible: eligible.length,
       toConfirm: toConfirm.length,
-      outOfScope: outOfScope.length,
+      ineligible: ineligible.length,
     };
   });
 

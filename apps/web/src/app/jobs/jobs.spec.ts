@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import type { DiscoveryRun, Job, JobsResponse, SourceRun } from '@jsa/shared';
+import type { CriterionResult, DiscoveryRun, Job, JobsResponse, SourceRun } from '@jsa/shared';
 import { Jobs } from './jobs';
 
 let nextId = 1;
@@ -17,8 +17,18 @@ const job = (fields: Partial<Job>): Job => ({
   sources: [{ id: '00000000-0000-4000-8000-000000000001', catalogId: 'b', param: 'acme' }],
   origin: 'discovered',
   needsText: false,
-  verdict: 'in_scope',
-  reason: '',
+  verdict: 'eligible',
+  criteria: [],
+  ...fields,
+});
+
+const result = (fields: Partial<CriterionResult>): CriterionResult => ({
+  criterion: 'location',
+  strength: 'hard',
+  outcome: 'met',
+  effect: 'none',
+  reason: 'The location is in your search scope.',
+  quote: null,
   ...fields,
 });
 
@@ -36,12 +46,30 @@ const sourceRun = (fields: Partial<SourceRun>): SourceRun => ({
 });
 
 const jobs: Job[] = [
-  job({ title: 'Backend Engineer' }),
+  job({
+    title: 'Backend Engineer',
+    criteria: [
+      result({}),
+      // A preference it is known not to meet shows; an unknown one is left to the job page.
+      result({
+        criterion: 'title',
+        strength: 'preference',
+        outcome: 'unmet',
+        reason: 'The title has none of “platform”.',
+      }),
+      result({
+        criterion: 'mustHaves',
+        strength: 'preference',
+        outcome: 'unknown',
+        reason: 'Not matched with your facts yet.',
+      }),
+    ],
+  }),
   job({
     title: 'Designer',
     location: '',
     verdict: 'to_confirm',
-    reason: 'No location given.',
+    criteria: [result({ outcome: 'unknown', effect: 'to_confirm', reason: 'No location given.' })],
     sources: [
       { id: '00000000-0000-4000-8000-000000000001', catalogId: 'b', param: 'acme' },
       { id: '00000000-0000-4000-8000-000000000002', catalogId: 'b', param: 'ACME' },
@@ -52,8 +80,16 @@ const jobs: Job[] = [
     company: null,
     location: 'Berlin, Germany',
     publishedAt: null,
-    verdict: 'out_of_scope',
-    reason: 'Not in Helsinki or Espoo.',
+    verdict: 'ineligible',
+    criteria: [
+      result({ outcome: 'unmet', effect: 'rules_out', reason: 'Not in Helsinki or Espoo.' }),
+      result({
+        criterion: 'languages',
+        outcome: 'unknown',
+        effect: 'rules_out',
+        reason: 'Summarise the job to find its working language.',
+      }),
+    ],
   }),
 ];
 
@@ -111,25 +147,26 @@ describe('Jobs', () => {
 
   afterEach(() => http.verify());
 
-  it('groups the jobs by the search scope and says why a job is not in it', async () => {
+  it('groups the jobs by the hard criteria and says which criterion decided', async () => {
     await load();
 
-    expect(text()).toContain('Scope: Helsinki and Espoo, remote jobs not included.');
-    expect(items('In scope (1)')).toEqual([
-      'Backend Engineer Acme · Helsinki, Finland · Job page Posted 20 Sep 2026 · Found 1 Oct 2026',
+    expect(text()).toContain('Location: Helsinki and Espoo, remote jobs not included.');
+    expect(page().querySelector('a[href="/criteria"]')).not.toBeNull();
+    expect(items('Eligible (1)')).toEqual([
+      'Backend Engineer Acme · Helsinki, Finland · Job page Posted 20 Sep 2026 · Found 1 Oct 2026 Title (preference): The title has none of “platform”.',
     ]);
     expect(items('To confirm (1)')).toEqual([
-      'Designer Acme · No location given · Job page Posted 20 Sep 2026 · Found 1 Oct 2026 · Listed by 2 of your sources No location given.',
+      'Designer Acme · No location given · Job page Posted 20 Sep 2026 · Found 1 Oct 2026 · Listed by 2 of your sources Location unknown: No location given.',
     ]);
-    // Out of scope is collapsed, and names the board when the source gives no company.
-    const out = section('Out of scope (1)')!;
+    // Ruled out is collapsed, and names the board when the source gives no company.
+    const out = section('Ruled out (1)')!;
     expect(out.tagName).toBe('DETAILS');
     expect(out.hasAttribute('open')).toBe(false);
-    expect(items('Out of scope (1)')).toEqual([
-      'Sales Lead acme · Berlin, Germany · Job page Found 1 Oct 2026 Not in Helsinki or Espoo.',
+    expect(items('Ruled out (1)')).toEqual([
+      'Sales Lead acme · Berlin, Germany · Job page Found 1 Oct 2026 Location: Not in Helsinki or Espoo.Working language unknown, and you rule out unknowns: Summarise the job to find its working language.',
     ]);
 
-    const [title, external] = section('In scope')!.querySelectorAll('a');
+    const [title, external] = section('Eligible')!.querySelectorAll('a');
     expect(title!.getAttribute('href')).toBe(`/jobs/${jobs[0]!.id}`);
     expect(external!.getAttribute('href')).toBe('https://job-boards.example.com/acme/jobs/1');
     expect(external!.getAttribute('target')).toBe('_blank');
@@ -147,7 +184,7 @@ describe('Jobs', () => {
       }),
     ]);
 
-    expect(items('In scope (1)')).toEqual([
+    expect(items('Eligible (1)')).toEqual([
       'Pasted Engineer Company not given · Helsinki, Finland · Job page Pasted 1 Oct 2026',
     ]);
     expect(page().querySelector('a[href="/jobs/paste"]')).not.toBeNull();
@@ -160,18 +197,18 @@ describe('Jobs', () => {
       job({ ...saved, title: 'Listed Engineer', needsText: true }),
     ]);
 
-    expect(items('In scope (2)')).toEqual([
+    expect(items('Eligible (2)')).toEqual([
       'Saved Engineer Acme · Helsinki, Finland · Job page Saved 1 Oct 2026',
       'Listed Engineer Acme · Helsinki, Finland · Job page Saved 1 Oct 2026 Needs the job text: save its page or paste it.',
     ]);
   });
 
-  it('shows only the in-scope group while there are no jobs', async () => {
+  it('shows only the eligible group while there are no jobs', async () => {
     await load([]);
 
-    expect(text(section('In scope (0)')!)).toContain('No jobs in scope yet.');
+    expect(text(section('Eligible (0)')!)).toContain('No eligible jobs yet.');
     expect(section('To confirm')).toBeUndefined();
-    expect(section('Out of scope')).toBeUndefined();
+    expect(section('Ruled out')).toBeUndefined();
   });
 
   it('finds jobs, then shows what each source gave and the refreshed list', async () => {
@@ -207,13 +244,13 @@ describe('Jobs', () => {
     await load();
 
     const summary = text(section('Last run')!);
-    expect(summary).toContain('1 job in scope.');
+    expect(summary).toContain('1 job eligible.');
     expect(summary).not.toContain('Why not more');
     expect(summary).toContain('acme (Some job boards): 3 jobs listed, 1 new, 0 no longer listed.');
     expect(summary).toContain('gone (Some job boards) could not be read: There is no such board.');
     expect(summary).toContain('later (Other boards) was skipped: The app cannot read these yet.');
     expect(summary).toContain('2 of at most 20 requests used.');
-    expect(items('In scope (1)').length).toBe(1);
+    expect(items('Eligible (1)').length).toBe(1);
   });
 
   it('explains a shortfall against the jobs wanted, without widening anything', async () => {
@@ -228,14 +265,14 @@ describe('Jobs', () => {
     await load();
 
     const summary = text(section('Last run')!);
-    expect(summary).toContain('1 job in scope. You wanted 5.');
+    expect(summary).toContain('1 job eligible. You wanted 5.');
     expect(summary).toContain('Why not more:');
     expect(summary).toContain('1 source could not be read; see below.');
-    expect(summary).toContain('1 job needs its location checked; it is under To confirm.');
     expect(summary).toContain(
-      '1 job is outside the scope (Helsinki and Espoo, remote jobs not included).',
+      '1 job does not say enough for a hard criterion; it is under To confirm.',
     );
-    expect(summary).toContain('The app does not add sources or widen the scope on its own.');
+    expect(summary).toContain('1 job is ruled out by your criteria.');
+    expect(summary).toContain('The app does not add sources or loosen your criteria on its own.');
   });
 
   it('says when the target is met', async () => {
@@ -250,7 +287,7 @@ describe('Jobs', () => {
     await load();
 
     const summary = text(section('Last run')!);
-    expect(summary).toContain('1 job in scope. You wanted 1.');
+    expect(summary).toContain('1 job eligible. You wanted 1.');
     expect(summary).not.toContain('Why not more');
   });
 

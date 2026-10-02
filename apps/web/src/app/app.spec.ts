@@ -67,7 +67,7 @@ describe('App', () => {
     user.set({ email: 'owner@example.com' });
     const harness = await RouterTestingHarness.create('/sources');
 
-    expect(heading(harness)).toBe('Sources and search scope');
+    expect(heading(harness)).toBe('Sources');
   });
 
   it('shows the jobs page to the signed-in user', async () => {
@@ -78,7 +78,7 @@ describe('App', () => {
     expect(heading(harness)).toBe('Jobs');
   });
 
-  it('links the jobs, facts and sources pages from the header once signed in', () => {
+  it('links the jobs, facts, criteria and sources pages from the header once signed in', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const links = () =>
@@ -89,7 +89,7 @@ describe('App', () => {
 
     user.set({ email: 'owner@example.com' });
     fixture.detectChanges();
-    expect(links()).toEqual(['/jobs', '/facts', '/sources']);
+    expect(links()).toEqual(['/jobs', '/facts', '/criteria', '/sources']);
   });
 
   it('shows who is signed in and signs out', async () => {

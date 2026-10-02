@@ -1,4 +1,5 @@
 import Type, { type Static } from 'typebox';
+import { CriterionResultSchema, JobVerdictSchema } from './criteria.ts';
 import { SearchScopeSchema } from './sources.ts';
 
 /**
@@ -58,14 +59,14 @@ export const JobSchema = Type.Object({
    * can read the text from. Such a job is not summarised or matched until its text is saved.
    */
   needsText: Type.Boolean(),
-  verdict: LocationVerdictSchema,
-  /** Why the job is out of scope or to be confirmed; '' when it is in scope. */
-  reason: Type.String(),
+  verdict: JobVerdictSchema,
+  /** The user's criteria that are not off, checked against this job. */
+  criteria: Type.Array(CriterionResultSchema),
 });
 
 export type Job = Static<typeof JobSchema>;
 
-/** Response of `GET /api/jobs`: the open jobs, classified by the scope that is returned too. */
+/** Response of `GET /api/jobs`: the jobs, checked against the user's criteria. */
 export const JobsResponseSchema = Type.Object({
   scope: SearchScopeSchema,
   jobs: Type.Array(JobSchema),

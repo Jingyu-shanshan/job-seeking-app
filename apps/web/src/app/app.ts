@@ -13,6 +13,9 @@ import { Session } from './auth/session';
         <nav aria-label="Main">
           <a routerLink="/jobs" routerLinkActive="active" ariaCurrentWhenActive="page">Jobs</a>
           <a routerLink="/facts" routerLinkActive="active" ariaCurrentWhenActive="page">Facts</a>
+          <a routerLink="/criteria" routerLinkActive="active" ariaCurrentWhenActive="page">
+            Criteria
+          </a>
           <a routerLink="/sources" routerLinkActive="active" ariaCurrentWhenActive="page">
             Sources
           </a>

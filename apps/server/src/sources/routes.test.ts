@@ -15,7 +15,7 @@ const { appUrl, trustedOrigins } = loadConfig({});
 const secret = 'test-secret-that-is-at-least-32-characters';
 const account = { email: 'owner@example.com', name: 'owner', password: 'correct horse battery' };
 
-describe('/api/sources and /api/search-scope', needsDatabase, () => {
+describe('/api/sources', needsDatabase, () => {
   let db: TestDatabase;
   let pool: Pool;
   let app: ReturnType<typeof buildApp>;
@@ -163,33 +163,8 @@ describe('/api/sources and /api/search-scope', needsDatabase, () => {
     assert.ok(!sources.some((s) => s.catalogId === 'retired_board'));
   });
 
-  test('keeps the search scope, Helsinki by default, and changes it without code', async () => {
-    const get = async () => (await call({ method: 'GET', url: '/api/search-scope' })).json();
-    const put = (payload: object) => call({ method: 'PUT', url: '/api/search-scope', payload });
-
-    assert.deepEqual(await get(), { area: 'helsinki', includeRemote: false });
-
-    for (const scope of [
-      { area: 'finland', includeRemote: true },
-      { area: 'worldwide', includeRemote: false },
-      { area: 'helsinki', includeRemote: true },
-    ]) {
-      const res = await put(scope);
-      assert.equal(res.statusCode, 200);
-      assert.deepEqual(res.json(), scope);
-      assert.deepEqual(await get(), scope);
-    }
-
-    for (const wrong of [{ area: 'everywhere', includeRemote: false }, { area: 'finland' }]) {
-      assert.equal((await put(wrong)).statusCode, 400, JSON.stringify(wrong));
-    }
-    assert.deepEqual(await get(), { area: 'helsinki', includeRemote: true });
-  });
-
   test('refuses a request without a session, and a write from another site', async () => {
-    for (const url of ['/api/sources', '/api/search-scope']) {
-      assert.equal((await app.inject({ method: 'GET', url })).statusCode, 401, url);
-    }
+    assert.equal((await app.inject({ method: 'GET', url: '/api/sources' })).statusCode, 401);
     const res = await call({
       method: 'POST',
       url: '/api/sources',
