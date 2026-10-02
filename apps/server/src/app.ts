@@ -10,6 +10,7 @@ import type { Config } from './config.ts';
 import { checkDatabase, createPool } from './db/pool.ts';
 import { discoveryRoutes } from './discovery/routes.ts';
 import { RateLimiter } from './discovery/run.ts';
+import { factRoutes } from './facts/routes.ts';
 import { jdRoutes } from './jd/routes.ts';
 import { sourceRoutes } from './sources/routes.ts';
 
@@ -119,6 +120,7 @@ export function buildApp({
   if (pool) {
     const limiter = new RateLimiter();
     app.register(sourceRoutes, { prefix: '/api', pool });
+    app.register(factRoutes, { prefix: '/api', pool });
     app.register(discoveryRoutes, { prefix: '/api', pool, fetch, limiter });
     app.register(jdRoutes, { prefix: '/api', pool, fetch, limiter, deepseekApiKey });
   }
