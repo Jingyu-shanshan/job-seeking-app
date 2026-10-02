@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'"
+    />
+    <title>Built-in browser</title>
+    <link rel="stylesheet" href="toolbar.css" />
+    <script type="module" src="toolbar.js"></script>
+  </head>
+  <body>
+    <form id="address-form">
+      <button type="button" id="back" aria-label="Back" title="Back">←</button>
+      <button type="button" id="forward" aria-label="Forward" title="Forward">→</button>
+      <button type="button" id="reload" aria-label="Reload" title="Reload">↻</button>
+      <input
+        id="address"
+        type="text"
+        aria-label="Address"
+        placeholder="Type a job site’s address, e.g. linkedin.com/jobs"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button type="button" id="save-job" class="save">Save this job</button>
+      <button
+        type="button"
+        id="save-results"
+        class="save"
+        title="Saves the job entries this LinkedIn results page shows now"
+      >
+        Save jobs on this page
+      </button>
+    </form>
+    <p id="status" role="status">
+      <span id="status-text"></span>
+      <button type="button" id="status-action" hidden></button>
+    </p>
+  </body>
+</html>

@@ -74,6 +74,8 @@ insert into source (catalog_id, param, last_success_at) values ('greenhouse_boar
   returning id as source_id \gset
 insert into job_posting (source_id, job_id, external_id, title, location, url)
   values (:'source_id', :'job_id', '1', 'Sample job', 'Helsinki, Finland', 'https://example.test/jobs/1');
+insert into saved_job (job_id, url, title, company, location)
+  values (:'job_id', 'https://example.test/jobs/1', 'Sample job', 'Example', 'Helsinki, Finland');
 SQL
 
 pg_dump --format=custom --no-owner --file "$work/backup.dump" "$source_url"

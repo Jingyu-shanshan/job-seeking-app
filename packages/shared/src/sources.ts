@@ -5,7 +5,8 @@ import Type, { type Static } from 'typebox';
  * - `board_api`: a company job board's public read API, no login.
  * - `official_api`: a site's official API, with a key the user applied for.
  * - `email_alert`: the user sets up job alerts on the site and imports the alert emails.
- * - `manual`: the user pastes the job's link and text.
+ * - `manual`: the user pastes the job's link and text, or saves the page they are looking at in
+ *   the desktop app.
  * The app itself requests only `board_api` and `official_api` sources.
  */
 export const AccessMethodSchema = Type.Union([

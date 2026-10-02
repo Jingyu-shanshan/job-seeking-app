@@ -154,6 +154,7 @@ describe('JD import and summary', needsDatabase, () => {
         url: 'https://careers.example.com/jobs/1',
         sources: [],
         canImport: false,
+        saved: false,
         snapshot: {
           id: undefined,
           capturedAt: undefined,

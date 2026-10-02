@@ -4,7 +4,8 @@ import type { CatalogEntry } from '@jsa/shared';
 // so there is no "search the whole web" entry. Add an entry only after checking the site's terms,
 // and record the day and the page checked. A site whose terms forbid automated access, or that
 // has no API an individual can use, gets an `email_alert` entry and never a requesting one; the
-// note says why. Pasting works for every site without an entry of its own.
+// note says why. Pasting and saving from the desktop app work for every site without an entry of
+// its own.
 
 // Job board names: letters, digits, dots, hyphens and underscores, so a pasted URL is rejected.
 const boardName = '^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$';
@@ -45,7 +46,7 @@ export const catalog: readonly CatalogEntry[] = [
     id: 'linkedin_alert',
     name: 'LinkedIn job alerts',
     access: 'email_alert',
-    note: 'LinkedIn’s User Agreement (section 8.2) forbids scraping or automating the site with software, scripts, bots or browser extensions, and LinkedIn has no job API for individuals. Set up job alerts on LinkedIn and import the alert emails. The app never visits LinkedIn with your account.',
+    note: 'LinkedIn’s User Agreement (section 8.2) forbids scraping or automating the site with software, scripts, bots or browser extensions, and LinkedIn has no job API for individuals. Set up job alerts on LinkedIn and import the alert emails. The app never visits LinkedIn by itself; you can browse it yourself in the desktop app and save the page you are looking at.',
     terms: { checkedOn: '2026-10-01', url: 'https://www.linkedin.com/legal/user-agreement' },
     rateLimit: null,
     param: null,
@@ -85,6 +86,15 @@ export const catalog: readonly CatalogEntry[] = [
     name: 'Paste a job',
     access: 'manual',
     note: 'Paste a job’s link and text from any site, including sites with no API for job seekers such as 58.com. Always available, and nothing is requested from the site.',
+    terms: null,
+    rateLimit: null,
+    param: null,
+  },
+  {
+    id: 'desktop_save',
+    name: 'Save from the desktop app',
+    access: 'manual',
+    note: 'Browse any job site yourself in the desktop app’s built-in browser, signed in with your own account where the site needs one, and save the job page you are looking at, or the jobs a LinkedIn results page already shows. The app saves only when you click, and never opens, scrolls or clicks pages by itself.',
     terms: null,
     rateLimit: null,
     param: null,

@@ -47,7 +47,7 @@
 | [Upwork GraphQL API](https://www.upwork.com/developer/documentation/graphql/api/docs/index.html) · [RSS 停用说明](https://support.upwork.com/hc/en-us/articles/52052528243731-RSS-deprecation) | 官方 API，需用户用自己的 Upwork 账号申请 key；RSS 已于 2024-08-20 停用。 | 待核对条款与个人用途是否获批；拿到 key 前用提醒邮件或粘贴。 |
 | [Työmarkkinatori 职位接口](https://tyomarkkinatori.fi/en/instructions-and-support/interfaces/interfaces-for-job-postings) | 检索接口的权限绑定组织的 business ID，需向 KEHA 提交启用表单。 | 个人无法使用；走提醒邮件或粘贴。 |
 | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) · [LICENSE](https://github.com/deepseek-ai/deepseek-harness/blob/master/LICENSE) | MIT；仅考虑多步公司研究等受控任务。 | V0.3 以后再评估。项目仍处开发预览，[安全声明](https://github.com/deepseek-ai/deepseek-harness/blob/master/SAFETY.md)要求谨慎；业务事实与申请状态不能存于 Agent 会话。 |
-| [Electron `printToPDF`](https://www.electronjs.org/docs/latest/api/web-contents) | 桌面版可复用自带 PDF 接口。 | Electron 已在 T21 引入（只做内置浏览器和保存当前职位）；PDF 仍先按 T08 的浏览器打印验证，`printToPDF` 不能成为 V0.1 Web 导出的前置依赖。 |
+| [Electron `printToPDF`](https://www.electronjs.org/docs/latest/api/web-contents) | 桌面版可复用自带 PDF 接口。 | Electron 44.5.1 已在 T21 采用（MIT，2026-10-02 按 npm 元数据核对；只做内置浏览器和保存当前页）；桌面应用的测试用 Web 端已有的 jsdom（MIT）运行页面读取函数；PDF 仍先按 T08 的浏览器打印验证，`printToPDF` 不能成为 V0.1 Web 导出的前置依赖。 |
 
 **采用检查**：先证明该功能进入当前任务范围，再看标准库/现有依赖是否已覆盖；若复制代码，记录具体仓库、commit、许可证和 notice。对第三方职位来源只复用公开接口，不绕过登录或验证码，不复用第三方的自动海投代码；本项目的提交只发生在用户逐个批准之后。
 

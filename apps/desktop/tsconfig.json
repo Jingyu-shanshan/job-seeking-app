@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The toolbar and the page readers run in Chromium; the rest in Electron's Node.
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.cts"]
+}

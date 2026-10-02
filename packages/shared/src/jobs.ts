@@ -21,7 +21,22 @@ export const JobSourceSchema = Type.Object({
 
 export type JobSource = Static<typeof JobSourceSchema>;
 
-/** An open job that discovery found. A job listed by several sources appears once. */
+/**
+ * How a job came into the app: found by a discovery run, pasted, or saved from a page in the
+ * desktop app (T21). A job that came in several ways appears once, as the first of these.
+ */
+export const JobOriginSchema = Type.Union([
+  Type.Literal('discovered'),
+  Type.Literal('pasted'),
+  Type.Literal('saved'),
+]);
+
+export type JobOrigin = Static<typeof JobOriginSchema>;
+
+/**
+ * A job in the list: an open job that discovery found, a pasted job or a saved one. A job listed
+ * by several sources appears once.
+ */
 export const JobSchema = Type.Object({
   id: Type.String({ format: 'uuid' }),
   title: Type.String(),
@@ -33,10 +48,16 @@ export const JobSchema = Type.Object({
   url: Type.String(),
   /** When the source first published the job; null when it does not say. */
   publishedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
-  /** When a discovery run first found the job. */
+  /** When the job first came into the app. */
   firstSeenAt: Type.String({ format: 'date-time' }),
   /** The user's sources that list the job, e.g. one Greenhouse board. */
   sources: Type.Array(JobSourceSchema),
+  origin: JobOriginSchema,
+  /**
+   * True when the app has only the job's entry on a results page, no job text, and no source it
+   * can read the text from. Such a job is not summarised or matched until its text is saved.
+   */
+  needsText: Type.Boolean(),
   verdict: LocationVerdictSchema,
   /** Why the job is out of scope or to be confirmed; '' when it is in scope. */
   reason: Type.String(),

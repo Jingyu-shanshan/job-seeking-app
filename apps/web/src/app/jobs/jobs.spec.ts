@@ -15,6 +15,8 @@ const job = (fields: Partial<Job>): Job => ({
   publishedAt: '2026-09-20T10:00:00.000Z',
   firstSeenAt: '2026-10-01T08:00:00.000Z',
   sources: [{ id: '00000000-0000-4000-8000-000000000001', catalogId: 'b', param: 'acme' }],
+  origin: 'discovered',
+  needsText: false,
   verdict: 'in_scope',
   reason: '',
   ...fields,
@@ -135,12 +137,33 @@ describe('Jobs', () => {
   });
 
   it('marks a pasted job, which has no source', async () => {
-    await load([job({ title: 'Pasted Engineer', company: null, sources: [], publishedAt: null })]);
+    await load([
+      job({
+        title: 'Pasted Engineer',
+        company: null,
+        sources: [],
+        publishedAt: null,
+        origin: 'pasted',
+      }),
+    ]);
 
     expect(items('In scope (1)')).toEqual([
       'Pasted Engineer Company not given · Helsinki, Finland · Job page Pasted 1 Oct 2026',
     ]);
     expect(page().querySelector('a[href="/jobs/paste"]')).not.toBeNull();
+  });
+
+  it('marks a saved job, and one that still needs its text', async () => {
+    const saved: Partial<Job> = { sources: [], publishedAt: null, origin: 'saved' };
+    await load([
+      job({ ...saved, title: 'Saved Engineer' }),
+      job({ ...saved, title: 'Listed Engineer', needsText: true }),
+    ]);
+
+    expect(items('In scope (2)')).toEqual([
+      'Saved Engineer Acme · Helsinki, Finland · Job page Saved 1 Oct 2026',
+      'Listed Engineer Acme · Helsinki, Finland · Job page Saved 1 Oct 2026 Needs the job text: save its page or paste it.',
+    ]);
   });
 
   it('shows only the in-scope group while there are no jobs', async () => {

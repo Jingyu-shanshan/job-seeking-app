@@ -50,6 +50,7 @@ const detail = (fields: Partial<JobDetail> = {}): JobDetail => ({
   url: 'https://job-boards.example.com/acme/jobs/1',
   sources: [{ id: '00000000-0000-4000-8000-000000000003', catalogId: 'b', param: 'acme' }],
   canImport: true,
+  saved: false,
   snapshot: null,
   earlierSnapshots: 0,
   ...fields,
@@ -290,5 +291,71 @@ describe('JobDetailPage', () => {
   it('shows no summary when the text cannot be read from anywhere', async () => {
     await load(detail({ sources: [], canImport: false }));
     expect(section('Summary')).toBeUndefined();
+    expect(text(section('Job text')!)).toContain('You can paste it here.');
+  });
+
+  it('says where a saved job’s text came from', async () => {
+    await load(
+      detail({
+        saved: true,
+        snapshot: snapshot({ catalogId: 'desktop_save' }),
+        earlierSnapshots: 0,
+      }),
+    );
+    expect(text()).toContain('Listed by acme. You saved this job in the desktop app.');
+    expect(text(section('Job text')!)).toContain(
+      'Saved from its page in the desktop app 2 Oct 2026.',
+    );
+  });
+
+  it('takes pasted text for a job saved from a results page, then offers a summary', async () => {
+    await load(detail({ sources: [], canImport: false, saved: true }));
+    expect(text()).toContain('You saved this job in the desktop app.');
+    expect(text(section('Job text')!)).toContain(
+      'The app has only what a results page showed about this job',
+    );
+    expect(section('Summary')).toBeUndefined();
+
+    button('Save the text')!.click();
+    await settle();
+    expect(text(section('Job text')!)).toContain('Paste the job text.');
+    http.expectNone(`/api/jobs/${jobId}/text`);
+
+    const textarea = page().querySelector('textarea')!;
+    textarea.value = 'Backend Engineer\n\nYou will build APIs.';
+    textarea.dispatchEvent(new Event('input'));
+    button('Save the text')!.click();
+    await settle();
+    const request = http.expectOne(`/api/jobs/${jobId}/text`);
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ text: 'Backend Engineer\n\nYou will build APIs.' });
+    request.flush(
+      detail({
+        sources: [],
+        canImport: false,
+        saved: true,
+        snapshot: snapshot({ catalogId: 'paste' }),
+      }),
+    );
+    await settle();
+    expect(text(section('Job text')!)).toContain('Pasted 2 Oct 2026.');
+    expect(button('Summarise with DeepSeek')).toBeDefined();
+  });
+
+  it('shows why pasted text was refused', async () => {
+    await load(detail({ sources: [], canImport: false, saved: true }));
+    const textarea = page().querySelector('textarea')!;
+    textarea.value = 'Some text';
+    textarea.dispatchEvent(new Event('input'));
+    button('Save the text')!.click();
+    await settle();
+    http
+      .expectOne(`/api/jobs/${jobId}/text`)
+      .flush(
+        { message: 'The job text is longer than 100000 characters.' },
+        { status: 400, statusText: 'Bad Request' },
+      );
+    await settle();
+    expect(text(section('Job text')!)).toContain('The job text is longer than 100000 characters.');
   });
 });

@@ -8,7 +8,7 @@ const accessLabels: Record<AccessMethod, string> = {
   board_api: 'Public job board API',
   official_api: 'Official API, with your own key',
   email_alert: 'Job-alert emails you import',
-  manual: 'Paste',
+  manual: 'You bring the job: paste it or save its page',
 };
 
 /** One catalog entry: what it is, how it is accessed, and the user's sources of it. */

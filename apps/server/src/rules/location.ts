@@ -29,10 +29,12 @@ function anyWord(...words: string[]) {
 const helsinki = anyWord('helsinki', 'helsingfors', 'espoo', 'esbo');
 const finland = anyWord('finland', 'suomi', 'vantaa', 'vanda');
 const remote = anyWord('remote', 'etätyö', 'etä');
-// Areas that include Finland, for remote jobs.
+// Areas that include Finland, for remote jobs. LinkedIn writes "European Union (Remote)".
 const includesFinland = anyWord(
   'eu',
   'eea',
+  'european union',
+  'european economic area',
   'europe',
   'emea',
   'nordics?',

@@ -9,7 +9,7 @@ export default defineConfig(
     ignores: ['**/dist/', '**/.angular/', 'coverage/', 'vault/', 'scratch/', 'artifacts/'],
   },
   {
-    files: ['**/*.ts', '**/*.js'],
+    files: ['**/*.ts', '**/*.cts', '**/*.js'],
     extends: [eslint.configs.recommended, tseslint.configs.recommended],
   },
   {
