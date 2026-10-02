@@ -5,10 +5,14 @@ import type { Pool } from 'pg';
 import { sourcesToRequest } from '../rules/sources.ts';
 import { catalog } from '../sources/catalog.ts';
 import { DiscoveryError, type Adapter, type Posting } from './adapter.ts';
+import { ashbyBoard } from './ashby.ts';
 import { greenhouseBoard } from './greenhouse.ts';
 
 /** Adapters by catalog entry id. A source of an entry without one is skipped and reported. */
-const adapters: Partial<Record<string, Adapter>> = { greenhouse_board: greenhouseBoard };
+export const allAdapters: Partial<Record<string, Adapter>> = {
+  greenhouse_board: greenhouseBoard,
+  ashby_board: ashbyBoard,
+};
 
 /** Requests one run may send, however many sources are in use (T13). */
 export const defaultRequestLimit = 20;
@@ -50,6 +54,8 @@ export interface RunOptions {
   limiter: RateLimiter;
   log: FastifyBaseLogger;
   requestLimit?: number;
+  /** For tests; every catalog entry the app requests has one. */
+  adapters?: Partial<Record<string, Adapter>>;
 }
 
 interface SourceRow {
@@ -70,6 +76,7 @@ export async function runDiscovery({
   limiter,
   log,
   requestLimit = defaultRequestLimit,
+  adapters = allAdapters,
 }: RunOptions): Promise<DiscoveryRun> {
   const { rows } = await pool.query<SourceRow>(
     `select id, catalog_id, param, enabled from source

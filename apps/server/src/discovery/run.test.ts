@@ -2,11 +2,20 @@ import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import type { FastifyBaseLogger } from 'fastify';
 import { Pool } from 'pg';
+import { catalog } from '../sources/catalog.ts';
+import { fakeAshby } from '../testing/ashby.ts';
 import { createTestDatabase, needsDatabase, type TestDatabase } from '../testing/database.ts';
 import { fakeGreenhouse, type FakeJob } from '../testing/greenhouse.ts';
-import { RateLimiter, runDiscovery } from './run.ts';
+import { RateLimiter, allAdapters, runDiscovery } from './run.ts';
 
 const log = { warn() {}, error() {} } as unknown as FastifyBaseLogger;
+
+test('the app can read every catalog entry it requests', () => {
+  for (const entry of catalog) {
+    const requested = entry.access === 'board_api' || entry.access === 'official_api';
+    assert.equal(allAdapters[entry.id] !== undefined, requested, entry.id);
+  }
+});
 
 test('the rate limiter spaces requests to a site and lets other sites through', async () => {
   let clock = 0;
@@ -247,13 +256,51 @@ describe('runDiscovery', needsDatabase, () => {
     );
   });
 
-  test('skips sources it has no adapter for yet, without a request', async () => {
+  test('reads Greenhouse and Ashby boards in one run', async () => {
+    await addSource('greenhouse_board', 'acme');
     await addSource('ashby_board', 'acme');
-    const result = await run({});
+    const greenhouse = fakeGreenhouse({ acme: [{ id: 1 }] });
+    const ashby = fakeAshby({ acme: [{ id: 'a1', location: 'Turku' }] });
+    const fetch = ((input: string) =>
+      (input.startsWith('https://api.ashbyhq.com/') ? ashby : greenhouse).fetch(
+        input,
+      )) as typeof globalThis.fetch;
+
+    const result = await runDiscovery({ pool, fetch, limiter, log });
+    assert.deepEqual(
+      result.sources.map((s) => [s.name, s.outcome, s.found]),
+      [
+        ['Ashby job boards', 'ok', 1],
+        ['Greenhouse job boards', 'ok', 1],
+      ],
+    );
+    const { rows } = await pool.query<{ external_id: string; location: string }>(
+      'select external_id, location from job_posting order by external_id',
+    );
+    assert.deepEqual(
+      rows.map((r) => [r.external_id, r.location]),
+      [
+        ['1', 'Helsinki, Finland'],
+        ['a1', 'Turku, Finland'],
+      ],
+    );
+  });
+
+  test('skips a source the app has no adapter for, without a request', async () => {
+    await addSource('greenhouse_board', 'acme');
+    const greenhouse = fakeGreenhouse({ acme: [{ id: 1 }] });
+    const result = await runDiscovery({
+      pool,
+      fetch: greenhouse.fetch,
+      limiter,
+      log,
+      adapters: {},
+    });
     assert.equal(result.requests, 0);
+    assert.deepEqual(greenhouse.requested, []);
     assert.deepEqual(
       result.sources.map((s) => [s.name, s.outcome, s.reason]),
-      [['Ashby job boards', 'skipped', 'The app cannot read these yet.']],
+      [['Greenhouse job boards', 'skipped', 'The app cannot read these yet.']],
     );
   });
 
