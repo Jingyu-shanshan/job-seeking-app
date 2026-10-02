@@ -33,7 +33,7 @@ describe('schema', needsDatabase, () => {
   }
 
   async function newFactVersion(body = 'Maintained the invoice export service.') {
-    const fact = await row('insert into fact default values returning id');
+    const fact = await row(`insert into fact (kind) values ('experience') returning id`);
     return row(
       `insert into fact_version (fact_id, version, body, source) values ($1, 1, $2, 'manual') returning *`,
       [fact.id, body],
@@ -65,7 +65,7 @@ describe('schema', needsDatabase, () => {
 
     test('get their hash from the database, whatever the caller supplies', async () => {
       const body = 'Ylläpiti laskutuspalvelua – 维护了开票服务 – 12 % fewer errors';
-      const fact = await row('insert into fact default values returning id');
+      const fact = await row(`insert into fact (kind) values ('experience') returning id`);
       const version = await row(
         `insert into fact_version (fact_id, version, body, body_sha256, source)
          values ($1, 1, $2, 'not the hash', 'manual') returning body_sha256`,
@@ -126,8 +126,16 @@ describe('schema', needsDatabase, () => {
       );
     });
 
+    test('belong to a fact of a known kind', async () => {
+      await row(`insert into fact (kind) values ('skill') returning id`);
+      await assert.rejects(client.query(`insert into fact (kind) values ('hobby')`), {
+        code: '23514',
+      });
+      await assert.rejects(client.query('insert into fact default values'), { code: '23502' });
+    });
+
     test('reject an empty text, an empty source and an unknown status', async () => {
-      const fact = await row('insert into fact default values returning id');
+      const fact = await row(`insert into fact (kind) values ('experience') returning id`);
       for (const [body, source, status] of [
         ['  ', 'manual', 'proposed'],
         ['Text.', '', 'proposed'],

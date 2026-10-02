@@ -31,7 +31,7 @@ DATABASE_URL=$source_url npm run --silent db:migrate >/dev/null
 
 # One row or more in every table.
 psql "$source_url" -q -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
-insert into fact default values returning id as fact_id \gset
+insert into fact (kind) values ('experience') returning id as fact_id \gset
 insert into fact_version (fact_id, version, body, source, status, may_send_to_model, may_use_in_materials)
   values (:'fact_id', 1, 'Maintained the invoice export.', 'sample', 'retired', true, true);
 insert into fact_version (fact_id, version, body, source, status, may_send_to_model, may_use_in_materials)

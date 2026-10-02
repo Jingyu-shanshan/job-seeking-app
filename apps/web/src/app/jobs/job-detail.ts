@@ -53,15 +53,18 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
         }
       </section>
 
-      @if (job.snapshot; as snapshot) {
+      @if (job.snapshot || job.canImport) {
         <section aria-labelledby="summary-heading">
           <h2 id="summary-heading">Summary</h2>
-          @if (snapshot.summary) {
-            <app-job-summary [snapshot]="snapshot" (changed)="data.set($event)" />
+          @if (job.snapshot?.summary) {
+            <app-job-summary [snapshot]="job.snapshot!" (changed)="data.set($event)" />
           } @else {
             <p>
               Summarising sends the job text, and nothing about you, to DeepSeek in one request.
               Every point of the summary quotes the job text.
+              @if (!job.snapshot) {
+                The app reads the job text from the job board first.
+              }
             </p>
             <button type="button" [disabled]="busy()" (click)="summarise()">
               Summarise with DeepSeek
@@ -135,12 +138,17 @@ export class JobDetailPage {
   }
 
   protected async summarise() {
-    const snapshot = this.data.value()?.snapshot;
-    if (!snapshot) return;
-    await this.run('Summarising with DeepSeek. This can take a minute.', () =>
-      this.api.summarise(snapshot.id),
-    );
+    await this.run('Summarising with DeepSeek. This can take a minute.', async () => {
+      const job = this.data.value()?.snapshot ? this.data.value()! : await this.importAndShow();
+      return this.api.summarise(job.snapshot!.id);
+    });
     this.usage.reload();
+  }
+
+  private async importAndShow() {
+    const job = await this.api.importText(this.id());
+    this.data.set(job);
+    return job;
   }
 
   private async run(working: string, change: () => Promise<JobDetail>) {

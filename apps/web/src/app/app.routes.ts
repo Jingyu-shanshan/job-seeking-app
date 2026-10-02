@@ -28,6 +28,11 @@ export const routes: Routes = [
         title: 'Job',
       },
       {
+        path: 'facts',
+        loadComponent: () => import('./facts/facts').then((m) => m.Facts),
+        title: 'Facts about you',
+      },
+      {
         path: 'sources',
         loadComponent: () => import('./sources/sources').then((m) => m.Sources),
         title: 'Sources and search scope',
