@@ -95,6 +95,14 @@ test('says plainly why a board could not be read', async () => {
   );
 });
 
+test('cuts a location too long to save, without losing the job', async () => {
+  const location = Array.from({ length: 400 }, (_, i) => `Town ${i}, Germany`).join('; ');
+  const { fetch } = fakeGreenhouse({ acme: [{ id: 1, location }] });
+  const [posting] = await greenhouseBoard('acme', fetch);
+  assert.ok(posting!.location.length <= 5000);
+  assert.ok(posting!.location.endsWith(', Germany; …'), posting!.location.slice(-20));
+});
+
 test('stops reading an answer larger than 20 MB', async () => {
   let sent = 0;
   const chunk = new Uint8Array(1024 * 1024).fill(0x20);

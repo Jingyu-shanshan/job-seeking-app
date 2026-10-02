@@ -1,6 +1,13 @@
 import Type from 'typebox';
 import { Value } from 'typebox/value';
-import { DiscoveryError, fetchJson, httpsUrl, type Adapter } from './adapter.ts';
+import {
+  DiscoveryError,
+  fetchJson,
+  fitLocation,
+  httpsUrl,
+  maybe,
+  type Adapter,
+} from './adapter.ts';
 
 // Greenhouse's public Job Board API (https://docs.greenhouse.io/job-board.html, checked
 // 2026-10-01): one request lists every published job of a board. No key, no login. Board names
@@ -12,17 +19,10 @@ const BoardSchema = Type.Object({
     Type.Object({
       id: Type.Integer({ minimum: 1 }),
       title: Type.String({ pattern: '\\S', maxLength: 1000 }),
-      company_name: Type.Optional(Type.Union([Type.String({ maxLength: 1000 }), Type.Null()])),
-      location: Type.Optional(
-        Type.Union([
-          Type.Object({ name: Type.Union([Type.String({ maxLength: 5000 }), Type.Null()]) }),
-          Type.Null(),
-        ]),
-      ),
-      absolute_url: Type.Optional(Type.Union([Type.String(), Type.Null()])),
-      first_published: Type.Optional(
-        Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
-      ),
+      company_name: maybe(Type.String({ maxLength: 1000 })),
+      location: maybe(Type.Object({ name: maybe(Type.String()) })),
+      absolute_url: maybe(Type.String()),
+      first_published: maybe(Type.String({ format: 'date-time' })),
     }),
     { maxItems: 10_000 },
   ),
@@ -46,7 +46,7 @@ export const greenhouseBoard: Adapter = async (board, fetch) => {
     externalId: String(job.id),
     title: job.title.trim(),
     company: job.company_name?.trim() || null,
-    location: job.location?.name?.trim() ?? '',
+    location: fitLocation(job.location?.name?.trim() ?? ''),
     // Usually the board's page; some companies point it at their own careers site.
     url: httpsUrl(job.absolute_url) ?? `https://job-boards.greenhouse.io/${name}/jobs/${job.id}`,
     publishedAt: job.first_published ?? null,

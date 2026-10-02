@@ -30,7 +30,7 @@ export const catalog: readonly CatalogEntry[] = [
     access: 'board_api',
     note: 'Reads the public job list of a company job board hosted on Ashby. No login or key is needed. Add one board per company.',
     terms: {
-      checkedOn: '2026-10-01',
+      checkedOn: '2026-10-02',
       url: 'https://developers.ashbyhq.com/docs/public-job-posting-api',
     },
     // Ashby publishes no limit for these reads; this is the app's own.

@@ -77,6 +77,10 @@ test('the Åland Islands are not a country outside Finland', () => {
   assert.equal(verdict('Mariehamn, Åland Islands', finland), 'to_confirm');
 });
 
+test('a list of locations cut short is to be confirmed, since the rest is unknown', () => {
+  assert.equal(verdict('Berlin, Germany; Paris, France; …', helsinki), 'to_confirm');
+});
+
 test('remote jobs count only when included, and only from Finland', () => {
   const fromFinland = [
     'Remote - Finland',

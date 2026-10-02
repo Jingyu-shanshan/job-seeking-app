@@ -1,3 +1,5 @@
+import Type, { type TSchema } from 'typebox';
+
 // What every source adapter returns, and the one way adapters fetch: native fetch with a time
 // limit and a size limit. Everything a source returns is untrusted data.
 
@@ -69,6 +71,24 @@ export async function fetchJson(fetch: typeof globalThis.fetch, url: string): Pr
     }
     throw new DiscoveryError(`Could not reach ${host}.`, { cause: err });
   }
+}
+
+/** The longest location text `job_posting` keeps. */
+const maxLocationLength = 5000;
+
+/**
+ * Location text cut to what the database keeps, at a ";" between locations. The cut list ends
+ * in "…", which the location rule cannot place, so cutting never puts a job out of scope.
+ */
+export function fitLocation(text: string): string {
+  if (text.length <= maxLocationLength) return text;
+  const kept = text.slice(0, maxLocationLength - 3);
+  return `${kept.slice(0, Math.max(kept.lastIndexOf(';'), 0))}; …`;
+}
+
+/** A field of a source's answer that may be missing or null. */
+export function maybe<T extends TSchema>(schema: T) {
+  return Type.Optional(Type.Union([schema, Type.Null()]));
 }
 
 /** `value` as an https URL, or null when it is anything else. */
