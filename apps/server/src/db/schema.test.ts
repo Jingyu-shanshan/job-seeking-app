@@ -290,6 +290,48 @@ describe('schema', needsDatabase, () => {
     });
   });
 
+  describe('job postings', () => {
+    const insert = `insert into job_posting (source_id, job_id, external_id, title, location, url)
+                    values ($1, $2, $3, $4, '', $5)`;
+
+    test('are unique per source, have a title and only link to https pages', async () => {
+      const source = await row(
+        `insert into source (catalog_id, param) values ('pb', 'a') returning id`,
+      );
+      const job = await row('insert into job default values returning id');
+      const values = (externalId: string, title: string, url: string) =>
+        [source.id, job.id, externalId, title, url] as unknown[];
+
+      await client.query(insert, values('1', 'Engineer', 'https://example.com/jobs/1'));
+      await assert.rejects(client.query(insert, values('1', 'Other', 'https://example.com/1')), {
+        code: '23505',
+      });
+      for (const [title, url] of [
+        [' ', 'https://example.com/jobs/2'],
+        ['Engineer', 'http://example.com/jobs/2'],
+        ['Engineer', 'javascript:alert(1)'],
+      ]) {
+        await assert.rejects(client.query(insert, values('2', title!, url!)), { code: '23514' });
+      }
+    });
+
+    test('go with their source, while the job stays', async () => {
+      const source = await row(
+        `insert into source (catalog_id, param) values ('pb', 'b') returning id`,
+      );
+      const job = await row('insert into job default values returning id');
+      await client.query(insert, [source.id, job.id, '1', 'Engineer', 'https://example.com/1']);
+      await assert.rejects(client.query('delete from job where id = $1', [job.id]), foreignKey);
+
+      await client.query('delete from source where id = $1', [source.id]);
+      const left = await client.query('select 1 from job_posting where source_id = $1', [
+        source.id,
+      ]);
+      assert.equal(left.rowCount, 0);
+      assert.equal((await client.query('select 1 from job where id = $1', [job.id])).rowCount, 1);
+    });
+  });
+
   test('the search scope is one row, Helsinki without remote jobs by default', async () => {
     assert.deepEqual((await client.query('select area, include_remote from search_scope')).rows, [
       { area: 'helsinki', include_remote: false },

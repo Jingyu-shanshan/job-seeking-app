@@ -27,6 +27,8 @@ header a.active {
 }
 
 nav {
+  display: flex;
+  gap: 1rem;
   margin-right: auto;
 }
 

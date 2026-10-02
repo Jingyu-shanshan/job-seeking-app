@@ -60,6 +60,10 @@ insert into account (id, "accountId", "providerId", "userId", password, "updated
 insert into session (id, "expiresAt", token, "updatedAt", "userId")
   values ('drill-session', now() + interval '1 day', 'drill-token', now(), 'drill-user');
 insert into verification (id, identifier, value, "expiresAt") values ('drill-verification', 'drill', 'drill', now());
+insert into source (catalog_id, param, last_success_at) values ('greenhouse_board', 'drill', now())
+  returning id as source_id \gset
+insert into job_posting (source_id, job_id, external_id, title, location, url)
+  values (:'source_id', :'job_id', '1', 'Sample job', 'Helsinki, Finland', 'https://example.test/jobs/1');
 SQL
 
 pg_dump --format=custom --no-owner --file "$work/backup.dump" "$source_url"

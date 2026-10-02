@@ -13,6 +13,11 @@ export const routes: Routes = [
     children: [
       { path: '', component: Home, title: 'Job Search Workbench' },
       {
+        path: 'jobs',
+        loadComponent: () => import('./jobs/jobs').then((m) => m.Jobs),
+        title: 'Jobs',
+      },
+      {
         path: 'sources',
         loadComponent: () => import('./sources/sources').then((m) => m.Sources),
         title: 'Sources and search scope',
