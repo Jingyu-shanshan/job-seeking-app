@@ -1,4 +1,5 @@
 import Type, { type Static } from 'typebox';
+import { CriterionResultSchema, JobVerdictSchema, OutcomeSchema } from './criteria.ts';
 import { JobSourceSchema } from './jobs.ts';
 
 export const maxJobTextLength = 100_000;
@@ -15,6 +16,32 @@ export const RequirementKindSchema = Type.Union([Type.Literal('must'), Type.Lite
 
 export type RequirementKind = Static<typeof RequirementKindSchema>;
 
+/** A fact version a match cites, with its text as it was. */
+export const CitedFactSchema = Type.Object({
+  versionId: Type.String({ format: 'uuid' }),
+  factId: Type.String({ format: 'uuid' }),
+  version: Type.Integer({ minimum: 1 }),
+  body: Type.String(),
+  /**
+   * False when the fact has a newer version or is no longer confirmed since the match; the
+   * outcome then no longer counts and the requirement is unknown until it is matched again.
+   */
+  current: Type.Boolean(),
+});
+
+export type CitedFact = Static<typeof CitedFactSchema>;
+
+/** What the latest match found for one requirement. */
+export const EvidenceSchema = Type.Object({
+  /** As matched; `current` on the cited facts says whether it still counts. */
+  outcome: OutcomeSchema,
+  /** DeepSeek's explanation, untrusted text. */
+  note: Type.String(),
+  facts: Type.Array(CitedFactSchema),
+});
+
+export type Evidence = Static<typeof EvidenceSchema>;
+
 export const RequirementSchema = Type.Object({
   id: Type.String({ format: 'uuid' }),
   text: Type.String(),
@@ -22,6 +49,8 @@ export const RequirementSchema = Type.Object({
   quoteVerified: Type.Boolean(),
   kind: RequirementKindSchema,
   origin: Type.Union([Type.Literal('model'), Type.Literal('user')]),
+  /** From the latest match; null when the requirement was not part of it. */
+  evidence: Type.Union([EvidenceSchema, Type.Null()]),
 });
 
 export type Requirement = Static<typeof RequirementSchema>;
@@ -59,6 +88,22 @@ export const JobSummarySchema = Type.Object({
 
 export type JobSummary = Static<typeof JobSummarySchema>;
 
+/** The latest evidence match of a snapshot. */
+export const MatchSchema = Type.Object({
+  createdAt: Type.String({ format: 'date-time' }),
+  model: Type.String(),
+  costUsd: Type.Number({ minimum: 0 }),
+  /** How many facts were sent with the request. */
+  factsSent: Type.Integer({ minimum: 0 }),
+  /**
+   * Why the match is out of date: the facts that may be sent, or the requirements, changed since.
+   * Empty when it is up to date, in which case matching again is refused.
+   */
+  outdated: Type.Array(Type.String()),
+});
+
+export type Match = Static<typeof MatchSchema>;
+
 export const SnapshotSchema = Type.Object({
   id: Type.String({ format: 'uuid' }),
   capturedAt: Type.String({ format: 'date-time' }),
@@ -70,6 +115,7 @@ export const SnapshotSchema = Type.Object({
   text: Type.String(),
   summary: Type.Union([JobSummarySchema, Type.Null()]),
   requirements: Type.Array(RequirementSchema),
+  match: Type.Union([MatchSchema, Type.Null()]),
 });
 
 export type Snapshot = Static<typeof SnapshotSchema>;
@@ -86,6 +132,11 @@ export const JobDetailSchema = Type.Object({
   saved: Type.Boolean(),
   snapshot: Type.Union([SnapshotSchema, Type.Null()]),
   earlierSnapshots: Type.Integer({ minimum: 0 }),
+  verdict: JobVerdictSchema,
+  /** The user's criteria that are not off, checked against this job. */
+  criteria: Type.Array(CriterionResultSchema),
+  /** How many facts a match would send: confirmed ones the user allows to go to DeepSeek. */
+  factsToSend: Type.Integer({ minimum: 0 }),
 });
 
 export type JobDetail = Static<typeof JobDetailSchema>;

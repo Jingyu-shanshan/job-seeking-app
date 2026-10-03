@@ -1,8 +1,8 @@
 import { httpResource } from '@angular/common/http';
 import { Component, computed } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import type { AccessMethod, SourcesResponse } from '@jsa/shared';
 import { CatalogEntryCard } from './catalog-entry';
-import { SearchScopeForm } from './search-scope-form';
 import { errorMessage } from './sources-api';
 
 const groups: { access: AccessMethod; title: string; intro: string }[] = [
@@ -27,21 +27,17 @@ const groups: { access: AccessMethod; title: string; intro: string }[] = [
 
 @Component({
   selector: 'app-sources',
-  imports: [CatalogEntryCard, SearchScopeForm],
+  imports: [CatalogEntryCard, RouterLink],
   template: `
-    <h1>Sources and search scope</h1>
-
-    <section aria-labelledby="scope-heading">
-      <h2 id="scope-heading">Search scope</h2>
-      <p>
-        Which jobs count by location. The scope only filters the jobs found; it does not change
-        which sources are used or how.
-      </p>
-      <app-search-scope-form />
-    </section>
+    <h1>Sources</h1>
+    <p>
+      Where the app finds jobs. Which locations count is one of your
+      <a routerLink="/criteria">criteria</a>; it filters the jobs found and does not change which
+      sources are used or how.
+    </p>
 
     <section aria-labelledby="sources-heading">
-      <h2 id="sources-heading">Sources</h2>
+      <h2 id="sources-heading">Catalog</h2>
       @if (data.hasValue()) {
         @for (group of entriesByAccess(); track group.access) {
           <section [attr.aria-labelledby]="'access-' + group.access">

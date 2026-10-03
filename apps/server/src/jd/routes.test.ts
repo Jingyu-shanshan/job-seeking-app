@@ -166,8 +166,29 @@ describe('JD import and summary', needsDatabase, () => {
           text: pastedText,
           summary: null,
           requirements: [],
+          match: null,
         },
         earlierSnapshots: 0,
+        verdict: 'eligible',
+        criteria: [
+          {
+            criterion: 'location',
+            strength: 'hard',
+            outcome: 'met',
+            effect: 'none',
+            reason: 'The location is in your search scope.',
+            quote: null,
+          },
+          {
+            criterion: 'mustHaves',
+            strength: 'preference',
+            outcome: 'unknown',
+            effect: 'none',
+            reason: 'Summarise the job to find its must-haves.',
+            quote: null,
+          },
+        ],
+        factsToSend: 0,
       },
     );
 
@@ -175,7 +196,7 @@ describe('JD import and summary', needsDatabase, () => {
     const listed = jobs.find((j) => j.id === job.id);
     assert.deepEqual(
       [listed?.title, listed?.sources, listed?.publishedAt, listed?.verdict],
-      ['Billing Engineer', [], null, 'in_scope'],
+      ['Billing Engineer', [], null, 'eligible'],
     );
 
     const res = await call({ method: 'POST', url: `/api/jobs/${job.id}/snapshots` });

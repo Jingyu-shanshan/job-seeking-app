@@ -79,7 +79,7 @@ export async function summariseSnapshot({
 
   const startedAt = new Date();
   const record = (usage: CallUsage | undefined, failureReason: string) =>
-    recordFailedCall(pool, { snapshotId, startedAt, usage, failureReason });
+    recordFailedCall(pool, { purpose: 'job_summary', snapshotId, startedAt, usage, failureReason });
 
   let result: { answer: unknown; usage: CallUsage };
   try {
@@ -143,20 +143,29 @@ export async function summariseSnapshot({
   );
 }
 
-async function recordFailedCall(
+/** Records a call that failed, with what it cost when the provider answered at all. */
+export async function recordFailedCall(
   pool: Pool,
   {
+    purpose,
     snapshotId,
     startedAt,
     usage,
     failureReason,
-  }: { snapshotId: string; startedAt: Date; usage: CallUsage | undefined; failureReason: string },
+  }: {
+    purpose: 'job_summary' | 'match';
+    snapshotId: string;
+    startedAt: Date;
+    usage: CallUsage | undefined;
+    failureReason: string;
+  },
 ) {
   await pool.query(
     `insert into model_call (purpose, job_snapshot_id, model, started_at, duration_ms,
        input_tokens, cached_input_tokens, output_tokens, cost_usd, failure_reason)
-     values ('job_summary', $1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
+      purpose,
       snapshotId,
       deepseek.model,
       startedAt,

@@ -1,6 +1,13 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject, input, output, signal } from '@angular/core';
-import type { JobDetail, Requirement, Snapshot, SummaryFieldKey } from '@jsa/shared';
+import type {
+  Evidence,
+  JobDetail,
+  Outcome,
+  Requirement,
+  Snapshot,
+  SummaryFieldKey,
+} from '@jsa/shared';
 import { errorMessage } from '../sources/sources-api';
 import { JobsApi, usd } from './jobs-api';
 import { RequirementForm } from './requirement-form';
@@ -18,6 +25,18 @@ const fieldLabels: Record<SummaryFieldKey, string> = {
 const kindLabels: Record<Requirement['kind'], string> = {
   must: 'Must have',
   nice: 'Nice to have',
+};
+
+export const outcomeLabels: Record<Outcome, string> = {
+  met: 'Met',
+  unmet: 'Not met',
+  unknown: 'Unknown',
+};
+
+const evidenceLabels: Record<Outcome, string> = {
+  met: 'Met by your facts',
+  unmet: 'Not met by your facts',
+  unknown: 'Not shown by your facts',
 };
 
 @Component({
@@ -66,7 +85,39 @@ const kindLabels: Record<Requirement['kind'], string> = {
                 @if (r.quote) {
                   <span class="quote"> “{{ r.quote }}”</span>
                 }
+                @if (r.evidence; as e) {
+                  <div class="evidence">
+                    <span class="tag" [class.unmet]="e.outcome === 'unmet'">
+                      {{ evidenceLabels[e.outcome] }}
+                    </span>
+                    @if (changedSince(e)) {
+                      <span class="tag">a fact it cites has changed, so it counts as unknown</span>
+                    }
+                    {{ e.note }}
+                    @if (e.facts.length) {
+                      <ul>
+                        @for (f of e.facts; track f.versionId) {
+                          <li>
+                            {{ f.body }}
+                            <span class="hint">
+                              (fact version {{ f.version }}{{ f.current ? '' : ', not current' }})
+                            </span>
+                          </li>
+                        }
+                      </ul>
+                    }
+                  </div>
+                }
                 <span class="actions">
+                  @if (r.quoteVerified) {
+                    <button
+                      type="button"
+                      [attr.aria-label]="'Show ' + r.text + ' in the job text'"
+                      (click)="showQuote.emit(r.quote)"
+                    >
+                      Show in the job text
+                    </button>
+                  }
                   <button
                     type="button"
                     [disabled]="busy()"
@@ -155,6 +206,20 @@ const kindLabels: Record<Requirement['kind'], string> = {
       font-size: 0.9rem;
       font-style: italic;
     }
+    .evidence {
+      margin: 0.25rem 0;
+      padding-left: 0.5rem;
+      border-left: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+    }
+    .evidence ul {
+      margin: 0.25rem 0;
+    }
+    .evidence .tag {
+      margin-right: 0.25rem;
+    }
+    .unmet {
+      font-weight: 600;
+    }
     .tag {
       font-size: 0.8rem;
       border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
@@ -196,6 +261,10 @@ export class JobSummaryView {
 
   readonly snapshot = input.required<Snapshot>();
   readonly changed = output<JobDetail>();
+  /** A quote of the job text the user wants to see in place. */
+  readonly showQuote = output<string>();
+
+  protected readonly evidenceLabels = evidenceLabels;
 
   protected readonly editing = signal<string | null>(null);
   protected readonly busy = signal(false);
@@ -239,6 +308,11 @@ export class JobSummaryView {
       value: this.summary().fields[key],
     })),
   );
+
+  /** A met or unmet outcome no longer counts once a fact it cites is not current. */
+  protected changedSince(evidence: Evidence) {
+    return evidence.outcome !== 'unknown' && evidence.facts.some((f) => !f.current);
+  }
 
   protected kindLabel(requirement: Requirement) {
     return kindLabels[requirement.kind];

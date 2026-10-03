@@ -33,9 +33,14 @@ export const routes: Routes = [
         title: 'Facts about you',
       },
       {
+        path: 'criteria',
+        loadComponent: () => import('./criteria/criteria').then((m) => m.CriteriaPage),
+        title: 'Criteria',
+      },
+      {
         path: 'sources',
         loadComponent: () => import('./sources/sources').then((m) => m.Sources),
-        title: 'Sources and search scope',
+        title: 'Sources',
       },
     ],
   },

@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import { Component, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { Job, JobOrigin } from '@jsa/shared';
+import { describeResult, listedResults } from './criteria-text';
 
 /** Jobs as links to their pages, with where, when, and why they are grouped where they are. */
 @Component({
@@ -29,8 +30,8 @@ import type { Job, JobOrigin } from '@jsa/shared';
           @if (job.needsText) {
             <span class="reason">Needs the job text: save its page or paste it.</span>
           }
-          @if (job.reason) {
-            <span class="reason">{{ job.reason }}</span>
+          @for (result of listedResults(job.criteria); track result.criterion) {
+            <span class="reason">{{ describeResult(result) }}</span>
           }
         </li>
       }
@@ -61,6 +62,8 @@ export class JobList {
   readonly jobs = input.required<Job[]>();
 
   protected readonly dateFormat = 'd MMM y';
+  protected readonly listedResults = listedResults;
+  protected readonly describeResult = describeResult;
   protected readonly originLabels: Record<JobOrigin, string> = {
     discovered: 'Found',
     pasted: 'Pasted',

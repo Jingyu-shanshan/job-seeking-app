@@ -143,7 +143,7 @@ describe('saving from the desktop app', needsDatabase, () => {
     );
     assert.deepEqual(
       (await listed(first.jobId)).map((j) => [j.origin, j.needsText, j.verdict]),
-      [['saved', false, 'in_scope']],
+      [['saved', false, 'eligible']],
     );
 
     // The same page again: same job, same text, so nothing new.
@@ -184,7 +184,7 @@ describe('saving from the desktop app', needsDatabase, () => {
     const gamma = jobs.find((j) => j.company === 'Gamma')!;
     assert.deepEqual(
       [gamma.url, gamma.origin, gamma.needsText, gamma.verdict, gamma.sources],
-      [linkedIn(4000000012), 'saved', true, 'out_of_scope', []],
+      [linkedIn(4000000012), 'saved', true, 'ineligible', []],
     );
 
     // No text, nothing to read it from: the job can be neither summarised nor read.

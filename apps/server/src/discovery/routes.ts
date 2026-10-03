@@ -1,8 +1,9 @@
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
-import { DiscoveryRunSchema, JobsResponseSchema, type Job, type SearchScope } from '@jsa/shared';
+import { DiscoveryRunSchema, JobsResponseSchema, type Job } from '@jsa/shared';
 import type { Pool } from 'pg';
 import { httpError } from '../http-error.ts';
-import { classifyLocation } from '../rules/location.ts';
+import { checkJobs } from '../matching/check.ts';
+import { loadCriteria } from '../matching/criteria.ts';
 import { findCatalogEntry } from '../sources/catalog.ts';
 import { type RateLimiter, runDiscovery } from './run.ts';
 
@@ -51,12 +52,8 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
   );
 
   app.get('/jobs', { schema: { response: { 200: JobsResponseSchema } } }, async () => {
-    const scopeRows = await pool.query<{ area: SearchScope['area']; include_remote: boolean }>(
-      'select area, include_remote from search_scope',
-    );
-    const scopeRow = scopeRows.rows[0];
-    if (!scopeRow) throw new Error('search_scope has no row');
-    const scope: SearchScope = { area: scopeRow.area, includeRemote: scopeRow.include_remote };
+    const criteria = await loadCriteria(pool);
+    const scope = { area: criteria.location.area, includeRemote: criteria.location.includeRemote };
 
     // Open postings of sources in use. Postings of a disabled source come back when it is
     // enabled again; a source whose entry left the catalog is never shown.
@@ -68,8 +65,13 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
        order by p.first_seen_at, p.id`,
     );
 
-    // One entry per job, however many sources list it, described by the first posting found.
+    // One entry per job, however many sources list it, described by the first posting found. The
+    // verdict and criteria are filled in at the end.
     const jobs = new Map<string, Job>();
+    const unchecked = (): Pick<Job, 'verdict' | 'criteria'> => ({
+      verdict: 'eligible',
+      criteria: [],
+    });
     for (const row of rows) {
       if (!findCatalogEntry(row.catalog_id)) continue;
       const source = { id: row.source_id, catalogId: row.catalog_id, param: row.param };
@@ -89,7 +91,7 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
         sources: [source],
         origin: 'discovered',
         needsText: false,
-        ...classifyLocation(row.location, scope),
+        ...unchecked(),
       });
     }
 
@@ -123,7 +125,7 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
         sources: [],
         origin: 'saved',
         needsText: !row.has_text,
-        ...classifyLocation(row.location, scope),
+        ...unchecked(),
       });
     }
 
@@ -153,8 +155,15 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
         sources: [],
         origin: 'pasted',
         needsText: false,
-        ...classifyLocation(row.location, scope),
+        ...unchecked(),
       });
+    }
+
+    const checks = await checkJobs(pool, [...jobs.values()], criteria);
+    for (const job of jobs.values()) {
+      const { verdict, criteria: results } = checks.get(job.id)!;
+      job.verdict = verdict;
+      job.criteria = results;
     }
 
     // Newest first; jobs without a publication date last.

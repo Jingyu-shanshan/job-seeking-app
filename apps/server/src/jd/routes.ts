@@ -5,6 +5,7 @@ import {
   ModelUsageSchema,
   PasteJobRequestSchema,
   PasteTextRequestSchema,
+  type Evidence,
   type JobDetail,
   type JobSource,
   type JobSummary,
@@ -17,6 +18,15 @@ import Type from 'typebox';
 import { DiscoveryError, type JobText } from '../discovery/adapter.ts';
 import { allAdapters, type RateLimiter } from '../discovery/run.ts';
 import { httpError } from '../http-error.ts';
+import {
+  type FactState,
+  type MatchedRequirement,
+  checkJobs,
+  latestMatches,
+  loadFactState,
+} from '../matching/check.ts';
+import { matchSnapshot } from '../matching/match.ts';
+import { matchOutdated } from '../rules/match.ts';
 import { quoteFinder } from '../rules/quote.ts';
 import { sourcesToRequest } from '../rules/sources.ts';
 import { catalog, findCatalogEntry } from '../sources/catalog.ts';
@@ -137,19 +147,45 @@ async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetail | und
     .filter((p) => p.closed_at === null && p.enabled && findCatalogEntry(p.catalog_id))
     .map((p) => ({ id: p.source_id, catalogId: p.catalog_id, param: p.param }));
 
+  const [facts, checks] = await Promise.all([
+    loadFactState(pool),
+    checkJobs(pool, [{ id: jobId, ...head }]),
+  ]);
+  const check = checks.get(jobId)!;
   return {
     id: jobId,
     ...head,
     sources,
     canImport: importSources(postings).length > 0,
     saved: saved !== undefined,
-    snapshot: current ? await loadSnapshot(pool, current) : null,
+    snapshot: current ? await loadSnapshot(pool, current, facts) : null,
     earlierSnapshots: current?.earlier ?? 0,
+    verdict: check.verdict,
+    criteria: check.criteria,
+    factsToSend: facts.sendable.length,
   };
 }
 
-async function loadSnapshot(pool: Pool, row: SnapshotRow): Promise<Snapshot> {
-  const [summaries, requirements] = await Promise.all([
+function evidenceOf(matched: MatchedRequirement | undefined, facts: FactState): Evidence | null {
+  if (!matched) return null;
+  return {
+    outcome: matched.outcome,
+    note: matched.note,
+    facts: matched.factVersionIds.map((versionId) => {
+      const version = facts.versions.get(versionId)!;
+      return {
+        versionId,
+        factId: version.factId,
+        version: version.version,
+        body: version.body,
+        current: facts.valid.has(versionId),
+      };
+    }),
+  };
+}
+
+async function loadSnapshot(pool: Pool, row: SnapshotRow, facts: FactState): Promise<Snapshot> {
+  const [summaries, requirements, matches] = await Promise.all([
     pool.query<SummaryRow>(
       `select s.created_at, c.model, c.cost_usd, s.responsibilities, s.fields
        from job_summary s join model_call c on c.id = s.model_call_id
@@ -161,8 +197,10 @@ async function loadSnapshot(pool: Pool, row: SnapshotRow): Promise<Snapshot> {
        where job_snapshot_id = $1 and removed_at is null`,
       [row.id],
     ),
+    latestMatches(pool, [row.id]),
   ]);
   const summary = summaries.rows[0];
+  const match = matches.get(row.id);
 
   const find = quoteFinder(row.body);
   const position = (r: RequirementRow) => {
@@ -199,7 +237,22 @@ async function loadSnapshot(pool: Pool, row: SnapshotRow): Promise<Snapshot> {
       quoteVerified: r.quote_verified,
       kind: r.kind,
       origin: r.origin,
+      evidence: evidenceOf(match?.requirements.get(r.id), facts),
     })),
+    match: match
+      ? {
+          createdAt: match.createdAt.toISOString(),
+          model: match.model,
+          costUsd: match.costUsd,
+          factsSent: match.sentFacts.length,
+          outdated: matchOutdated({
+            sentFacts: match.sentFacts,
+            sendableFacts: facts.sendable.map((f) => f.versionId),
+            matchedRequirements: match.requirements.keys(),
+            currentRequirements: requirements.rows.filter((r) => r.quote_verified).map((r) => r.id),
+          }),
+        }
+      : null,
   };
 }
 
@@ -262,6 +315,7 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
   { pool, fetch, limiter, deepseekApiKey },
 ) => {
   const summarising = new Set<string>();
+  const matching = new Set<string>();
 
   app.get(
     '/jobs/:id',
@@ -355,6 +409,33 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
         });
       } finally {
         summarising.delete(snapshotId);
+      }
+      return detailAfterChange(pool, jobId);
+    },
+  );
+
+  // One DeepSeek request per click; refused while one runs for the same text, and when the latest
+  // match already used the same facts and requirements.
+  app.post(
+    '/snapshots/:id/match',
+    { schema: { params: IdParamsSchema, response: { 200: JobDetailSchema } } },
+    async (request) => {
+      const snapshotId = request.params.id;
+      const jobId = await jobOfSnapshot(pool, snapshotId);
+      if (!deepseekApiKey) {
+        throw httpError(
+          503,
+          'DEEPSEEK_API_KEY is not set on the server, so jobs cannot be matched with your facts.',
+        );
+      }
+      if (matching.has(snapshotId)) {
+        throw httpError(409, 'This job is already being matched. Wait for that to finish.');
+      }
+      matching.add(snapshotId);
+      try {
+        await matchSnapshot({ pool, fetch, apiKey: deepseekApiKey, log: request.log, snapshotId });
+      } finally {
+        matching.delete(snapshotId);
       }
       return detailAfterChange(pool, jobId);
     },

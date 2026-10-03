@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import type { DiscoveryRun, JobsResponse, Source } from '@jsa/shared';
+import type { Criteria, DiscoveryRun, Job, JobsResponse, Source } from '@jsa/shared';
 import type { InjectOptions } from 'fastify';
 import { Pool } from 'pg';
 import { buildApp } from '../app.ts';
@@ -78,8 +78,19 @@ describe('/api/discovery-runs and /api/jobs', needsDatabase, () => {
     return res.json<Source>();
   };
 
-  const setScope = (area: string, includeRemote = false) =>
-    call({ method: 'PUT', url: '/api/search-scope', payload: { area, includeRemote } });
+  const setScope = async (area: string, includeRemote = false) => {
+    const criteria = (await call({ method: 'GET', url: '/api/criteria' })).json<Criteria>();
+    const location = { ...criteria.location, area, includeRemote };
+    const res = await call({
+      method: 'PUT',
+      url: '/api/criteria',
+      payload: { ...criteria, location },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+  };
+
+  const reason = (job: Job | undefined) =>
+    job?.criteria.find((c) => c.criterion === 'location')?.reason;
 
   test('refuses a run or the list without a session, and a run from another site', async () => {
     for (const [method, url] of [
@@ -160,18 +171,16 @@ describe('/api/discovery-runs and /api/jobs', needsDatabase, () => {
 
     const { scope, jobs } = await listJobs();
     assert.deepEqual(scope, { area: 'helsinki', includeRemote: false });
+    // The location is the only criterion in use at first, and it is hard.
+    const inScope = 'The location is in your search scope.';
     assert.deepEqual(
-      jobs.map((j) => [j.title, j.verdict, j.reason]),
+      jobs.map((j) => [j.title, j.verdict, reason(j)]),
       [
-        ['Data Engineer', 'in_scope', ''],
-        ['Backend Engineer', 'in_scope', ''],
+        ['Data Engineer', 'eligible', inScope],
+        ['Backend Engineer', 'eligible', inScope],
         ['Designer', 'to_confirm', 'No location given.'],
-        [
-          'Researcher',
-          'out_of_scope',
-          'Not in Helsinki or Espoo; remote jobs are not in the scope.',
-        ],
-        ['Sales Lead', 'out_of_scope', 'Not in Helsinki or Espoo.'],
+        ['Researcher', 'ineligible', 'Not in Helsinki or Espoo; remote jobs are not in the scope.'],
+        ['Sales Lead', 'ineligible', 'Not in Helsinki or Espoo.'],
       ],
     );
     const data = jobs[0]!;
@@ -188,8 +197,26 @@ describe('/api/discovery-runs and /api/jobs', needsDatabase, () => {
         sources: undefined,
         origin: 'discovered',
         needsText: false,
-        verdict: 'in_scope',
-        reason: '',
+        verdict: 'eligible',
+        criteria: [
+          {
+            criterion: 'location',
+            strength: 'hard',
+            outcome: 'met',
+            effect: 'none',
+            reason: inScope,
+            quote: null,
+          },
+          // A preference by default, so it only shows.
+          {
+            criterion: 'mustHaves',
+            strength: 'preference',
+            outcome: 'unknown',
+            effect: 'none',
+            reason: 'The app does not have the job text yet.',
+            quote: null,
+          },
+        ],
       },
     );
     assert.deepEqual(new Set(data.sources.map((s) => s.id)), new Set([lower.id, upper.id]));
@@ -198,11 +225,11 @@ describe('/api/discovery-runs and /api/jobs', needsDatabase, () => {
     await setScope('helsinki', true);
     const remote = (await listJobs()).jobs.find((j) => j.title === 'Researcher');
     assert.deepEqual(
-      [remote?.verdict, remote?.reason],
+      [remote?.verdict, reason(remote)],
       ['to_confirm', 'Remote, but it does not say from where.'],
     );
     await setScope('worldwide');
-    assert.ok((await listJobs()).jobs.every((j) => j.verdict === 'in_scope'));
+    assert.ok((await listJobs()).jobs.every((j) => j.verdict === 'eligible'));
     await setScope('helsinki');
 
     // A source that is not in use any more hides the jobs only it lists.

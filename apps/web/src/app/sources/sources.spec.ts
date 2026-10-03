@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import type { CatalogEntry, Source, SourcesResponse } from '@jsa/shared';
 import { Sources } from './sources';
 
@@ -66,7 +67,6 @@ describe('Sources', () => {
     ) as HTMLElement;
 
   async function load(sources: Source[] = []) {
-    http.expectOne('/api/search-scope').flush({ area: 'helsinki', includeRemote: false });
     http
       .expectOne('/api/sources')
       .flush({ catalog: [board, alert, paste], sources } satisfies SourcesResponse);
@@ -76,7 +76,7 @@ describe('Sources', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       imports: [Sources],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
     });
     fixture = TestBed.createComponent(Sources);
     http = TestBed.inject(HttpTestingController);
@@ -221,75 +221,5 @@ describe('Sources', () => {
     post.flush(source({ catalogId: 'some_alert', param: '' }));
     await settle();
     http.expectOne('/api/sources').flush({ catalog: [board, alert, paste], sources: [] });
-  });
-});
-
-describe('Sources, search scope', () => {
-  let fixture: ComponentFixture<Sources>;
-  let http: HttpTestingController;
-
-  const page = () => fixture.nativeElement as HTMLElement;
-  const radio = (value: string) =>
-    page().querySelector<HTMLInputElement>(`input[type=radio][value=${value}]`)!;
-  const remote = () => page().querySelector<HTMLInputElement>('fieldset ~ label input')!;
-  const save = () => page().querySelector<HTMLButtonElement>('app-search-scope-form button')!;
-
-  beforeEach(async () => {
-    TestBed.configureTestingModule({
-      imports: [Sources],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
-    });
-    fixture = TestBed.createComponent(Sources);
-    http = TestBed.inject(HttpTestingController);
-    fixture.detectChanges();
-    http.expectOne('/api/sources').flush({ catalog: [], sources: [] });
-    http.expectOne('/api/search-scope').flush({ area: 'helsinki', includeRemote: false });
-    await fixture.whenStable();
-  });
-
-  afterEach(() => http.verify());
-
-  it('shows the saved scope, with nothing to save yet', () => {
-    expect(radio('helsinki').checked).toBe(true);
-    expect(remote().checked).toBe(false);
-    expect(save().disabled).toBe(true);
-  });
-
-  it('widens the scope to anywhere and saves it', async () => {
-    radio('worldwide').click();
-    await fixture.whenStable();
-    expect(remote().disabled).toBe(true);
-    expect(page().textContent).toContain('(already included)');
-
-    save().click();
-    const put = http.expectOne({ method: 'PUT', url: '/api/search-scope' });
-    expect(put.request.body).toEqual({ area: 'worldwide', includeRemote: false });
-    put.flush({ area: 'worldwide', includeRemote: false });
-    await fixture.whenStable();
-
-    expect(page().querySelector('app-search-scope-form [role=status]')?.textContent).toBe('Saved.');
-    expect(save().disabled).toBe(true);
-  });
-
-  it('keeps the edit and shows the error when saving fails', async () => {
-    radio('finland').click();
-    remote().click();
-    await fixture.whenStable();
-
-    save().click();
-    http
-      .expectOne({ method: 'PUT', url: '/api/search-scope' })
-      .flush(
-        { message: 'The server has no database configured.' },
-        { status: 503, statusText: 'Service Unavailable' },
-      );
-    await fixture.whenStable();
-
-    expect(page().querySelector('app-search-scope-form [role=alert]')?.textContent).toContain(
-      'no database configured',
-    );
-    expect(radio('finland').checked).toBe(true);
-    expect(remote().checked).toBe(true);
-    expect(save().disabled).toBe(false);
   });
 });
