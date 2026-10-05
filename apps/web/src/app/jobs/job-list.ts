@@ -15,8 +15,10 @@ import { describeResult, listedResults } from './criteria-text';
           <a class="title" [routerLink]="['/jobs', job.id]">{{ job.title }}</a>
           <span class="meta">
             {{ job.company ?? job.sources[0]?.param ?? 'Company not given' }} ·
-            {{ job.location || 'No location given' }} ·
-            <a [href]="job.url" target="_blank" rel="noopener noreferrer">Job page</a>
+            {{ job.location || 'No location given' }}
+            @if (job.url) {
+              · <a [href]="job.url" target="_blank" rel="noopener noreferrer">Job page</a>
+            }
           </span>
           <span class="meta">
             @if (job.publishedAt) {
@@ -26,9 +28,12 @@ import { describeResult, listedResults } from './criteria-text';
             @if (job.sources.length > 1) {
               · Listed by {{ job.sources.length }} of your sources
             }
+            @if (job.alerts.length) {
+              · In alert emails from {{ job.alerts.join(', ') }}
+            }
           </span>
           @if (job.needsText) {
-            <span class="reason">Needs the job text: save its page or paste it.</span>
+            <span class="reason">Needs the job text: paste it, or save its page.</span>
           }
           @for (result of listedResults(job.criteria); track result.criterion) {
             <span class="reason">{{ describeResult(result) }}</span>
@@ -66,7 +71,8 @@ export class JobList {
   protected readonly describeResult = describeResult;
   protected readonly originLabels: Record<JobOrigin, string> = {
     discovered: 'Found',
-    pasted: 'Pasted',
     saved: 'Saved',
+    alert: 'From an alert email',
+    pasted: 'Pasted',
   };
 }

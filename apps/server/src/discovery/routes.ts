@@ -68,9 +68,10 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
     // One entry per job, however many sources list it, described by the first posting found. The
     // verdict and criteria are filled in at the end.
     const jobs = new Map<string, Job>();
-    const unchecked = (): Pick<Job, 'verdict' | 'criteria'> => ({
+    const unchecked = (): Pick<Job, 'verdict' | 'criteria' | 'alerts'> => ({
       verdict: 'eligible',
       criteria: [],
+      alerts: [],
     });
     for (const row of rows) {
       if (!findCatalogEntry(row.catalog_id)) continue;
@@ -129,6 +130,43 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
       });
     }
 
+    // Jobs read from job-alert emails of sources in use (T20), as the newest email showed them.
+    // One the email named without a link takes its address from its newest text, if any.
+    const alerted = await pool.query<{
+      job_id: string;
+      title: string;
+      company: string | null;
+      location: string;
+      url: string | null;
+      first_seen_at: Date;
+      has_text: boolean;
+    }>(
+      `select distinct on (a.job_id) a.job_id, a.title, a.company, a.location,
+         coalesce(a.url, (select n.source_url from job_snapshot n where n.job_id = a.job_id
+           order by n.last_captured_at desc, n.captured_at desc limit 1)) as url,
+         min(a.first_seen_at) over (partition by a.job_id) as first_seen_at,
+         exists (select 1 from job_snapshot n where n.job_id = a.job_id) as has_text
+       from alert_job a join source s on s.id = a.source_id
+       where s.enabled
+       order by a.job_id, a.last_seen_at desc`,
+    );
+    for (const row of alerted.rows) {
+      if (jobs.has(row.job_id)) continue;
+      jobs.set(row.job_id, {
+        id: row.job_id,
+        title: row.title,
+        company: row.company,
+        location: row.location,
+        url: row.url,
+        publishedAt: null,
+        firstSeenAt: row.first_seen_at.toISOString(),
+        sources: [],
+        origin: 'alert',
+        needsText: !row.has_text,
+        ...unchecked(),
+      });
+    }
+
     const pasted = await pool.query<{
       job_id: string;
       title: string;
@@ -157,6 +195,18 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
         needsText: false,
         ...unchecked(),
       });
+    }
+
+    // Which job-alert sources in use listed each job.
+    const listings = await pool.query<{ job_id: string; catalog_id: string }>(
+      `select distinct a.job_id, s.catalog_id
+       from alert_job a join source s on s.id = a.source_id
+       where s.enabled
+       order by a.job_id, s.catalog_id`,
+    );
+    for (const row of listings.rows) {
+      const name = findCatalogEntry(row.catalog_id)?.name;
+      if (name) jobs.get(row.job_id)?.alerts.push(name);
     }
 
     const checks = await checkJobs(pool, [...jobs.values()], criteria);

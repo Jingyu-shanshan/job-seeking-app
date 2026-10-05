@@ -23,6 +23,11 @@ export const routes: Routes = [
         title: 'Paste a job',
       },
       {
+        path: 'jobs/alerts',
+        loadComponent: () => import('./jobs/import-alerts').then((m) => m.ImportAlerts),
+        title: 'Import job-alert emails',
+      },
+      {
         path: 'jobs/:id',
         loadComponent: () => import('./jobs/job-detail').then((m) => m.JobDetailPage),
         title: 'Job',

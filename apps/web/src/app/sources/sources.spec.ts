@@ -13,17 +13,39 @@ const board: CatalogEntry = {
   terms: { checkedOn: '2026-10-01', url: 'https://example.com/terms' },
   rateLimit: { requests: 1, perSeconds: 2 },
   param: { label: 'Board name', hint: 'The last part of the address.', pattern: '^[a-z]+$' },
+  alert: null,
 };
 
 const alert: CatalogEntry = {
   id: 'some_alert',
-  name: 'Some job alerts',
+  name: 'Some site',
   access: 'email_alert',
   note: 'Its terms forbid automated access.',
   terms: { checkedOn: '2026-10-01', url: 'https://example.com/user-agreement' },
   rateLimit: null,
   param: null,
+  alert: {
+    kind: 'job_alert',
+    section: 'platforms',
+    senders: ['alerts@example.com', 'jobs@example.com'],
+    onByDefault: true,
+  },
 };
+
+const recruiter: CatalogEntry = {
+  ...alert,
+  id: 'some_recruiter',
+  name: 'Recruiter messages',
+  terms: null,
+  alert: {
+    kind: 'recruiter_opportunity',
+    section: 'optional',
+    senders: ['talk@example.com'],
+    onByDefault: false,
+  },
+};
+
+const catalog = [board, alert, recruiter];
 
 const paste: CatalogEntry = {
   id: 'paste',
@@ -33,7 +55,10 @@ const paste: CatalogEntry = {
   terms: null,
   rateLimit: null,
   param: null,
+  alert: null,
 };
+
+catalog.push(paste);
 
 const source = (fields: Partial<Source>): Source => ({
   id: '00000000-0000-4000-8000-000000000001',
@@ -65,11 +90,14 @@ describe('Sources', () => {
     [...page().querySelectorAll('app-catalog-entry')].find((el) =>
       el.querySelector('h4')?.textContent?.includes(name),
     ) as HTMLElement;
+  const alertRow = (name: string) =>
+    [...page().querySelectorAll('app-alert-source')].find((el) =>
+      el.querySelector('strong')?.textContent?.includes(name),
+    ) as HTMLElement;
+  const textOf = (el: Element) => el.textContent?.replace(/\s+/g, ' ') ?? '';
 
-  async function load(sources: Source[] = []) {
-    http
-      .expectOne('/api/sources')
-      .flush({ catalog: [board, alert, paste], sources } satisfies SourcesResponse);
+  async function load(sources: Source[] = [], alerts: SourcesResponse['alerts'] = []) {
+    http.expectOne('/api/sources').flush({ catalog, sources, alerts } satisfies SourcesResponse);
     await fixture.whenStable();
   }
 
@@ -96,10 +124,21 @@ describe('Sources', () => {
     expect(boardCard.textContent).toContain('At most one request every 2 seconds.');
     expect(boardCard.querySelector('a')?.getAttribute('href')).toBe('https://example.com/terms');
 
-    const alertCard = card('Some job alerts');
-    expect(alertCard.textContent).toContain('Job-alert emails you import');
-    expect(alertCard.textContent).toContain('Its terms forbid automated access.');
-    expect(alertCard.textContent).toContain('The app never requests this site.');
+    const row = textOf(alertRow('Some site'));
+    expect(row).toContain('Job alerts');
+    expect(row).toContain('No alerts found');
+    expect(row).toContain('From alerts@example.com, jobs@example.com. No email imported yet.');
+    expect(row).toContain('Its terms forbid automated access.');
+    expect(row).toContain('The app never requests this site.');
+    expect(alertRow('Some site').querySelector('a')?.getAttribute('href')).toBe(
+      'https://example.com/user-agreement',
+    );
+
+    const sections = [...page().querySelectorAll('app-alert-source')].map(
+      (el) => el.closest('section')?.querySelector('h4')?.textContent,
+    );
+    expect(sections).toEqual(['Popular job platforms', 'Optional']);
+    expect(page().querySelector('a[href="/jobs/alerts"]')).not.toBeNull();
 
     expect(card('Paste a job').textContent).toContain('Always available.');
   });
@@ -141,7 +180,7 @@ describe('Sources', () => {
 
     http
       .expectOne('/api/sources')
-      .flush({ catalog: [board, alert, paste], sources: [source({ enabled: false })] });
+      .flush({ catalog, sources: [source({ enabled: false })], alerts: [] });
     await fixture.whenStable();
     expect(card('Some job boards').querySelector<HTMLInputElement>('li input')!.checked).toBe(
       false,
@@ -157,7 +196,7 @@ describe('Sources', () => {
       .expectOne('/api/sources/00000000-0000-4000-8000-000000000001')
       .flush({ message: 'There is no such source.' }, { status: 404, statusText: 'Not Found' });
     await settle();
-    http.expectOne('/api/sources').flush({ catalog: [board, alert, paste], sources: [source({})] });
+    http.expectOne('/api/sources').flush({ catalog, sources: [source({})], alerts: [] });
     await fixture.whenStable();
 
     expect(box.checked).toBe(true);
@@ -205,21 +244,72 @@ describe('Sources', () => {
     const added = source({ param: 'other' });
     http.expectOne({ method: 'POST', url: '/api/sources' }).flush(added);
     await settle();
-    http.expectOne('/api/sources').flush({ catalog: [board, alert, paste], sources: [added] });
+    http.expectOne('/api/sources').flush({ catalog, sources: [added], alerts: [] });
     await fixture.whenStable();
     expect(input.value).toBe('');
     expect(boardCard.querySelector('[role=alert]')).toBeNull();
     expect(text()).toContain('Use other');
   });
 
-  it('adds a job-alert entry the first time it is used', async () => {
-    await load();
+  it('shows what was imported for each job-alert source', async () => {
+    await load(
+      [source({ catalogId: 'some_alert', param: '', lastSuccessAt: '2026-10-02T08:00:00.000Z' })],
+      [
+        {
+          catalogId: 'some_alert',
+          emails: 3,
+          lastSentAt: '2026-10-02T07:00:00.000Z',
+          lastHadNoJobs: false,
+        },
+      ],
+    );
+    const row = alertRow('Some site');
+    expect(row.querySelector('.status')?.textContent).toBe('Detected');
+    expect(textOf(row)).toContain(
+      'From alerts@example.com, jobs@example.com. 3 emails imported, the newest sent 2 Oct 2026.',
+    );
+  });
 
-    card('Some job alerts').querySelector<HTMLInputElement>('input[type=checkbox]')!.click();
-    const post = http.expectOne({ method: 'POST', url: '/api/sources' });
-    expect(post.request.body).toEqual({ catalogId: 'some_alert' });
-    post.flush(source({ catalogId: 'some_alert', param: '' }));
+  it('marks a source for review when no job could be read from its last email', async () => {
+    await load(
+      [source({ catalogId: 'some_alert', param: '' })],
+      [{ catalogId: 'some_alert', emails: 1, lastSentAt: null, lastHadNoJobs: true }],
+    );
+    const row = textOf(alertRow('Some site'));
+    expect(row).toContain('Needs review');
+    expect(row).toContain('1 email imported. No job could be read from the last one');
+  });
+
+  it('turns off a job-alert source that is on by default, and turns on one that is not', async () => {
+    await load();
+    const used = alertRow('Some site').querySelector<HTMLInputElement>('input[type=checkbox]')!;
+    const recruiting =
+      alertRow('Recruiter messages').querySelector<HTMLInputElement>('input[type=checkbox]')!;
+    expect(used.checked).toBe(true);
+    expect(recruiting.checked).toBe(false);
+
+    used.click();
+    const off = http.expectOne({ method: 'POST', url: '/api/sources' });
+    expect(off.request.body).toEqual({ catalogId: 'some_alert', enabled: false });
+    off.flush(source({ catalogId: 'some_alert', param: '', enabled: false }));
     await settle();
-    http.expectOne('/api/sources').flush({ catalog: [board, alert, paste], sources: [] });
+    http.expectOne('/api/sources').flush({
+      catalog,
+      sources: [source({ catalogId: 'some_alert', param: '', enabled: false })],
+      alerts: [],
+    });
+    await fixture.whenStable();
+    expect(
+      alertRow('Some site').querySelector<HTMLInputElement>('input[type=checkbox]')!.checked,
+    ).toBe(false);
+
+    alertRow('Recruiter messages').querySelector<HTMLInputElement>('input[type=checkbox]')!.click();
+    const on = http.expectOne({ method: 'POST', url: '/api/sources' });
+    expect(on.request.body).toEqual({ catalogId: 'some_recruiter', enabled: true });
+    on.flush({ message: 'Nope.' }, { status: 500, statusText: 'Server Error' });
+    await settle();
+    http.expectOne('/api/sources').flush({ catalog, sources: [], alerts: [] });
+    await fixture.whenStable();
+    expect(textOf(alertRow('Recruiter messages'))).toContain('Nope.');
   });
 });

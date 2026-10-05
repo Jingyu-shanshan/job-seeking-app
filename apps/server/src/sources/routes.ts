@@ -57,7 +57,30 @@ export const sourceRoutes: FastifyPluginAsyncTypebox<SourceRoutesOptions> = asyn
     );
     // A source whose entry has left the catalog is not shown, and never requested either.
     const sources = rows.filter((row) => findCatalogEntry(row.catalog_id)).map(toSource);
-    return { catalog: [...catalog], sources };
+    // Job-alert emails imported per source (T20).
+    const alerts = await pool.query<{
+      catalog_id: string;
+      emails: number;
+      last_sent_at: Date | null;
+      last_jobs: number;
+    }>(
+      `select s.catalog_id, count(*)::int as emails, max(e.sent_at) as last_sent_at,
+         (array_agg(e.jobs order by e.last_imported_at desc, e.id))[1] as last_jobs
+       from alert_email e join source s on s.id = e.source_id
+       group by s.catalog_id order by s.catalog_id`,
+    );
+    return {
+      catalog: [...catalog],
+      sources,
+      alerts: alerts.rows
+        .filter((row) => findCatalogEntry(row.catalog_id))
+        .map((row) => ({
+          catalogId: row.catalog_id,
+          emails: row.emails,
+          lastSentAt: row.last_sent_at?.toISOString() ?? null,
+          lastHadNoJobs: row.last_jobs === 0,
+        })),
+    };
   });
 
   app.post(
@@ -79,9 +102,9 @@ export const sourceRoutes: FastifyPluginAsyncTypebox<SourceRoutesOptions> = asyn
       }
 
       const { rows } = await pool.query<SourceRow>(
-        `insert into source (catalog_id, param) values ($1, $2)
+        `insert into source (catalog_id, param, enabled) values ($1, $2, $3)
          on conflict (catalog_id, param) do nothing returning ${columns}`,
-        [catalogId, param],
+        [catalogId, param, request.body.enabled ?? true],
       );
       const row = rows[0];
       if (!row) {

@@ -11,6 +11,7 @@ const entry = (id: string, access: CatalogEntry['access']): CatalogEntry => ({
   terms: null,
   rateLimit: null,
   param: null,
+  alert: null,
 });
 
 const catalog = [

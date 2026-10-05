@@ -2,6 +2,7 @@ import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import {
   AddRequirementRequestSchema,
   JobDetailSchema,
+  type AlertListing,
   ModelUsageSchema,
   PasteJobRequestSchema,
   PasteTextRequestSchema,
@@ -60,6 +61,16 @@ interface SavedRow {
   company: string | null;
   location: string;
   url: string;
+}
+
+interface AlertRow {
+  /** Null for a job the email linked only through a tracker the app cannot read. */
+  url: string | null;
+  details: string;
+  first_seen_at: Date;
+  catalog_id: string;
+  subject: string;
+  sent_at: Date | null;
 }
 
 interface SnapshotRow {
@@ -123,6 +134,29 @@ async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetail | und
     [jobId],
   );
   const saved = saves.rows[0];
+  // Job-alert emails of sources in use that listed the job (T20), the first one first.
+  const alerted = await pool.query<Omit<SavedRow, 'url'> & AlertRow>(
+    `select a.title, a.company, a.location, a.url, a.details, a.first_seen_at, s.catalog_id,
+       e.subject, e.sent_at
+     from alert_job a join source s on s.id = a.source_id
+       join alert_email e on e.id = a.alert_email_id
+     where a.job_id = $1 and s.enabled
+     order by a.first_seen_at, a.id`,
+    [jobId],
+  );
+  const alerts: AlertListing[] = alerted.rows.flatMap((row) => {
+    const entry = findCatalogEntry(row.catalog_id);
+    if (!entry) return [];
+    return {
+      catalogId: row.catalog_id,
+      name: entry.name,
+      subject: row.subject,
+      sentAt: row.sent_at?.toISOString() ?? null,
+      firstSeenAt: row.first_seen_at.toISOString(),
+      url: row.url,
+      details: row.details,
+    };
+  });
   const snapshots = await pool.query<SnapshotRow>(
     `select id, captured_at, catalog_id, title, company, location, source_url, body,
        (count(*) over () - 1)::int as earlier
@@ -132,9 +166,19 @@ async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetail | und
     [jobId],
   );
   const current = snapshots.rows[0];
-  const first = postings.find((p) => p.closed_at === null && p.enabled) ?? saved ?? postings[0];
+  const first =
+    postings.find((p) => p.closed_at === null && p.enabled) ??
+    saved ??
+    alerted.rows[0] ??
+    postings[0];
+  // A job an alert email names without a link takes its address from its text, once it has one.
   const head = first
-    ? { title: first.title, company: first.company, location: first.location, url: first.url }
+    ? {
+        title: first.title,
+        company: first.company,
+        location: first.location,
+        url: first.url ?? current?.source_url ?? null,
+      }
     : current && {
         title: current.title,
         company: current.company,
@@ -158,6 +202,7 @@ async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetail | und
     sources,
     canImport: importSources(postings).length > 0,
     saved: saved !== undefined,
+    alerts,
     snapshot: current ? await loadSnapshot(pool, current, facts) : null,
     earlierSnapshots: current?.earlier ?? 0,
     verdict: check.verdict,
@@ -360,7 +405,16 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
       const job = await loadJobDetail(pool, jobId);
       if (!job) throw httpError(404, 'There is no such job.');
       const text = checkJobText(request.body.text, 'Paste the job text.');
-      await saveSnapshot(pool, jobId, 'paste', { ...job, text });
+      const given = request.body.url;
+      if (given && !URL.canParse(given)) throw httpError(400, 'The link is not a valid address.');
+      const url = given ? new URL(given).href : job.url;
+      if (!url) {
+        throw httpError(
+          400,
+          'The app has no link to this job. Add the link to the job page you copied the text from.',
+        );
+      }
+      await saveSnapshot(pool, jobId, 'paste', { ...job, text, url });
       return detailAfterChange(pool, jobId);
     },
   );

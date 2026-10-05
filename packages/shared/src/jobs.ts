@@ -23,20 +23,22 @@ export const JobSourceSchema = Type.Object({
 export type JobSource = Static<typeof JobSourceSchema>;
 
 /**
- * How a job came into the app: found by a discovery run, pasted, or saved from a page in the
- * desktop app (T21). A job that came in several ways appears once, as the first of these.
+ * How a job came into the app: found by a discovery run, saved from a page in the desktop app
+ * (T21), read from a job-alert email (T20), or pasted. A job that came in several ways appears
+ * once, as the first of these.
  */
 export const JobOriginSchema = Type.Union([
   Type.Literal('discovered'),
-  Type.Literal('pasted'),
   Type.Literal('saved'),
+  Type.Literal('alert'),
+  Type.Literal('pasted'),
 ]);
 
 export type JobOrigin = Static<typeof JobOriginSchema>;
 
 /**
- * A job in the list: an open job that discovery found, a pasted job or a saved one. A job listed
- * by several sources appears once.
+ * A job in the list: an open job that discovery found, a saved, pasted or alert-email job. A job
+ * listed by several sources appears once.
  */
 export const JobSchema = Type.Object({
   id: Type.String({ format: 'uuid' }),
@@ -45,18 +47,24 @@ export const JobSchema = Type.Object({
   company: Type.Union([Type.String(), Type.Null()]),
   /** As the source wrote it; '' when it gave none. Several locations are separated by ";". */
   location: Type.String(),
-  /** The job's page at the source, always https. */
-  url: Type.String(),
+  /**
+   * The job's page at the source, always https; null when the app has no address for it: a
+   * job-alert email that links to it only through a tracker the app cannot read.
+   */
+  url: Type.Union([Type.String(), Type.Null()]),
   /** When the source first published the job; null when it does not say. */
   publishedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
   /** When the job first came into the app. */
   firstSeenAt: Type.String({ format: 'date-time' }),
   /** The user's sources that list the job, e.g. one Greenhouse board. */
   sources: Type.Array(JobSourceSchema),
+  /** The names of the job-alert sources in use whose emails listed the job (T20). */
+  alerts: Type.Array(Type.String()),
   origin: JobOriginSchema,
   /**
-   * True when the app has only the job's entry on a results page, no job text, and no source it
-   * can read the text from. Such a job is not summarised or matched until its text is saved.
+   * True when the app has only the job's entry on a results page or in an alert email, no job
+   * text, and no source it can read the text from. Such a job is not summarised or matched until
+   * its text is saved or pasted.
    */
   needsText: Type.Boolean(),
   verdict: JobVerdictSchema,

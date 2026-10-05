@@ -15,6 +15,7 @@ const job = (fields: Partial<Job>): Job => ({
   publishedAt: '2026-09-20T10:00:00.000Z',
   firstSeenAt: '2026-10-01T08:00:00.000Z',
   sources: [{ id: '00000000-0000-4000-8000-000000000001', catalogId: 'b', param: 'acme' }],
+  alerts: [],
   origin: 'discovered',
   needsText: false,
   verdict: 'eligible',
@@ -199,8 +200,48 @@ describe('Jobs', () => {
 
     expect(items('Eligible (2)')).toEqual([
       'Saved Engineer Acme · Helsinki, Finland · Job page Saved 1 Oct 2026',
-      'Listed Engineer Acme · Helsinki, Finland · Job page Saved 1 Oct 2026 Needs the job text: save its page or paste it.',
+      'Listed Engineer Acme · Helsinki, Finland · Job page Saved 1 Oct 2026 Needs the job text: paste it, or save its page.',
     ]);
+  });
+
+  it('marks a job from an alert email and says which alerts listed it', async () => {
+    await load([
+      job({
+        sources: [],
+        publishedAt: null,
+        origin: 'alert',
+        alerts: ['LinkedIn', 'Duunitori'],
+        needsText: true,
+        title: 'Alert Engineer',
+      }),
+      job({
+        title: 'Board Engineer',
+        alerts: ['LinkedIn'],
+        publishedAt: '2026-10-01T10:00:00.000Z',
+      }),
+    ]);
+
+    expect(items('Eligible (2)')).toEqual([
+      'Alert Engineer Acme · Helsinki, Finland · Job page From an alert email 1 Oct 2026 · In alert emails from LinkedIn, Duunitori Needs the job text: paste it, or save its page.',
+      'Board Engineer Acme · Helsinki, Finland · Job page Posted 1 Oct 2026 · Found 1 Oct 2026 · In alert emails from LinkedIn',
+    ]);
+  });
+
+  it('shows no job page link for a job the app has no address for', async () => {
+    await load([
+      job({
+        sources: [],
+        publishedAt: null,
+        origin: 'alert',
+        alerts: ['Snaphunt'],
+        needsText: true,
+        title: 'Odoo Consultant',
+        url: null,
+      }),
+    ]);
+    const item = section('Eligible (1)')!.querySelector('app-job-list li')!;
+    expect(item.querySelector('a[target=_blank]')).toBeNull();
+    expect(text(item)).toContain('Odoo Consultant Acme · Helsinki, Finland From an alert email');
   });
 
   it('shows only the eligible group while there are no jobs', async () => {

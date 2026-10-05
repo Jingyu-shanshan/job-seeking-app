@@ -21,14 +21,16 @@ const areaLabels: Record<SearchScope['area'], string> = {
   template: `
     <h1>Jobs</h1>
     <p>
-      Open jobs on the job boards you use, and jobs you pasted or saved, sorted by when they were
-      posted and grouped by your hard <a routerLink="/criteria">criteria</a>. Choose the boards on
-      the <a routerLink="/sources">Sources</a> page. Open a job to read, summarise and match it with
+      Open jobs on the job boards you use, and jobs you pasted, saved or imported from alert emails,
+      sorted by when they were posted and grouped by your hard
+      <a routerLink="/criteria">criteria</a>. Choose the boards on the
+      <a routerLink="/sources">Sources</a> page. Open a job to read, summarise and match it with
       your facts.
     </p>
     <p>
-      <a routerLink="/jobs/paste">Paste a job</a> from any other site, or browse the site in the
-      desktop app and save the job you are looking at.
+      <a routerLink="/jobs/paste">Paste a job</a> from any other site,
+      <a routerLink="/jobs/alerts">import job-alert emails</a>, or browse the site in the desktop
+      app and save the job you are looking at.
     </p>
 
     <form [formRoot]="runForm">

@@ -1,4 +1,5 @@
 import Type, { type Static } from 'typebox';
+import { AlertListingSchema } from './alerts.ts';
 import { CriterionResultSchema, JobVerdictSchema, OutcomeSchema } from './criteria.ts';
 import { JobSourceSchema } from './jobs.ts';
 
@@ -125,11 +126,14 @@ export const JobDetailSchema = Type.Object({
   title: Type.String(),
   company: Type.Union([Type.String(), Type.Null()]),
   location: Type.String(),
-  url: Type.String(),
+  /** Null when the app has no address for the job (see `Job.url`). */
+  url: Type.Union([Type.String(), Type.Null()]),
   sources: Type.Array(JobSourceSchema),
   canImport: Type.Boolean(),
   /** Whether the user saved the job from a page in the desktop app. */
   saved: Type.Boolean(),
+  /** The job-alert emails of sources in use that listed the job (T20). */
+  alerts: Type.Array(AlertListingSchema),
   snapshot: Type.Union([SnapshotSchema, Type.Null()]),
   earlierSnapshots: Type.Integer({ minimum: 0 }),
   verdict: JobVerdictSchema,
@@ -154,6 +158,11 @@ export type PasteJobRequest = Static<typeof PasteJobRequestSchema>;
 /** Body of `POST /api/jobs/:id/text`: job text the user pasted for a job the app already has. */
 export const PasteTextRequestSchema = Type.Object({
   text: Type.String({ pattern: '\\S', maxLength: maxJobTextLength }),
+  /**
+   * The link to the job's page, where the text was copied from. Needed when the app has no
+   * address for the job; otherwise its address is used.
+   */
+  url: Type.Optional(Type.String({ pattern: '^https://\\S+$', maxLength: 2000 })),
 });
 
 export type PasteTextRequest = Static<typeof PasteTextRequestSchema>;
