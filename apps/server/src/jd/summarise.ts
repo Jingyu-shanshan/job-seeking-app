@@ -153,7 +153,7 @@ export async function recordFailedCall(
     usage,
     failureReason,
   }: {
-    purpose: 'job_summary' | 'match';
+    purpose: 'job_summary' | 'match' | 'draft';
     snapshotId: string;
     startedAt: Date;
     usage: CallUsage | undefined;

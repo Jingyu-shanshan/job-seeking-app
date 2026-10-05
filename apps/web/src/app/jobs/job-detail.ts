@@ -10,10 +10,11 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
-import type { JobDetail, JobVerdict, ModelUsage } from '@jsa/shared';
+import { Router, RouterLink } from '@angular/router';
+import type { DraftKind, JobDetail, JobVerdict, ModelUsage } from '@jsa/shared';
 import { errorMessage } from '../sources/sources-api';
 import { criterionLabels, describeResult } from './criteria-text';
+import { JobDrafts, draftNames } from './job-drafts';
 import { JobSummaryView, outcomeLabels } from './job-summary';
 import { JobsApi, usd } from './jobs-api';
 import { PasteTextForm } from './paste-text-form';
@@ -34,7 +35,7 @@ const verdictLines: Record<JobVerdict, string> = {
 
 @Component({
   selector: 'app-job-detail',
-  imports: [DatePipe, JobSummaryView, PasteTextForm, RouterLink],
+  imports: [DatePipe, JobDrafts, JobSummaryView, PasteTextForm, RouterLink],
   template: `
     <p><a routerLink="/jobs">All jobs</a></p>
     @if (data.hasValue()) {
@@ -223,6 +224,17 @@ const verdictLines: Record<JobVerdict, string> = {
         </section>
       }
 
+      @if (job.snapshot) {
+        <section aria-labelledby="drafts-heading">
+          <h2 id="drafts-heading">Drafts</h2>
+          <app-job-drafts
+            [job]="job"
+            [busy]="busy()"
+            (write)="writeDraft(job.snapshot.id, $event)"
+          />
+        </section>
+      }
+
       <p role="status">{{ status() }}</p>
       @if (failure()) {
         <p class="error" role="alert">{{ failure() }}</p>
@@ -267,6 +279,7 @@ export class JobDetailPage {
   private readonly api = inject(JobsApi);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
+  private readonly router = inject(Router);
 
   readonly id = input.required<string>();
 
@@ -346,6 +359,23 @@ export class JobDetailPage {
       this.api.match(snapshotId),
     );
     this.usage.reload();
+  }
+
+  protected async writeDraft(snapshotId: string, kind: DraftKind) {
+    this.busy.set(true);
+    this.failure.set('');
+    this.status.set(`Writing the ${draftNames[kind]} with DeepSeek. This can take a minute.`);
+    try {
+      const draft = await this.api.writeDraft(snapshotId, kind);
+      this.status.set('');
+      await this.router.navigate(['/drafts', draft.id]);
+    } catch (error) {
+      this.status.set('');
+      this.failure.set(errorMessage(error));
+    } finally {
+      this.busy.set(false);
+      this.usage.reload();
+    }
   }
 
   protected importText() {

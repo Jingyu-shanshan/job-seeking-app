@@ -61,7 +61,6 @@ export {
 } from './criteria.ts';
 export {
   AddRequirementRequestSchema,
-  CitedFactSchema,
   EvidenceSchema,
   JobDetailSchema,
   JobSummarySchema,
@@ -77,7 +76,6 @@ export {
   SummaryFieldsSchema,
   maxJobTextLength,
   type AddRequirementRequest,
-  type CitedFact,
   type Evidence,
   type JobDetail,
   type JobSummary,
@@ -107,6 +105,7 @@ export {
 } from './saved.ts';
 export {
   AddFactRequestSchema,
+  CitedFactSchema,
   EditFactRequestSchema,
   FactKindSchema,
   FactSchema,
@@ -118,6 +117,7 @@ export {
   UpdateFactVersionRequestSchema,
   maxFactLength,
   type AddFactRequest,
+  type CitedFact,
   type EditFactRequest,
   type Fact,
   type FactKind,
@@ -145,3 +145,25 @@ export {
   type ImportAlertEmailRequest,
   type ImportAlertEmailResponse,
 } from './alerts.ts';
+export {
+  DraftAboutSchema,
+  DraftKindSchema,
+  DraftLineSchema,
+  DraftSchema,
+  DraftSectionSchema,
+  DraftStatementSchema,
+  DraftSummarySchema,
+  ProblemCodeSchema,
+  ProblemSchema,
+  WriteDraftRequestSchema,
+  type Draft,
+  type DraftAbout,
+  type DraftKind,
+  type DraftLine,
+  type DraftSection,
+  type DraftStatement,
+  type DraftSummary,
+  type Problem,
+  type ProblemCode,
+  type WriteDraftRequest,
+} from './drafts.ts';

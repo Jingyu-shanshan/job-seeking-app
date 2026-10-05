@@ -33,6 +33,11 @@ export const routes: Routes = [
         title: 'Job',
       },
       {
+        path: 'drafts/:id',
+        loadComponent: () => import('./drafts/draft-page').then((m) => m.DraftPage),
+        title: 'Draft',
+      },
+      {
         path: 'facts',
         loadComponent: () => import('./facts/facts').then((m) => m.Facts),
         title: 'Facts about you',

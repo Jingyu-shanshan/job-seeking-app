@@ -168,6 +168,7 @@ describe('JD import and summary', needsDatabase, () => {
           summary: null,
           requirements: [],
           match: null,
+          drafts: [],
         },
         earlierSnapshots: 0,
         verdict: 'eligible',
@@ -190,6 +191,7 @@ describe('JD import and summary', needsDatabase, () => {
           },
         ],
         factsToSend: 0,
+        factsToDraft: 0,
       },
     );
 

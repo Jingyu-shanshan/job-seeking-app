@@ -54,6 +54,8 @@ test('finds email addresses and phone numbers, not years or amounts', () => {
     'Cut costs by 12 % for 3 000 users.',
     'Served 1,000,000 requests a day.',
     'Led a team of 8 in 2021–2024.',
+    'Backend developer 2021-03 - 2024-06.',
+    'From 2021.03-2024.06 and 2024-07-01.',
   ]) {
     assert.deepEqual(sensitiveData(text), [], text);
   }

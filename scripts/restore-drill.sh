@@ -64,10 +64,18 @@ insert into match_requirement values (:'match_id', :'requirement_id', 'met', 'Th
 insert into match_evidence values (:'match_id', :'requirement_id', :'fact_version_id');
 update job_criteria set title_strength = 'hard', title_words = '{engineer}',
   language_strength = 'preference', languages = '{English}';
-insert into artifact (job_snapshot_id, kind) values (:'snapshot_id', 'resume') returning id as artifact_id \gset
-insert into artifact_claim (artifact_id, position, body)
-  values (:'artifact_id', 0, 'Maintained the invoice export service.') returning id as claim_id \gset
-insert into artifact_claim_fact values (:'claim_id', :'fact_version_id');
+insert into model_call (purpose, job_snapshot_id, model, started_at, duration_ms, input_tokens,
+    cached_input_tokens, output_tokens, cost_usd)
+  values ('draft', :'snapshot_id', 'sample-model', now(), 2100, 1500, 0, 600, 0.00117)
+  returning id as draft_call_id \gset
+insert into artifact (job_snapshot_id, kind, model_call_id)
+  values (:'snapshot_id', 'resume', :'draft_call_id') returning id as artifact_id \gset
+insert into artifact_fact values (:'artifact_id', :'fact_version_id');
+insert into artifact_claim (artifact_id, position, body, section, block, line, about)
+  values (:'artifact_id', 0, 'Maintained the invoice export service.', 'experience', 0, 'bullet', 'me')
+  returning id as claim_id \gset
+insert into artifact_claim_fact (artifact_claim_id, artifact_id, fact_version_id)
+  values (:'claim_id', :'artifact_id', :'fact_version_id');
 insert into application (job_snapshot_id, status, submitted_at) values (:'snapshot_id', 'submitted', now())
   returning id as application_id \gset
 insert into application_artifact values (:'application_id', :'artifact_id');
