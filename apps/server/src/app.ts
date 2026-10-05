@@ -5,6 +5,7 @@ import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { HealthResponseSchema, ReadyResponseSchema } from '@jsa/shared';
 import { fromNodeHeaders } from 'better-auth/node';
 import Fastify from 'fastify';
+import { alertRoutes } from './alerts/routes.ts';
 import { type Auth, createAuth } from './auth.ts';
 import type { Config } from './config.ts';
 import { checkDatabase, createPool } from './db/pool.ts';
@@ -127,6 +128,7 @@ export function buildApp({
     app.register(discoveryRoutes, { prefix: '/api', pool, fetch, limiter });
     app.register(jdRoutes, { prefix: '/api', pool, fetch, limiter, deepseekApiKey });
     app.register(savedRoutes, { prefix: '/api', pool });
+    app.register(alertRoutes, { prefix: '/api', pool });
   }
 
   // Without a web build (API-only dev, tests) the server still runs; `ng serve` proxies to it.

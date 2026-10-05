@@ -14,10 +14,12 @@ test('every entry matches the schema and has a unique id the database accepts', 
   assert.equal(new Set(catalog.map((e) => e.id)).size, catalog.length);
 });
 
-test('every site was checked: a past date and an https page', () => {
+test('every site the app requests was checked, and every check has a past date and an https page', () => {
   const today = new Date().toISOString().slice(0, 10);
   for (const entry of catalog) {
     if (entry.access === 'manual') continue;
+    // A job-alert source's site is never requested; its emails are the user's own.
+    if (entry.access === 'email_alert' && !entry.terms) continue;
     assert.ok(entry.terms, entry.id);
     assert.match(entry.terms.checkedOn, /^\d{4}-\d{2}-\d{2}$/, entry.id);
     assert.ok(entry.terms.checkedOn <= today, entry.id);
@@ -48,6 +50,10 @@ test('sites the app does not request explain why, and pasting and saving are alw
   for (const entry of catalog.filter((e) => e.access === 'email_alert')) {
     assert.ok(entry.note.length > 40, entry.id);
     assert.equal(entry.param, null, entry.id);
+    assert.ok(entry.alert && entry.alert.senders.length > 0, entry.id);
+  }
+  for (const entry of catalog.filter((e) => e.access !== 'email_alert')) {
+    assert.equal(entry.alert, null, entry.id);
   }
   assert.equal(findCatalogEntry('paste')?.access, 'manual');
   assert.equal(findCatalogEntry('desktop_save')?.access, 'manual');

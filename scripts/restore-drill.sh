@@ -84,6 +84,13 @@ insert into job_posting (source_id, job_id, external_id, title, location, url)
   values (:'source_id', :'job_id', '1', 'Sample job', 'Helsinki, Finland', 'https://example.test/jobs/1');
 insert into saved_job (job_id, url, title, company, location)
   values (:'job_id', 'https://example.test/jobs/1', 'Sample job', 'Example', 'Helsinki, Finland');
+insert into source (catalog_id) values ('linkedin_alert') returning id as alert_source_id \gset
+insert into alert_email (source_id, message_key, sender, subject, sent_at, jobs, unreadable)
+  values (:'alert_source_id', 'drill@example.test', 'alerts@example.test', 'Sample alert', now(), 1, 0)
+  returning id as alert_email_id \gset
+insert into alert_job (source_id, job_id, url, external_id, title, company, location, alert_email_id)
+  values (:'alert_source_id', :'job_id', 'https://example.test/jobs/2', '2', 'Sample job', 'Example',
+    'Helsinki', :'alert_email_id');
 SQL
 
 pg_dump --format=custom --no-owner --file "$work/backup.dump" "$source_url"

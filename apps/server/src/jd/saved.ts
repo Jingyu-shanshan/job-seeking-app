@@ -7,8 +7,10 @@ import {
   SaveResultsResponseSchema,
 } from '@jsa/shared';
 import type { Pool } from 'pg';
+import { listedJobs } from '../discovery/same-job.ts';
 import { httpError } from '../http-error.ts';
 import { jobPageAddress } from '../rules/job-page.ts';
+import { sameJobKey, uniqueJobs } from '../rules/same-job.ts';
 import { checkJobText } from './job-text.ts';
 
 // Saving from the desktop app (T21). When the user clicks, the desktop app reads the page they
@@ -27,11 +29,14 @@ function addressOf(url: string) {
   return address.url;
 }
 
-// The job an address (`i.url`) belongs to already: an earlier save of it, or a job board posting
-// at that address.
+// The job an address (`i.url`) belongs to already: an earlier save of it, a job board posting or
+// an alert email's job at that address, or else the one job listed with the same company and
+// title (`i.same_job_id`).
 const existingJob = `coalesce(
   (select s.job_id from saved_job s where s.url = i.url),
-  (select p.job_id from job_posting p where p.url = i.url order by p.first_seen_at, p.id limit 1)
+  (select p.job_id from job_posting p where p.url = i.url order by p.first_seen_at, p.id limit 1),
+  (select a.job_id from alert_job a where a.url = i.url order by a.first_seen_at, a.id limit 1),
+  i.same_job_id
 )`;
 
 // Records what the page showed for each address, refreshing an earlier save in place. An address
@@ -56,6 +61,21 @@ const saveEntries = `
 
 const optional = (text: string | undefined) => text?.trim() || null;
 
+const inputColumns =
+  't(url text, title text, company text, location text, new_id uuid, same_job_id uuid)';
+
+/** For each entry, the one job listed elsewhere with the same company and title, if any. */
+async function withSameJobs<E extends { title: string; company: string | null }>(
+  pool: Pool,
+  entries: E[],
+): Promise<(E & { same_job_id: string | null })[]> {
+  const jobs = uniqueJobs(await listedJobs(pool));
+  return entries.map((entry) => {
+    const key = sameJobKey(entry.company, entry.title);
+    return { ...entry, same_job_id: (key && jobs.get(key)) ?? null };
+  });
+}
+
 export const savedRoutes: FastifyPluginAsyncTypebox<SavedRoutesOptions> = async (app, { pool }) => {
   // One job page and its text. Saving the same text again only marks it as read again.
   app.post(
@@ -77,10 +97,7 @@ export const savedRoutes: FastifyPluginAsyncTypebox<SavedRoutesOptions> = async 
         had_text: boolean;
         new_text: boolean;
       }>(
-        `with input as (
-           select * from jsonb_to_recordset($1::jsonb)
-             as t(url text, title text, company text, location text, new_id uuid)
-         ),
+        `with input as (select * from jsonb_to_recordset($1::jsonb) as ${inputColumns}),
          ${saveEntries},
          snapshot as (
            insert into job_snapshot (job_id, body, catalog_id, title, company, location, source_url)
@@ -93,7 +110,7 @@ export const savedRoutes: FastifyPluginAsyncTypebox<SavedRoutesOptions> = async 
          select s.job_id, m.job_id is null as new_job, n.inserted as new_text,
            exists (select 1 from job_snapshot o where o.job_id = s.job_id) as had_text
          from saved s, matched m, snapshot n`,
-        [JSON.stringify([entry]), body],
+        [JSON.stringify(await withSameJobs(pool, [entry])), body],
       );
       const row = rows[0]!;
       return {
@@ -111,7 +128,10 @@ export const savedRoutes: FastifyPluginAsyncTypebox<SavedRoutesOptions> = async 
     '/saved-results',
     { schema: { body: SaveResultsRequestSchema, response: { 200: SaveResultsResponseSchema } } },
     async (request) => {
-      const entries = new Map<string, object>();
+      const entries = new Map<
+        string,
+        { url: string; title: string; company: string | null; location: string; new_id: string }
+      >();
       for (const { url, title, company, location } of request.body.entries) {
         const address = addressOf(url);
         entries.set(address, {
@@ -123,14 +143,11 @@ export const savedRoutes: FastifyPluginAsyncTypebox<SavedRoutesOptions> = async 
         });
       }
       const { rows } = await pool.query<{ saved: number; new_jobs: number }>(
-        `with input as (
-           select * from jsonb_to_recordset($1::jsonb)
-             as t(url text, title text, company text, location text, new_id uuid)
-         ),
+        `with input as (select * from jsonb_to_recordset($1::jsonb) as ${inputColumns}),
          ${saveEntries}
          select (select count(distinct job_id) from saved)::int as saved,
            (select count(*) from matched where job_id is null)::int as new_jobs`,
-        [JSON.stringify([...entries.values()])],
+        [JSON.stringify(await withSameJobs(pool, [...entries.values()]))],
       );
       const row = rows[0]!;
       return { saved: row.saved, newJobs: row.new_jobs };

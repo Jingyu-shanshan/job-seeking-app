@@ -42,10 +42,37 @@ const verdictLines: Record<JobVerdict, string> = {
       <h1>{{ job.title }}</h1>
       <p>
         {{ job.company ?? job.sources[0]?.param ?? 'Company not given' }} ·
-        {{ job.location || 'No location given' }} ·
-        <a [href]="job.url" target="_blank" rel="noopener noreferrer">Job page</a>
+        {{ job.location || 'No location given' }}
+        @if (job.url) {
+          · <a [href]="job.url" target="_blank" rel="noopener noreferrer">Job page</a>
+        }
       </p>
       <p>{{ listing() }}</p>
+      @if (job.alerts.length) {
+        <section aria-labelledby="alerts-heading">
+          <h2 id="alerts-heading">In job-alert emails</h2>
+          <ul>
+            @for (alert of job.alerts; track alert.catalogId + alert.url) {
+              <li>
+                {{ alert.name
+                }}{{ alert.sentAt ? ', sent ' + (alert.sentAt | date: 'd MMM y') : '' }} ·
+                @if (alert.url) {
+                  <a [href]="alert.url" target="_blank" rel="noopener noreferrer"
+                    >The job on {{ alert.name }}</a
+                  >
+                } @else {
+                  The email links to the job only through its own tracker; open the job from the
+                  email.
+                }
+                <span class="details">Subject: {{ alert.subject || 'none' }}</span>
+                @if (alert.details) {
+                  <span class="details">{{ alert.details }}</span>
+                }
+              </li>
+            }
+          </ul>
+        </section>
+      }
 
       <section aria-labelledby="criteria-heading">
         <h2 id="criteria-heading">Your criteria</h2>
@@ -114,12 +141,20 @@ const verdictLines: Record<JobVerdict, string> = {
               The app has only what a results page showed about this job, so it does not summarise
               it yet. Open the job page in the desktop app and press “Save this job”, or paste the
               job text here.
+            } @else if (job.alerts.length && !job.url) {
+              The app has only what a job-alert email showed about this job, and no link to it, so
+              it does not summarise it yet. Open the job from the email, then paste its text here
+              with the link, or open it in the desktop app and press “Save this job”.
+            } @else if (job.alerts.length) {
+              The app has only what a job-alert email showed about this job, so it does not
+              summarise it yet. Paste the job text here, or open the job page in the desktop app and
+              press “Save this job”.
             } @else {
               None of the sources you use lists this job now, so the app cannot read its text. You
               can paste it here.
             }
           </p>
-          <app-paste-text-form [jobId]="job.id" (saved)="data.set($event)" />
+          <app-paste-text-form [jobId]="job.id" [needsLink]="!job.url" (saved)="data.set($event)" />
         }
       </section>
 
@@ -199,6 +234,10 @@ const verdictLines: Record<JobVerdict, string> = {
     }
   `,
   styles: `
+    .details {
+      display: block;
+      font-size: 0.9rem;
+    }
     .jd {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
@@ -270,6 +309,7 @@ export class JobDetailPage {
       return job.saved ? `${listed} ${saved}` : listed;
     }
     if (job.saved) return saved;
+    if (job.alerts.length) return 'No job board you use lists this job.';
     return job.snapshot?.catalogId === 'paste'
       ? 'You pasted this job.'
       : 'No source you use lists this job now.';

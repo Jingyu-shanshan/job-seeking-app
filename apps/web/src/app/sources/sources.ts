@@ -1,7 +1,8 @@
 import { httpResource } from '@angular/common/http';
 import { Component, computed } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import type { AccessMethod, SourcesResponse } from '@jsa/shared';
+import type { AccessMethod, AlertSection, SourcesResponse } from '@jsa/shared';
+import { AlertSource } from './alert-source';
 import { CatalogEntryCard } from './catalog-entry';
 import { errorMessage } from './sources-api';
 
@@ -20,14 +21,22 @@ const groups: { access: AccessMethod; title: string; intro: string }[] = [
     access: 'email_alert',
     title: 'Job-alert emails',
     intro:
-      'Sites the app does not request, because their terms forbid it or they have no API an individual can use. Set up job alerts on the site and import the emails.',
+      'Sites the app does not request, because their terms forbid it or they have no API an individual can use. Set up job alerts on the site and import the emails. Emails of a source you turn off are not imported, and its jobs are hidden.',
   },
   { access: 'manual', title: 'Any other site', intro: '' },
 ];
 
+const alertSections: { section: AlertSection; title: string }[] = [
+  { section: 'platforms', title: 'Popular job platforms' },
+  { section: 'freelance', title: 'Freelance' },
+  { section: 'company', title: 'Company career alerts' },
+  { section: 'government', title: 'Government' },
+  { section: 'optional', title: 'Optional' },
+];
+
 @Component({
   selector: 'app-sources',
-  imports: [CatalogEntryCard, RouterLink],
+  imports: [AlertSource, CatalogEntryCard, RouterLink],
   template: `
     <h1>Sources</h1>
     <p>
@@ -45,12 +54,29 @@ const groups: { access: AccessMethod; title: string; intro: string }[] = [
             @if (group.intro) {
               <p>{{ group.intro }}</p>
             }
-            @for (item of group.entries; track item.entry.id) {
-              <app-catalog-entry
-                [entry]="item.entry"
-                [sources]="item.sources"
-                (changed)="data.reload()"
-              />
+            @if (group.access === 'email_alert') {
+              <p><a routerLink="/jobs/alerts">Import job-alert emails</a></p>
+              @for (section of alertGroups(); track section.section) {
+                <section [attr.aria-labelledby]="'alerts-' + section.section">
+                  <h4 [id]="'alerts-' + section.section">{{ section.title }}</h4>
+                  @for (item of section.entries; track item.entry.id) {
+                    <app-alert-source
+                      [entry]="item.entry"
+                      [source]="item.sources[0]"
+                      [stats]="item.stats"
+                      (changed)="data.reload()"
+                    />
+                  }
+                </section>
+              }
+            } @else {
+              @for (item of group.entries; track item.entry.id) {
+                <app-catalog-entry
+                  [entry]="item.entry"
+                  [sources]="item.sources"
+                  (changed)="data.reload()"
+                />
+              }
             }
           </section>
         }
@@ -83,6 +109,25 @@ export class Sources {
           .map((entry) => ({
             entry,
             sources: data.sources.filter((source) => source.catalogId === entry.id),
+          })),
+      }))
+      .filter((group) => group.entries.length > 0);
+  });
+
+  /** Job-alert sources by section, each with what was imported for it. */
+  protected readonly alertGroups = computed(() => {
+    const data = this.data.value();
+    if (!data) return [];
+    const alerts = this.entriesByAccess().find((group) => group.access === 'email_alert');
+    return alertSections
+      .map(({ section, title }) => ({
+        section,
+        title,
+        entries: (alerts?.entries ?? [])
+          .filter(({ entry }) => entry.alert?.section === section)
+          .map((item) => ({
+            ...item,
+            stats: data.alerts.find((stats) => stats.catalogId === item.entry.id),
           })),
       }))
       .filter((group) => group.entries.length > 0);

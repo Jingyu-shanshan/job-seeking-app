@@ -62,6 +62,7 @@ const detail = (fields: Partial<JobDetail> = {}): JobDetail => ({
   sources: [{ id: '00000000-0000-4000-8000-000000000003', catalogId: 'b', param: 'acme' }],
   canImport: true,
   saved: false,
+  alerts: [],
   snapshot: null,
   earlierSnapshots: 0,
   verdict: 'eligible',
@@ -366,6 +367,92 @@ describe('JobDetailPage', () => {
     await settle();
     expect(text(section('Job text')!)).toContain('Pasted 2 Oct 2026.');
     expect(button('Summarise with DeepSeek')).toBeDefined();
+  });
+
+  it('shows the alert emails that listed a job and asks for the text of one without it', async () => {
+    await load(
+      detail({
+        sources: [],
+        canImport: false,
+        alerts: [
+          {
+            catalogId: 'linkedin_alert',
+            name: 'LinkedIn',
+            subject: '“engineer”: new jobs',
+            sentAt: '2026-10-02T07:12:00.000Z',
+            firstSeenAt: '2026-10-02T08:00:00.000Z',
+            url: 'https://www.linkedin.com/jobs/view/1/',
+            details: 'Actively recruiting',
+          },
+        ],
+      }),
+    );
+    expect(text()).toContain('No job board you use lists this job.');
+    const alerts = section('In job-alert emails')!;
+    expect(text(alerts)).toContain('LinkedIn, sent 2 Oct 2026 · The job on LinkedIn');
+    expect([...alerts.querySelectorAll('.details')].map((el) => text(el))).toEqual([
+      'Subject: “engineer”: new jobs',
+      'Actively recruiting',
+    ]);
+    expect(alerts.querySelector('a')?.getAttribute('href')).toBe(
+      'https://www.linkedin.com/jobs/view/1/',
+    );
+    expect(text(section('Job text')!)).toContain(
+      'The app has only what a job-alert email showed about this job',
+    );
+    expect(section('Summary')).toBeUndefined();
+  });
+
+  it('asks for the link with the text of a job the alert email gave no link for', async () => {
+    const alert = {
+      catalogId: 'snaphunt_alert',
+      name: 'Snaphunt',
+      subject: 'Matching job: Backend Engineer at Acme',
+      sentAt: '2026-10-02T07:12:00.000Z',
+      firstSeenAt: '2026-10-02T08:00:00.000Z',
+      url: null,
+      details: '',
+    };
+    await load(detail({ sources: [], canImport: false, url: null, alerts: [alert] }));
+    expect(page().querySelector('h1 + p a')).toBeNull();
+    expect(text(section('In job-alert emails')!)).toContain(
+      'The email links to the job only through its own tracker',
+    );
+    expect(text(section('Job text')!)).toContain('and no link to it');
+
+    const [link, textarea] = [
+      page().querySelector<HTMLInputElement>('input[type=url]')!,
+      page().querySelector('textarea')!,
+    ];
+    textarea.value = 'Backend Engineer\n\nYou will build APIs.';
+    textarea.dispatchEvent(new Event('input'));
+    button('Save the text')!.click();
+    await settle();
+    http.expectNone(`/api/jobs/${jobId}/text`);
+    expect(text(section('Job text')!)).toContain('Enter the link to the job page.');
+
+    link.value = 'https://jobs.example.com/acme/1';
+    link.dispatchEvent(new Event('input'));
+    button('Save the text')!.click();
+    await settle();
+    const request = http.expectOne(`/api/jobs/${jobId}/text`);
+    expect(request.request.body).toEqual({
+      text: 'Backend Engineer\n\nYou will build APIs.',
+      url: 'https://jobs.example.com/acme/1',
+    });
+    request.flush(
+      detail({
+        sources: [],
+        canImport: false,
+        url: 'https://jobs.example.com/acme/1',
+        alerts: [alert],
+        snapshot: snapshot({ catalogId: 'paste' }),
+      }),
+    );
+    await settle();
+    expect(page().querySelector('h1 + p a')?.getAttribute('href')).toBe(
+      'https://jobs.example.com/acme/1',
+    );
   });
 
   it('shows why pasted text was refused', async () => {

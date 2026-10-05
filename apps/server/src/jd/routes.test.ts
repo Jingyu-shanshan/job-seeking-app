@@ -155,6 +155,7 @@ describe('JD import and summary', needsDatabase, () => {
         sources: [],
         canImport: false,
         saved: false,
+        alerts: [],
         snapshot: {
           id: undefined,
           capturedAt: undefined,

@@ -2,11 +2,13 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import type { CatalogEntry, DiscoveryRun, SourceRun } from '@jsa/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Pool } from 'pg';
+import { sameJobKey, uniqueJobs } from '../rules/same-job.ts';
 import { sourcesToRequest } from '../rules/sources.ts';
 import { catalog } from '../sources/catalog.ts';
 import { DiscoveryError, type Adapter, type Posting } from './adapter.ts';
 import { ashbyBoard } from './ashby.ts';
 import { greenhouseBoard } from './greenhouse.ts';
+import { listedJobs } from './same-job.ts';
 
 /** Adapters by catalog entry id. A source of an entry without one is skipped and reported. */
 export const allAdapters: Partial<Record<string, Adapter>> = {
@@ -121,7 +123,7 @@ export async function runDiscovery({
     requests += 1;
     try {
       const postings = await adapter.listJobs(source.param, fetch);
-      const counts = await savePostings(pool, source.id, entry.id, postings);
+      const counts = await savePostings(pool, source, entry.id, postings);
       results.push({ ...result, ...counts, outcome: 'ok', reason: '' });
     } catch (err) {
       const expected = err instanceof DiscoveryError;
@@ -138,23 +140,33 @@ export async function runDiscovery({
 }
 
 /**
- * Records what one successful read of a source listed, in one statement: new postings (with a
- * new job unless the same posting is known through another source of the same catalog entry),
- * refreshed ones, and closes the source's open postings it no longer lists.
+ * Records what one successful read of a source listed, in one statement: new postings, refreshed
+ * ones, and closes the source's open postings it no longer lists. A new posting gets a new job
+ * unless the app has the same job already: the same posting through another source of the same
+ * catalog entry, or a job that only an alert email or a desktop save lists, with the same company
+ * and title (rules/same-job.ts) as this posting alone among those the source lists.
  */
 async function savePostings(
   pool: Pool,
-  sourceId: string,
+  source: { id: string; param: string },
   catalogId: string,
   postings: Posting[],
 ): Promise<{ found: number; added: number; closed: number }> {
   // A source that lists one posting twice still has it once.
   const unique = [...new Map(postings.map((p) => [p.externalId, p])).values()];
+  const keyOf = (p: Posting) => sameJobKey(p.company ?? source.param, p.title);
+  const perKey = new Map<string | null, number>();
+  for (const p of unique) perKey.set(keyOf(p), (perKey.get(keyOf(p)) ?? 0) + 1);
+  const listOnly = uniqueJobs(await listedJobs(pool, { listOnly: true }));
+  const listJob = (p: Posting) => {
+    const key = keyOf(p);
+    return key !== null && perKey.get(key) === 1 ? (listOnly.get(key) ?? null) : null;
+  };
   const { rows } = await pool.query<{ found: number; added: number; closed: number }>(
     `with incoming as (
        select * from jsonb_to_recordset($3::jsonb) as t(
          external_id text, title text, company text, location text, url text,
-         published_at timestamptz)
+         published_at timestamptz, list_job_id uuid)
      ),
      known as (
        select distinct on (p.external_id) p.external_id, p.job_id
@@ -164,7 +176,7 @@ async function savePostings(
      ),
      fresh as (
        select external_id, gen_random_uuid() as job_id from incoming
-       where external_id not in (select external_id from known)
+       where external_id not in (select external_id from known) and list_job_id is null
      ),
      new_job as (
        insert into job (id) select job_id from fresh
@@ -172,8 +184,8 @@ async function savePostings(
      saved as (
        insert into job_posting
          (source_id, job_id, external_id, title, company, location, url, published_at)
-       select $1, coalesce(k.job_id, f.job_id), i.external_id, i.title, i.company, i.location,
-         i.url, i.published_at
+       select $1, coalesce(k.job_id, i.list_job_id, f.job_id), i.external_id, i.title, i.company,
+         i.location, i.url, i.published_at
        from incoming i left join known k using (external_id) left join fresh f using (external_id)
        on conflict (source_id, external_id) do update set
          title = excluded.title, company = excluded.company, location = excluded.location,
@@ -194,7 +206,7 @@ async function savePostings(
        (select count(*) from fresh)::int as added,
        (select count(*) from closed)::int as closed`,
     [
-      sourceId,
+      source.id,
       catalogId,
       JSON.stringify(
         unique.map((p) => ({
@@ -204,6 +216,7 @@ async function savePostings(
           location: p.location,
           url: p.url,
           published_at: p.publishedAt,
+          list_job_id: listJob(p),
         })),
       ),
     ],

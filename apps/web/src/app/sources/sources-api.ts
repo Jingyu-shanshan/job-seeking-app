@@ -8,8 +8,15 @@ import { firstValueFrom } from 'rxjs';
 export class SourcesApi {
   private readonly http = inject(HttpClient);
 
-  add(catalogId: string, param?: string): Promise<Source> {
-    return firstValueFrom(this.http.post<Source>('/api/sources', { catalogId, param }));
+  /** Adds a source; `enabled: false` turns off a job-alert source that is on by default. */
+  add(catalogId: string, param?: string, enabled?: boolean): Promise<Source> {
+    return firstValueFrom(
+      this.http.post<Source>('/api/sources', {
+        catalogId,
+        ...(param === undefined ? {} : { param }),
+        ...(enabled === undefined ? {} : { enabled }),
+      }),
+    );
   }
 
   setEnabled(id: string, enabled: boolean): Promise<Source> {

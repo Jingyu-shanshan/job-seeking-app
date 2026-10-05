@@ -11,7 +11,10 @@ const accessLabels: Record<AccessMethod, string> = {
   manual: 'You bring the job: paste it or save its page',
 };
 
-/** One catalog entry: what it is, how it is accessed, and the user's sources of it. */
+/**
+ * One catalog entry: what it is, how it is accessed, and the user's sources of it. Job-alert
+ * sources have their own, shorter rows (alert-source.ts).
+ */
 @Component({
   selector: 'app-catalog-entry',
   imports: [FormField, FormRoot, SourceStatus],
@@ -86,23 +89,8 @@ const accessLabels: Record<AccessMethod, string> = {
           <p class="error" role="alert">{{ addForm.param().errors()[0].message }}</p>
         }
       </form>
-    } @else if (e.access === 'manual') {
-      <p>Always available.</p>
     } @else {
-      @let source = sources()[0];
-      <label>
-        <input
-          #use
-          type="checkbox"
-          [checked]="source?.enabled ?? false"
-          [disabled]="busy()"
-          (change)="setUsed(use)"
-        />
-        Use {{ e.name }}
-      </label>
-      @if (source) {
-        <app-source-status [source]="source" />
-      }
+      <p>Always available.</p>
     }
     @if (failure()) {
       <p class="error" role="alert">{{ failure() }}</p>
@@ -204,15 +192,6 @@ export class CatalogEntryCard {
 
   protected setEnabled(source: Source, box: HTMLInputElement) {
     return this.mutate(() => this.api.setEnabled(source.id, box.checked), box);
-  }
-
-  /** For entries without a parameter: the first use adds the source, later ones toggle it. */
-  protected setUsed(box: HTMLInputElement) {
-    const source = this.sources()[0];
-    return this.mutate(
-      () => (source ? this.api.setEnabled(source.id, box.checked) : this.api.add(this.entry().id)),
-      box,
-    );
   }
 
   protected remove(source: Source) {
