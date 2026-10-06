@@ -153,6 +153,7 @@ export {
   DraftSectionSchema,
   DraftStatementSchema,
   DraftSummarySchema,
+  EditStatementRequestSchema,
   ProblemCodeSchema,
   ProblemSchema,
   WriteDraftRequestSchema,
@@ -163,7 +164,20 @@ export {
   type DraftSection,
   type DraftStatement,
   type DraftSummary,
+  type EditStatementRequest,
   type Problem,
   type ProblemCode,
   type WriteDraftRequest,
 } from './drafts.ts';
+export { ProfileSchema, type Profile } from './profile.ts';
+export {
+  DocumentBlockSchema,
+  DocumentPdfSchema,
+  DraftDocumentSchema,
+  PdfCheckSchema,
+  maxPdfBytes,
+  type DocumentBlock,
+  type DocumentPdf,
+  type DraftDocument,
+  type PdfCheck,
+} from './documents.ts';

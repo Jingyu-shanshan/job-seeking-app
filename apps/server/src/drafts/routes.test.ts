@@ -331,6 +331,7 @@ describe('drafts', needsDatabase, () => {
       statements: 10,
       rejected: 5,
       outdated: [],
+      pdfs: 0,
     });
     assert.equal(
       (

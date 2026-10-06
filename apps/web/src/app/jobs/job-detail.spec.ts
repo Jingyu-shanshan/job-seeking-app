@@ -654,6 +654,7 @@ describe('JobDetailPage', () => {
               statements: 12,
               rejected: 2,
               outdated: ['The facts that may be used in drafts have changed since.'],
+              pdfs: 1,
             },
           ],
         }),
@@ -663,7 +664,7 @@ describe('JobDetailPage', () => {
     expect(text(drafts)).toContain('the 1 fact you allowed both to go to DeepSeek');
     const items = [...drafts.querySelectorAll('li')].map((li) => text(li));
     expect(items[0]).toContain('Resume draft, written 5 Oct 2026');
-    expect(items[0]).toContain('12 statements, 2 left out.');
+    expect(items[0]).toContain('12 statements, 2 left out by the checks, 1 PDF kept.');
     expect(items[0]).toContain('The facts that may be used in drafts have changed since.');
     expect(items[1]).toContain('No cover letter draft yet.');
     expect(drafts.querySelector('a')!.getAttribute('href')).toBe(

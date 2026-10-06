@@ -301,7 +301,7 @@ async function loadSnapshot(pool: Pool, row: SnapshotRow, facts: FactState): Pro
           }),
         }
       : null,
-    drafts: drafts.map((draft) => summariseDraft(checkDraft(draft, facts))),
+    drafts: drafts.map((draft) => summariseDraft(checkDraft(draft, facts), draft.pdfs)),
   };
 }
 

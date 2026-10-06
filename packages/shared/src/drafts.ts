@@ -76,15 +76,23 @@ export const DraftStatementSchema = Type.Object({
   block: Type.Integer({ minimum: 0 }),
   line: DraftLineSchema,
   about: DraftAboutSchema,
-  /** Written by DeepSeek: untrusted text, shown as is. */
+  /** The statement as it stands: the user's text if they edited it, else DeepSeek's. */
   text: Type.String(),
+  /** Written by DeepSeek: untrusted text, shown as is. */
+  modelText: Type.String(),
+  /** The user changed the text (T08). */
+  edited: Type.Boolean(),
+  /** The user wants it in the document; false when they left it out. */
+  included: Type.Boolean(),
   /** The job-text passage a statement about the job rests on, as DeepSeek gave it. */
   quote: Type.Union([Type.String(), Type.Null()]),
   /** The facts it cites; `current` is false once a fact changed or may no longer be used. */
   facts: Type.Array(CitedFactSchema),
-  /** Empty when the statement passed every check and is in the document. */
+  /** Empty when `text` passed every check. */
   problems: Type.Array(ProblemSchema),
-  /** The text is a cited fact word for word, so DeepSeek wrote nothing of its own. */
+  /** Included and without problems: it goes into the document. */
+  inDocument: Type.Boolean(),
+  /** The text is a cited fact word for word, so nobody reworded it. */
   verbatim: Type.Boolean(),
 });
 
@@ -121,6 +129,8 @@ export const DraftSummarySchema = Type.Object({
   /** Statements that failed a check and are left out of the document. */
   rejected: Type.Integer({ minimum: 0 }),
   outdated: Type.Array(Type.String()),
+  /** PDFs of it the app kept (T08). */
+  pdfs: Type.Integer({ minimum: 0 }),
 });
 
 export type DraftSummary = Static<typeof DraftSummarySchema>;
@@ -128,3 +138,11 @@ export type DraftSummary = Static<typeof DraftSummarySchema>;
 export const WriteDraftRequestSchema = Type.Object({ kind: DraftKindSchema });
 
 export type WriteDraftRequest = Static<typeof WriteDraftRequestSchema>;
+
+/** The user's version of one statement (T08): its text, and whether it goes into the document. */
+export const EditStatementRequestSchema = Type.Object({
+  text: Type.String({ pattern: '\\S', maxLength: 2000 }),
+  included: Type.Boolean(),
+});
+
+export type EditStatementRequest = Static<typeof EditStatementRequestSchema>;

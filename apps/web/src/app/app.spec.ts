@@ -78,7 +78,7 @@ describe('App', () => {
     expect(heading(harness)).toBe('Jobs');
   });
 
-  it('links the jobs, facts, criteria and sources pages from the header once signed in', () => {
+  it('links the jobs, facts, details, criteria and sources pages from the header once signed in', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const links = () =>
@@ -89,7 +89,7 @@ describe('App', () => {
 
     user.set({ email: 'owner@example.com' });
     fixture.detectChanges();
-    expect(links()).toEqual(['/jobs', '/facts', '/criteria', '/sources']);
+    expect(links()).toEqual(['/jobs', '/facts', '/profile', '/criteria', '/sources']);
   });
 
   it('shows who is signed in and signs out', async () => {

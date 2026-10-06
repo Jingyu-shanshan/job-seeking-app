@@ -20,19 +20,28 @@ const fact = (body: string, current = true): CitedFact => ({
 const role = fact('Backend developer at Acme Oy, 2021-03 – 2024-06');
 const invoice = fact('Built the invoice API in Go; cut processing time by about 30%');
 
-const statement = (fields: Partial<DraftStatement>): DraftStatement => ({
-  id: `00000000-0000-4000-8000-000000000${next++}`,
-  section: 'experience',
-  block: 0,
-  line: 'bullet',
-  about: 'me',
-  text: 'Built the invoice API.',
-  quote: null,
-  facts: [invoice],
-  problems: [],
-  verbatim: false,
-  ...fields,
-});
+function statement(fields: Partial<DraftStatement>): DraftStatement {
+  const s = {
+    id: `00000000-0000-4000-8000-000000000${next++}`,
+    section: 'experience' as const,
+    block: 0,
+    line: 'bullet' as const,
+    about: 'me' as const,
+    text: 'Built the invoice API.',
+    quote: null,
+    facts: [invoice],
+    problems: [],
+    verbatim: false,
+    edited: false,
+    included: true,
+    ...fields,
+  };
+  return {
+    ...s,
+    modelText: fields.modelText ?? s.text,
+    inDocument: s.included && s.problems.length === 0,
+  };
+}
 
 const resume = (fields: Partial<Draft> = {}): Draft => ({
   id: draftId,
@@ -96,6 +105,14 @@ describe('DraftPage', () => {
 
   afterEach(() => http.verify());
 
+  const item = (startsWith: string) =>
+    [...page().querySelectorAll('app-statement-review')].find((el) =>
+      text(el.querySelector('.text')).startsWith(startsWith),
+    )!;
+  const check = (startsWith: string) => text(item(startsWith).querySelector('app-statement-check'));
+  const buttonIn = (el: Element, label: string) =>
+    [...el.querySelectorAll('button')].find((b) => text(b) === label);
+
   it('shows every statement where it goes, with what its checks found', async () => {
     await load(resume());
     expect(text(page().querySelector('h1'))).toBe('Resume draft');
@@ -104,17 +121,12 @@ describe('DraftPage', () => {
     );
     expect(text()).toContain('from 4 facts, about $0.0012.');
     expect(text()).toContain(
-      '7 statements: 5 in the document, 2 left out. 4 of those in the document put your facts in DeepSeek’s words.',
+      '7 statements: 5 in the document, 2 left out by the checks. 4 of those in the document are not your fact word for word.',
     );
     expect(headings()).toEqual(['Headline', 'Summary', 'Experience', 'Skills']);
-    expect(page().querySelector('a')!.getAttribute('href')).toBe(`/jobs/${jobId}`);
+    const links = [...page().querySelectorAll('a')].map((a) => a.getAttribute('href'));
+    expect(links).toEqual([`/jobs/${jobId}`, `/drafts/${draftId}/document`]);
 
-    const item = (startsWith: string) =>
-      [...page().querySelectorAll('li')].find(
-        (li) => li.querySelector(':scope > app-statement-check') && text(li).startsWith(startsWith),
-      )!;
-    const check = (startsWith: string) =>
-      text(item(startsWith).querySelector('app-statement-check'));
     expect(check('Cut processing time by 45%.')).toContain(
       'Left out: “45%” is not in the facts it cites.',
     );
@@ -125,26 +137,104 @@ describe('DraftPage', () => {
 
     const summary = item('Builds invoice APIs in Go.');
     expect(text(summary)).toContain('In DeepSeek’s words: read it against the facts it cites.');
-    expect(text(summary.querySelector('details'))).toContain(role.body);
-    expect(text(summary.querySelector('details'))).toContain('(fact version 1)');
+    const restsOn = summary.querySelector('details')!;
+    expect(text(restsOn)).toContain(role.body);
+    expect(text(restsOn)).toContain('(fact version 1)');
+    // How it differs from the cited fact it is closest to.
+    expect(text(restsOn)).toContain('How it differs from the fact it is closest to:');
+    expect([...restsOn.querySelectorAll('ins')].map((el) => text(el))).toEqual([
+      'Builds',
+      'APIs',
+      '.',
+    ]);
   });
 
-  it('previews only what goes into the document', async () => {
-    await load(resume());
-    page().querySelector<HTMLInputElement>('input[type=checkbox]')!.click();
+  it('edits a statement, and shows the draft as the server checked it again', async () => {
+    const draft = resume();
+    await load(draft);
+    const wrong = draft.statements[4]!;
+    const row = item('Cut processing time by 45%.');
+    buttonIn(row, 'Edit')!.click();
     await fixture.whenStable();
-    expect(text(page().querySelector('.headline'))).toBe('Backend developer');
-    expect(text()).not.toContain('45%');
-    expect(text()).not.toContain('platform team');
-    expect(text()).not.toContain('Left out');
-    expect([...page().querySelectorAll('.entry')].map((e) => text(e))).toEqual([
-      'Backend developer, Acme Oy',
-    ]);
-    // A section of one-line entries is a plain list.
-    expect([...page().querySelectorAll('li')].map((li) => text(li))).toEqual([
-      invoice.body,
-      'Go, PostgreSQL',
-    ]);
+    const area = row.querySelector('textarea')!;
+    expect(area.value).toBe('Cut processing time by 45%.');
+    area.value = 'Cut processing time by about 30%.';
+    area.dispatchEvent(new Event('input'));
+    buttonIn(row, 'Save')!.click();
+    const request = http.expectOne(`/api/drafts/${draftId}/statements/${wrong.id}`);
+    expect(request.request.method).toBe('PUT');
+    expect(request.request.body).toEqual({
+      text: 'Cut processing time by about 30%.',
+      included: true,
+    });
+    const edited = statement({
+      ...wrong,
+      text: 'Cut processing time by about 30%.',
+      modelText: wrong.text,
+      edited: true,
+      problems: [],
+    });
+    request.flush({
+      ...draft,
+      statements: draft.statements.map((s) => (s.id === wrong.id ? edited : s)),
+    });
+    await fixture.whenStable();
+
+    const fixed = item('Cut processing time by about 30%.');
+    expect(fixed.querySelector('textarea')).toBeNull();
+    expect(check('Cut processing time by about 30%.')).toContain(
+      'In the document In your words: read it against the facts it cites.',
+    );
+    expect(text()).toContain(
+      '5 of those in the document are not your fact word for word; you edited 1 statement.',
+    );
+    const changes = [...fixed.querySelectorAll('details')].at(-1)!;
+    expect(text(changes.querySelector('summary'))).toBe('Your changes to DeepSeek’s text');
+    expect([...changes.querySelectorAll('ins')].map((el) => text(el))).toEqual(['about 30']);
+    expect([...changes.querySelectorAll('del')].map((el) => text(el))).toEqual(['45']);
+
+    // Back to DeepSeek's text.
+    buttonIn(fixed, 'Use DeepSeek’s text')!.click();
+    const back = http.expectOne(`/api/drafts/${draftId}/statements/${wrong.id}`);
+    expect(back.request.body).toEqual({ text: 'Cut processing time by 45%.', included: true });
+    back.flush(draft);
+    await fixture.whenStable();
+    expect(buttonIn(item('Cut processing time by 45%.'), 'Use DeepSeek’s text')).toBeUndefined();
+  });
+
+  it('leaves a statement out and puts it back', async () => {
+    const draft = resume();
+    await load(draft);
+    const kept = draft.statements[3]!;
+    buttonIn(item(invoice.body), 'Leave out')!.click();
+    const request = http.expectOne(`/api/drafts/${draftId}/statements/${kept.id}`);
+    expect(request.request.body).toEqual({ text: invoice.body, included: false });
+    const left = statement({ ...kept, included: false });
+    request.flush({
+      ...draft,
+      statements: draft.statements.map((s) => (s.id === kept.id ? left : s)),
+    });
+    await fixture.whenStable();
+    expect(check(invoice.body)).toContain(
+      'Left out by you. It passes the checks; put it back to use it.',
+    );
+    expect(text()).toContain('4 in the document, 2 left out by the checks, 1 left out by you.');
+    buttonIn(item(invoice.body), 'Put back')!.click();
+    expect(http.expectOne(`/api/drafts/${draftId}/statements/${kept.id}`).request.body).toEqual({
+      text: invoice.body,
+      included: true,
+    });
+  });
+
+  it('shows the server’s message when a change fails', async () => {
+    const draft = resume();
+    await load(draft);
+    buttonIn(item(invoice.body), 'Leave out')!.click();
+    http
+      .expectOne(`/api/drafts/${draftId}/statements/${draft.statements[3]!.id}`)
+      .flush({ message: 'There is no such draft.' }, { status: 404, statusText: 'Not Found' });
+    await fixture.whenStable();
+    expect(text(item(invoice.body).querySelector('[role=alert]'))).toBe('There is no such draft.');
   });
 
   it('shows a cover letter by paragraph, and statements about the job with their quotes', async () => {
@@ -206,10 +296,6 @@ describe('DraftPage', () => {
       'The facts that may be used in drafts have changed since. You can write it again on the job page.',
     );
     expect(text()).toContain('changed since or no longer allowed in documents');
-
-    page().querySelector<HTMLInputElement>('input[type=checkbox]')!.click();
-    await fixture.whenStable();
-    expect(text()).toContain('No statement passed the checks, so the document would be empty.');
   });
 
   it('says when the draft cannot be loaded', async () => {

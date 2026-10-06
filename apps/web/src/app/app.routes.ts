@@ -38,6 +38,16 @@ export const routes: Routes = [
         title: 'Draft',
       },
       {
+        path: 'drafts/:id/document',
+        loadComponent: () => import('./drafts/document-page').then((m) => m.DocumentPage),
+        title: 'Document',
+      },
+      {
+        path: 'profile',
+        loadComponent: () => import('./profile/profile').then((m) => m.ProfilePage),
+        title: 'Your details',
+      },
+      {
         path: 'facts',
         loadComponent: () => import('./facts/facts').then((m) => m.Facts),
         title: 'Facts about you',

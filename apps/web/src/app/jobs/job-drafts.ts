@@ -36,7 +36,9 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
           @if (d) {
             <a [routerLink]="['/drafts', d.id]">{{ capital(draftNames[kind]) }} draft</a>, written
             {{ d.createdAt | date: 'd MMM y, HH:mm' }}: {{ plural(d.statements, 'statement') }},
-            {{ d.rejected }} left out.
+            {{ d.rejected }} left out by the checks{{
+              d.pdfs ? ', ' + plural(d.pdfs, 'PDF') + ' kept' : ''
+            }}.
             @if (d.outdated.length) {
               <span class="hint">{{ d.outdated.join(' ') }}</span>
             }
