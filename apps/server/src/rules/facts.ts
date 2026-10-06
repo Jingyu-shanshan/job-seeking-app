@@ -26,11 +26,15 @@ export function statusChangeAllowed(from: FactStatus, to: FactStatus): boolean {
 
 const email = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/u;
 const phoneCandidates = /\+?\(?\d[\d\s().-]{6,}\d/g;
+// Year-month dates and ranges of them, such as 2021-03 - 2024-06, are not phone numbers.
+const isoDates =
+  /^\d{4}[-./]\d{1,2}(?:[-./]\d{1,2})?(?:\s*-\s*\d{4}[-./]\d{1,2}(?:[-./]\d{1,2})?)?$/;
 
 export function sensitiveData(text: string): string[] {
   const found: string[] = [];
   if (email.test(text)) found.push('an email address');
   const phone = [...text.matchAll(phoneCandidates)].some(([candidate]) => {
+    if (isoDates.test(candidate)) return false;
     const digits = candidate.replace(/\D/g, '').length;
     return candidate.startsWith('+') ? digits >= 8 : digits >= 9;
   });

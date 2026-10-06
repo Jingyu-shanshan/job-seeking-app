@@ -11,6 +11,7 @@ import type { Config } from './config.ts';
 import { checkDatabase, createPool } from './db/pool.ts';
 import { discoveryRoutes } from './discovery/routes.ts';
 import { RateLimiter } from './discovery/run.ts';
+import { draftRoutes } from './drafts/routes.ts';
 import { factRoutes } from './facts/routes.ts';
 import { jdRoutes } from './jd/routes.ts';
 import { savedRoutes } from './jd/saved.ts';
@@ -127,6 +128,7 @@ export function buildApp({
     app.register(criteriaRoutes, { prefix: '/api', pool });
     app.register(discoveryRoutes, { prefix: '/api', pool, fetch, limiter });
     app.register(jdRoutes, { prefix: '/api', pool, fetch, limiter, deepseekApiKey });
+    app.register(draftRoutes, { prefix: '/api', pool, fetch, deepseekApiKey });
     app.register(savedRoutes, { prefix: '/api', pool });
     app.register(alertRoutes, { prefix: '/api', pool });
   }

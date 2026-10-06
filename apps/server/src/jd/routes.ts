@@ -18,6 +18,7 @@ import type { Pool } from 'pg';
 import Type from 'typebox';
 import { DiscoveryError, type JobText } from '../discovery/adapter.ts';
 import { allAdapters, type RateLimiter } from '../discovery/run.ts';
+import { checkDraft, latestDrafts, summariseDraft } from '../drafts/load.ts';
 import { httpError } from '../http-error.ts';
 import {
   type FactState,
@@ -208,6 +209,7 @@ async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetail | und
     verdict: check.verdict,
     criteria: check.criteria,
     factsToSend: facts.sendable.length,
+    factsToDraft: facts.citable.length,
   };
 }
 
@@ -230,7 +232,7 @@ function evidenceOf(matched: MatchedRequirement | undefined, facts: FactState): 
 }
 
 async function loadSnapshot(pool: Pool, row: SnapshotRow, facts: FactState): Promise<Snapshot> {
-  const [summaries, requirements, matches] = await Promise.all([
+  const [summaries, requirements, matches, drafts] = await Promise.all([
     pool.query<SummaryRow>(
       `select s.created_at, c.model, c.cost_usd, s.responsibilities, s.fields
        from job_summary s join model_call c on c.id = s.model_call_id
@@ -243,6 +245,7 @@ async function loadSnapshot(pool: Pool, row: SnapshotRow, facts: FactState): Pro
       [row.id],
     ),
     latestMatches(pool, [row.id]),
+    latestDrafts(pool, row.id),
   ]);
   const summary = summaries.rows[0];
   const match = matches.get(row.id);
@@ -298,6 +301,7 @@ async function loadSnapshot(pool: Pool, row: SnapshotRow, facts: FactState): Pro
           }),
         }
       : null,
+    drafts: drafts.map((draft) => summariseDraft(checkDraft(draft, facts))),
   };
 }
 

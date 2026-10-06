@@ -150,7 +150,7 @@ export function mustHavesOutcome({
   };
 }
 
-const sameSet = (a: Iterable<string>, b: Iterable<string>) => {
+export const sameSet = (a: Iterable<string>, b: Iterable<string>) => {
   const left = new Set(a);
   const right = new Set(b);
   return left.size === right.size && [...left].every((x) => right.has(x));

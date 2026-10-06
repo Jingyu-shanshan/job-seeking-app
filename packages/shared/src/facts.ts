@@ -92,3 +92,19 @@ export const ImportFactsResponseSchema = Type.Object({
 });
 
 export type ImportFactsResponse = Static<typeof ImportFactsResponseSchema>;
+
+/** A fact version a match or a draft cites, with its text as it was. */
+export const CitedFactSchema = Type.Object({
+  versionId: Type.String({ format: 'uuid' }),
+  factId: Type.String({ format: 'uuid' }),
+  version: Type.Integer({ minimum: 1 }),
+  body: Type.String(),
+  /**
+   * False when the fact has a newer version or is no longer confirmed: a match outcome that cites
+   * it no longer counts and the requirement is unknown until it is matched again. For a draft it
+   * is also false when the fact may no longer appear in documents, and the statement is left out.
+   */
+  current: Type.Boolean(),
+});
+
+export type CitedFact = Static<typeof CitedFactSchema>;

@@ -321,21 +321,124 @@ describe('schema', needsDatabase, () => {
     });
   });
 
+  async function newArtifact(snapshotId: string, kind = 'resume') {
+    const call = await row(
+      `insert into model_call (purpose, job_snapshot_id, model, started_at, duration_ms)
+       values ('draft', $1, 'some-model', now(), 900) returning id`,
+      [snapshotId],
+    );
+    return row(
+      `insert into artifact (job_snapshot_id, kind, model_call_id)
+       values ($1, $2, $3) returning id, model_call_id`,
+      [snapshotId, kind, call.id],
+    );
+  }
+
+  const claimInsert = `insert into artifact_claim
+    (artifact_id, position, body, section, block, line, about, quote)
+    values ($1, $2, $3, $4, $5, $6, $7, $8)`;
+  const resumeLine = ['Maintains the invoice export.', 'experience', 0, 'bullet', 'me', null];
+  const citeInsert =
+    'insert into artifact_claim_fact (artifact_claim_id, artifact_id, fact_version_id) values ($1, $2, $3)';
+
+  describe('drafts', () => {
+    test('come from one model call each', async () => {
+      const snapshot = await newSnapshot();
+      const artifact = await newArtifact(snapshot.id);
+      const insert =
+        'insert into artifact (job_snapshot_id, kind, model_call_id) values ($1, $2, $3)';
+      await assert.rejects(client.query(insert, [snapshot.id, 'resume', null]), { code: '23502' });
+      await assert.rejects(client.query(insert, [snapshot.id, 'resume', artifact.model_call_id]), {
+        code: '23505',
+      });
+    });
+
+    test('place each statement, and only statements of a letter are about anything but the user', async () => {
+      const snapshot = await newSnapshot();
+      const artifact = await newArtifact(snapshot.id);
+      let position = 0;
+      const ok = (...values: unknown[]) =>
+        client.query(claimInsert, [artifact.id, position++, ...values]);
+      await ok('Backend developer', 'headline', 0, 'sentence', 'me', null);
+      await ok('Acme Oy, 2021', 'experience', 2, 'title', 'me', null);
+      await ok('I am applying.', 'letter', 1, 'sentence', 'other', null);
+      await ok('You build APIs.', 'letter', 1, 'sentence', 'job', 'We build APIs.');
+      for (const values of [
+        ['x', 'headline', 0, 'title', 'me', null],
+        ['x', 'experience', 0, 'sentence', 'me', null],
+        ['x', 'summary', 0, 'sentence', 'job', 'We build APIs.'],
+        ['x', 'letter', 0, 'sentence', 'me', 'A quote on a statement about the user.'],
+        ['x', 'letter', -1, 'sentence', 'me', null],
+        ['x', 'letter', 0, 'sentence', 'someone', null],
+        ['x'.repeat(2001), 'letter', 0, 'sentence', 'other', null],
+        [' ', 'letter', 0, 'sentence', 'other', null],
+      ]) {
+        await assert.rejects(ok(...values), { code: '23514' }, JSON.stringify(values));
+      }
+    });
+
+    test('cite only fact versions that were sent with the same draft', async () => {
+      const sent = await newFactVersion();
+      const notSent = await newFactVersion('Ran the on-call rota.');
+      const snapshot = await newSnapshot();
+      const artifact = await newArtifact(snapshot.id);
+      const other = await newArtifact(snapshot.id, 'cover_letter');
+      await client.query('insert into artifact_fact values ($1, $2)', [artifact.id, sent.id]);
+      await client.query('insert into artifact_fact values ($1, $2)', [other.id, notSent.id]);
+      const claim = await row(`${claimInsert} returning id`, [artifact.id, 0, ...resumeLine]);
+      await client.query(citeInsert, [claim.id, artifact.id, sent.id]);
+      await assert.rejects(
+        client.query(citeInsert, [claim.id, artifact.id, notSent.id]),
+        foreignKey,
+      );
+      // The claim belongs to the draft named with it.
+      await assert.rejects(client.query(citeInsert, [claim.id, other.id, notSent.id]), foreignKey);
+    });
+
+    test('never change', async () => {
+      const version = await newFactVersion();
+      const snapshot = await newSnapshot();
+      const artifact = await newArtifact(snapshot.id);
+      await client.query('insert into artifact_fact values ($1, $2)', [artifact.id, version.id]);
+      const claim = await row(`${claimInsert} returning id`, [artifact.id, 0, ...resumeLine]);
+      await client.query(citeInsert, [claim.id, artifact.id, version.id]);
+
+      await assert.rejects(
+        client.query(`update artifact set kind = 'cover_letter' where id = $1`, [artifact.id]),
+        immutable,
+      );
+      await assert.rejects(
+        client.query(`update artifact_claim set body = 'Ran everything.' where id = $1`, [
+          claim.id,
+        ]),
+        immutable,
+      );
+      await assert.rejects(client.query('delete from artifact_claim where id = $1', [claim.id]), {
+        message: /cannot be deleted/,
+      });
+      for (const change of [
+        'update artifact_fact set fact_version_id = fact_version_id',
+        'delete from artifact_fact',
+        'update artifact_claim_fact set fact_version_id = fact_version_id',
+        'delete from artifact_claim_fact',
+      ]) {
+        await assert.rejects(client.query(`${change} where artifact_id = $1`, [artifact.id]), {
+          message: /cannot be changed or deleted/,
+        });
+      }
+    });
+  });
+
   describe('references to fact versions', () => {
     test('claims and applications cite fact versions by foreign key', async () => {
       const version = await newFactVersion();
       const snapshot = await newSnapshot();
-      const artifact = await row(
-        `insert into artifact (job_snapshot_id, kind) values ($1, 'resume') returning id`,
-        [snapshot.id],
-      );
-      const claim = await row(
-        `insert into artifact_claim (artifact_id, position, body) values ($1, 0, 'Maintains the invoice export.') returning id`,
-        [artifact.id],
-      );
-      await client.query('insert into artifact_claim_fact values ($1, $2)', [claim.id, version.id]);
+      const artifact = await newArtifact(snapshot.id);
+      await client.query('insert into artifact_fact values ($1, $2)', [artifact.id, version.id]);
+      const claim = await row(`${claimInsert} returning id`, [artifact.id, 0, ...resumeLine]);
+      await client.query(citeInsert, [claim.id, artifact.id, version.id]);
       await assert.rejects(
-        client.query('insert into artifact_claim_fact values ($1, $2)', [claim.id, randomUUID()]),
+        client.query(citeInsert, [claim.id, artifact.id, randomUUID()]),
         foreignKey,
       );
 

@@ -1,6 +1,8 @@
 import Type, { type Static } from 'typebox';
 import { AlertListingSchema } from './alerts.ts';
 import { CriterionResultSchema, JobVerdictSchema, OutcomeSchema } from './criteria.ts';
+import { DraftSummarySchema } from './drafts.ts';
+import { CitedFactSchema } from './facts.ts';
 import { JobSourceSchema } from './jobs.ts';
 
 export const maxJobTextLength = 100_000;
@@ -16,21 +18,6 @@ export type Quoted = Static<typeof QuotedSchema>;
 export const RequirementKindSchema = Type.Union([Type.Literal('must'), Type.Literal('nice')]);
 
 export type RequirementKind = Static<typeof RequirementKindSchema>;
-
-/** A fact version a match cites, with its text as it was. */
-export const CitedFactSchema = Type.Object({
-  versionId: Type.String({ format: 'uuid' }),
-  factId: Type.String({ format: 'uuid' }),
-  version: Type.Integer({ minimum: 1 }),
-  body: Type.String(),
-  /**
-   * False when the fact has a newer version or is no longer confirmed since the match; the
-   * outcome then no longer counts and the requirement is unknown until it is matched again.
-   */
-  current: Type.Boolean(),
-});
-
-export type CitedFact = Static<typeof CitedFactSchema>;
 
 /** What the latest match found for one requirement. */
 export const EvidenceSchema = Type.Object({
@@ -117,6 +104,8 @@ export const SnapshotSchema = Type.Object({
   summary: Type.Union([JobSummarySchema, Type.Null()]),
   requirements: Type.Array(RequirementSchema),
   match: Type.Union([MatchSchema, Type.Null()]),
+  /** The latest resume and cover letter drafts of this text, those that exist (T07). */
+  drafts: Type.Array(DraftSummarySchema),
 });
 
 export type Snapshot = Static<typeof SnapshotSchema>;
@@ -141,6 +130,11 @@ export const JobDetailSchema = Type.Object({
   criteria: Type.Array(CriterionResultSchema),
   /** How many facts a match would send: confirmed ones the user allows to go to DeepSeek. */
   factsToSend: Type.Integer({ minimum: 0 }),
+  /**
+   * How many facts a draft would send: confirmed ones the user allows both to go to DeepSeek and
+   * to appear in documents.
+   */
+  factsToDraft: Type.Integer({ minimum: 0 }),
 });
 
 export type JobDetail = Static<typeof JobDetailSchema>;

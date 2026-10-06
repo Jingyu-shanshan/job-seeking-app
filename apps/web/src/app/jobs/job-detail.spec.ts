@@ -1,9 +1,10 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import type {
   CriterionResult,
+  Draft,
   Evidence,
   JobDetail,
   Match,
@@ -50,6 +51,7 @@ const snapshot = (fields: Partial<Snapshot> = {}): Snapshot => ({
   summary: null,
   requirements: [],
   match: null,
+  drafts: [],
   ...fields,
 });
 
@@ -68,6 +70,7 @@ const detail = (fields: Partial<JobDetail> = {}): JobDetail => ({
   verdict: 'eligible',
   criteria: [],
   factsToSend: 2,
+  factsToDraft: 1,
   ...fields,
 });
 
@@ -637,5 +640,77 @@ describe('JobDetailPage', () => {
     expect(text(matchSection)).toContain('None of your facts may be sent yet.');
     expect(matchSection.querySelector('a')!.getAttribute('href')).toBe('/facts');
     expect(button('Match with my facts')!.disabled).toBe(true);
+  });
+  it('writes a draft for the job and opens it', async () => {
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    await load(
+      detail({
+        snapshot: snapshot({
+          drafts: [
+            {
+              id: '00000000-0000-4000-8000-000000000020',
+              kind: 'resume',
+              createdAt: '2026-10-05T08:00:00.000Z',
+              statements: 12,
+              rejected: 2,
+              outdated: ['The facts that may be used in drafts have changed since.'],
+            },
+          ],
+        }),
+      }),
+    );
+    const drafts = section('Drafts')!;
+    expect(text(drafts)).toContain('the 1 fact you allowed both to go to DeepSeek');
+    const items = [...drafts.querySelectorAll('li')].map((li) => text(li));
+    expect(items[0]).toContain('Resume draft, written 5 Oct 2026');
+    expect(items[0]).toContain('12 statements, 2 left out.');
+    expect(items[0]).toContain('The facts that may be used in drafts have changed since.');
+    expect(items[1]).toContain('No cover letter draft yet.');
+    expect(drafts.querySelector('a')!.getAttribute('href')).toBe(
+      '/drafts/00000000-0000-4000-8000-000000000020',
+    );
+    expect(button('Write again')).toBeDefined();
+
+    button('Write a cover letter')!.click();
+    const request = http.expectOne(`/api/snapshots/${snapshotId}/drafts`);
+    expect(request.request.body).toEqual({ kind: 'cover_letter' });
+    await settle();
+    expect(text(page().querySelector('[role=status]'))).toContain(
+      'Writing the cover letter with DeepSeek.',
+    );
+    expect(button('Write again')!.disabled).toBe(true);
+    request.flush({ id: '00000000-0000-4000-8000-000000000021' } as Draft);
+    await settle();
+    expect(navigate).toHaveBeenCalledWith(['/drafts', '00000000-0000-4000-8000-000000000021']);
+    http.expectOne('/api/model-usage').flush(usage);
+  });
+
+  it('says why no draft can be written yet, and shows a refusal', async () => {
+    await load(detail({ factsToDraft: 0, snapshot: snapshot() }));
+    const drafts = section('Drafts')!;
+    expect(text(drafts)).toContain('None of your facts may be used yet.');
+    expect(button('Write a resume')!.disabled).toBe(true);
+  });
+
+  it('shows the server’s message when writing fails', async () => {
+    await load(detail({ snapshot: snapshot() }));
+    button('Write a resume')!.click();
+    http
+      .expectOne(`/api/snapshots/${snapshotId}/drafts`)
+      .flush(
+        { message: 'DEEPSEEK_API_KEY is not set on the server, so drafts cannot be written.' },
+        { status: 503, statusText: 'Service Unavailable' },
+      );
+    await settle();
+    http.expectOne('/api/model-usage').flush(usage);
+    await settle();
+    expect(text(page().querySelector('[role=alert]'))).toBe(
+      'DEEPSEEK_API_KEY is not set on the server, so drafts cannot be written.',
+    );
+  });
+
+  it('has no drafts section before the app has the job text', async () => {
+    await load(detail());
+    expect(section('Drafts')).toBeUndefined();
   });
 });

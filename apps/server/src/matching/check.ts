@@ -21,8 +21,12 @@ export interface FactState {
   valid: Set<string>;
   /** What a match sends: current versions that `mayUse(..., 'model')` allows. */
   sendable: { versionId: string; kind: FactKind; body: string }[];
+  /** What a draft sends: sendable versions that `mayUse(..., 'materials')` allows too. */
+  citable: { versionId: string; kind: FactKind; body: string }[];
+  /** Current versions that `mayUse(..., 'materials')` allows: what a document may cite now. */
+  usableInMaterials: Set<string>;
   /** Every version, current or not, by id. */
-  versions: Map<string, { factId: string; version: number; body: string }>;
+  versions: Map<string, { factId: string; kind: FactKind; version: number; body: string }>;
 }
 
 export async function loadFactState(pool: Pool): Promise<FactState> {
@@ -30,14 +34,19 @@ export async function loadFactState(pool: Pool): Promise<FactState> {
   const versions: FactState['versions'] = new Map();
   for (const fact of facts) {
     for (const v of [fact.current, ...fact.earlier]) {
-      versions.set(v.id, { factId: fact.id, version: v.version, body: v.body });
+      versions.set(v.id, { factId: fact.id, kind: fact.kind, version: v.version, body: v.body });
     }
   }
+  const current = (f: (typeof facts)[number]) => ({
+    versionId: f.current.id,
+    kind: f.kind,
+    body: f.current.body,
+  });
   return {
     valid: new Set(facts.filter((f) => f.current.status === 'confirmed').map((f) => f.current.id)),
-    sendable: facts
-      .filter((f) => f.sendableToModel)
-      .map((f) => ({ versionId: f.current.id, kind: f.kind, body: f.current.body })),
+    sendable: facts.filter((f) => f.sendableToModel).map(current),
+    citable: facts.filter((f) => f.sendableToModel && f.usableInMaterials).map(current),
+    usableInMaterials: new Set(facts.filter((f) => f.usableInMaterials).map((f) => f.current.id)),
     versions,
   };
 }
