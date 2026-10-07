@@ -29,7 +29,7 @@
 | [marked](https://github.com/markedjs/marked) + [DOMPurify](https://github.com/cure53/DOMPurify) | MIT；Apache-2.0/MPL-2.0 | 显示需要格式化的 Markdown，并净化 HTML。 | 仅在界面需要渲染外部 Markdown/HTML 时加入；[marked 不负责净化](https://github.com/markedjs/marked#warning-marked-does-not-sanitize-the-output-html)，纯文本展示优先。 |
 | [PDF.js](https://github.com/mozilla/pdf.js) / [Mammoth](https://github.com/mwilliamson/mammoth.js) | Apache-2.0 / [BSD-2-Clause](https://github.com/mwilliamson/mammoth.js/blob/master/LICENSE) | 从用户授权的 PDF / DOCX 履历提取文本，形成待确认事实。 | T04 有真实文件导入需求后；V0.1 先支持手动录入/粘贴。提取内容不能自动变为已确认事实。PDF.js 已经通过 unpdf 在 T08 用于核对上传的 PDF（见上表）。 |
 | 浏览器打印 / [Playwright `page.pdf()`](https://playwright.dev/docs/api/class-page#page-pdf) | 浏览器原生 / [Apache-2.0](https://github.com/microsoft/playwright/blob/main/LICENSE) | HTML/CSS 简历模板输出 PDF。 | T08 采用浏览器打印（2026-10-06）：用户“存储为 PDF”后上传，服务端核对文字再保存；版面、文字提取和分页已用无头 Chrome 验证。只有受控自动导出确有必要时才在服务端引入 Playwright/Chromium。 |
-| [Playwright](https://github.com/microsoft/playwright) | [Apache-2.0](https://github.com/microsoft/playwright/blob/main/LICENSE) | 本地投递执行器 `apps/runner`：在可见的浏览器窗口里填写申请表、上传文件、截图预览并在批准后提交。 | T17；只装在执行器工作区，不进 Railway 镜像。不引入验证码破解或反检测插件。 |
+| [Playwright](https://github.com/microsoft/playwright) | [Apache-2.0](https://github.com/microsoft/playwright/blob/main/LICENSE) | 本地投递执行器 `apps/runner`：在可见的浏览器窗口里填写申请表、上传文件、截图预览并在批准后提交。 | **已采用**（T17，2026-10-07）：`playwright-core` 1.63.0（不带浏览器，也没有安装脚本），驱动用户电脑上已装的 Google Chrome。只装在执行器工作区，不进 Railway 镜像。不引入验证码破解或反检测插件。 |
 
 ## 参考现成格式和模板，避免移植整套应用
 

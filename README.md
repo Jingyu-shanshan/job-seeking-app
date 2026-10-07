@@ -10,13 +10,13 @@ V0.1 的流程：发现与筛选 → JD 总结 → 确认个人事实 → 解释
 | `apps/server/` | Fastify API；同源提供构建后的 Angular 页面 |
 | `packages/shared/` | Web 与 API 共用的 schema 与类型 |
 | `apps/desktop/` | 桌面应用（Electron，T21）：左边是应用界面，右边是内置浏览器，用户自己浏览并一键保存正在看的职位；只在用户电脑上运行 |
-| `apps/runner/` | 后续本地投递执行器：在用户电脑上用浏览器填表并提交（T17 创建） |
+| `apps/runner/` | 本地投递执行器（T17）：在用户电脑上的可见 Chrome 窗口里填写 Greenhouse 申请表并停在提交前；提交在 T18 |
 | `docs/PRODUCT_PLAN.md` | 原始产品设计草案（保留原文，**其中建议和示例不是已确认默认值**） |
 | `docs/DEVELOPMENT.md` | 本轮技术决策、边界与开发约定 |
 | `docs/TASKS.md` | 按阶段排列的开发任务与验收条件 |
 | `docs/OPEN_SOURCE_REUSE.md` | 已核对的开源复用候选及采用时机 |
 | `docs/DEPLOYMENT.md` | Railway + Neon 的计划部署流程 |
 
-本地运行：`npm ci && npm run build && npm start`，然后打开 <http://127.0.0.1:3000>；开发时分别运行 `npm run dev:server` 和 `npm run dev:web`。桌面应用：先 `npm start`，再 `npm run desktop`（加载 `JSA_APP_URL`，默认 <http://127.0.0.1:3000>；第一次运行会下载 Electron）。数据库用本地 PostgreSQL 容器，启动命令见 `CLAUDE.md`，`npm run db:migrate` 执行迁移，`npm run auth:create-account -- <邮箱>` 创建唯一的账户（公开注册已关闭）。检查：`npm run lint`、`npm run typecheck`、`npm test`（数据库测试需要 `TEST_DATABASE_URL`）。数据库地址、会话密钥和模型密钥放在根目录 `.env`（见 `.env.example`），不入库。
+本地运行：`npm ci && npm run build && npm start`，然后打开 <http://127.0.0.1:3000>；开发时分别运行 `npm run dev:server` 和 `npm run dev:web`。桌面应用：先 `npm start`，再 `npm run desktop`（加载 `JSA_APP_URL`，默认 <http://127.0.0.1:3000>；第一次运行会下载 Electron）。执行器：在应用的 Runner 页签发令牌，写进 `.env` 的 `JSA_RUNNER_TOKEN`，再 `npm run runner`（需要已安装 Google Chrome）。数据库用本地 PostgreSQL 容器，启动命令见 `CLAUDE.md`，`npm run db:migrate` 执行迁移，`npm run auth:create-account -- <邮箱>` 创建唯一的账户（公开注册已关闭）。检查：`npm run lint`、`npm run typecheck`、`npm test`（数据库测试需要 `TEST_DATABASE_URL`）。数据库地址、会话密钥和模型密钥放在根目录 `.env`（见 `.env.example`），不入库。
 
 技术栈：Angular 22 / TypeScript 6.0.x、Node.js 24 LTS / Fastify 5、PostgreSQL（Neon）、`pg`、版本化数据库迁移。身份验证使用 Better Auth；模型为 DeepSeek API；填表用本地 Playwright。决策与未定事项见 [开发文档](docs/DEVELOPMENT.md)，部署步骤见 [部署文档](docs/DEPLOYMENT.md)。

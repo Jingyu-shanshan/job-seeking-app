@@ -42,11 +42,11 @@ const QuestionParamsSchema = Type.Object({
 });
 
 /** The sources the app can read this job's form from now. */
-async function formSources(pool: Pool, jobId: string) {
+export async function formSources(pool: Pool, jobId: string) {
   return importSources(await postingsOf(pool, jobId)).filter((s) => s.adapter.readForm);
 }
 
-interface FormRow {
+export interface FormRow {
   id: string;
   catalog_id: string;
   questions: FormQuestion[];
@@ -54,7 +54,7 @@ interface FormRow {
   last_captured_at: Date;
 }
 
-async function currentForm(pool: Pool, jobId: string): Promise<FormRow | undefined> {
+export async function currentForm(pool: Pool, jobId: string): Promise<FormRow | undefined> {
   const { rows } = await pool.query<FormRow>(
     `select id, catalog_id, questions, captured_at, last_captured_at from job_form
      where job_id = $1 order by last_captured_at desc, captured_at desc limit 1`,
@@ -64,7 +64,7 @@ async function currentForm(pool: Pool, jobId: string): Promise<FormRow | undefin
 }
 
 /** Everything the fill rules need about a job, or undefined when there is no such job. */
-async function fillContext(pool: Pool, jobId: string): Promise<FillContext | undefined> {
+export async function fillContext(pool: Pool, jobId: string): Promise<FillContext | undefined> {
   const job = await loadJobDetail(pool, jobId);
   if (!job) return undefined;
   const [profile, saved, answers] = await Promise.all([

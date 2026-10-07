@@ -112,9 +112,23 @@ insert into form_answer (wordings, answer, sensitive, places)
   values ('{What is your notice period?}', '{One month}', false, '{Finland}');
 insert into job_form (job_id, catalog_id, questions)
   values (:'job_id', 'greenhouse_board', '[{"key": "question_1", "label": "What is your notice period?",
-    "description": "", "required": true, "kind": "text", "options": [], "group": "questions"}]');
+    "description": "", "required": true, "kind": "text", "options": [], "group": "questions"}]')
+  returning id as job_form_id \gset
 insert into job_form_answer (job_id, question_key, label, answer)
   values (:'job_id', 'question_1', 'What is your notice period?', '{Two months}');
+insert into runner_token (name, token_sha256, last_used_at)
+  values ('Drill runner', sha256('drill'::bytea), now())
+  returning id as runner_token_id \gset
+insert into fill_task (job_id, job_form_id, url, fields, status, message, runner_token_id, runner_seen_at)
+  values (:'job_id', :'job_form_id', 'https://job-boards.greenhouse.io/embed/job_app?for=drill&token=1',
+    '[{"key": "question_1", "label": "What is your notice period?", "kind": "text", "group": "questions",
+      "required": true, "answer": ["Two months"], "source": "job", "documentPdfId": null}]',
+    'filled', 'Nothing has been sent to the company.', :'runner_token_id', now())
+  returning id as fill_task_id \gset
+insert into fill_check (fill_task_id, filled_now, fields, screenshot)
+  values (:'fill_task_id', true, '[{"key": "question_1", "label": "What is your notice period?",
+    "required": true, "kind": "text", "value": ["Two months"]}]',
+    decode('89504e470d0a1a0a0000000d49484452', 'hex'));
 SQL
 
 pg_dump --format=custom --no-owner --file "$work/backup.dump" "$source_url"

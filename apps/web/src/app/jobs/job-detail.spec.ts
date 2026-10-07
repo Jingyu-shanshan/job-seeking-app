@@ -136,8 +136,13 @@ describe('JobDetailPage', () => {
     http.expectOne(`/api/jobs/${jobId}`).flush(job);
     http.expectOne('/api/model-usage').flush(usage);
     await settle();
-    // The application form section (T16) loads on its own.
+    // The application form section (T16) and the runner's fill (T17) load on their own.
     http.expectOne(`/api/jobs/${jobId}/form`).flush({ canRead: false, form: null });
+    http.expectOne(`/api/jobs/${jobId}/fill`).flush({
+      cannotStart: 'The runner fills only the forms of jobs on a Greenhouse board you use.',
+      task: null,
+      runnerSeenAt: null,
+    });
     await fixture.whenStable();
   }
 

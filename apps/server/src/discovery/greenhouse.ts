@@ -254,4 +254,12 @@ export const greenhouseBoard: Adapter = {
       throw new DiscoveryError('Greenhouse gives no application form for this job.');
     return form;
   },
+
+  // The form as Greenhouse hosts it for companies to embed in their own careers sites. Unlike the
+  // board's job page, which some companies send on to their own site, it is always Greenhouse's
+  // form for this job (checked 2026-10-07 on three public boards).
+  formPage(board, externalId) {
+    const query = new URLSearchParams({ for: board, token: externalId });
+    return `https://job-boards.greenhouse.io/embed/job_app?${query}`;
+  },
 };

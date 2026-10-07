@@ -1,6 +1,6 @@
 import { httpResource } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, computed, inject, input, output, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type {
   FillStatus,
@@ -199,6 +199,8 @@ export class JobForm {
   private readonly api = inject(AnswersApi);
 
   readonly jobId = input.required<string>();
+  /** The user changed an answer or read the form: what can be filled may have changed. */
+  readonly formChanged = output<JobFormState>();
 
   protected readonly state = httpResource<JobFormState>(() => `/api/jobs/${this.jobId()}/form`);
   private readonly hasForm = computed(() => !!this.state.value()?.form);
@@ -238,6 +240,7 @@ export class JobForm {
 
   protected changed(state: JobFormState) {
     this.state.set(state);
+    this.formChanged.emit(state);
     this.editing.set(null);
     // A new saved answer, or a remembered wording.
     this.saved.reload();
@@ -262,7 +265,9 @@ export class JobForm {
     this.failure.set('');
     this.status.set(working);
     try {
-      this.state.set(await change());
+      const state = await change();
+      this.state.set(state);
+      this.formChanged.emit(state);
       this.status.set('');
     } catch (error) {
       this.status.set('');
