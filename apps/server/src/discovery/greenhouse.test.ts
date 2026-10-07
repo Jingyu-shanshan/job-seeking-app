@@ -161,3 +161,121 @@ test('says plainly why a job’s text could not be read', async () => {
     'Greenhouse answered with something other than a job.',
   );
 });
+
+test('reads a job’s application form as the app’s questions', async () => {
+  const { fetch, requested } = fakeGreenhouse({ acme: [{ id: 7 }] });
+  const form = await greenhouseBoard.readForm!('acme', '7', fetch);
+  assert.deepEqual(requested, [
+    'https://boards-api.greenhouse.io/v1/boards/acme/jobs/7?questions=true',
+  ]);
+  assert.deepEqual(
+    form.map((q) => [q.key, q.kind, q.required, q.group]),
+    [
+      ['first_name', 'text', true, 'questions'],
+      ['last_name', 'text', true, 'questions'],
+      ['email', 'text', true, 'questions'],
+      ['phone', 'text', false, 'questions'],
+      // The file field, not its text alternative.
+      ['resume', 'file', true, 'questions'],
+      ['cover_letter', 'file', false, 'questions'],
+      ['question_101', 'text', false, 'questions'],
+      ['question_102', 'single', true, 'questions'],
+      ['question_103', 'text', true, 'questions'],
+      // Latitude and longitude are hidden fields the form fills itself.
+      ['location', 'text', true, 'location'],
+      ['gender', 'single', false, 'compliance'],
+      // Processing consent asked separately, so not the general one as well.
+      ['gdpr_processing_consent_given', 'consent', true, 'consent'],
+    ],
+  );
+  const visa = form.find((q) => q.key === 'question_102')!;
+  assert.equal(visa.label, 'Will you now or in the future require sponsorship for a visa?');
+  assert.equal(visa.description, 'We can sponsor some visas.');
+  assert.deepEqual(visa.options, ['Yes', 'No']);
+  assert.deepEqual(form.find((q) => q.key === 'gender')!.options, [
+    'Decline To Self Identify',
+    'Female',
+    'Male',
+  ]);
+});
+
+test('reads demographic questions and the consents a form asks for', async () => {
+  const { fetch } = fakeGreenhouse({
+    acme: [
+      {
+        id: 8,
+        form: {
+          questions: [
+            {
+              required: true,
+              label: '  Skills\n you have ',
+              fields: [
+                {
+                  name: 'question_1',
+                  type: 'multi_value_multi_select',
+                  values: [{ label: 'Go' }, { label: ' Go ' }, { label: 'Rust' }, { label: '' }],
+                },
+              ],
+            },
+          ],
+          demographic_questions: {
+            header: 'Made up',
+            questions: [
+              {
+                id: 4,
+                label: 'Pronouns',
+                required: false,
+                type: 'multi_value_single_select',
+                answer_options: [{ id: 1, label: 'Prefer not to say', free_form: false }],
+              },
+            ],
+          },
+          data_compliance: [
+            {
+              type: 'gdpr',
+              requires_consent: true,
+              requires_processing_consent: false,
+              requires_retention_consent: false,
+              demographic_data_consent_applies: true,
+            },
+          ],
+        },
+      },
+    ],
+  });
+  const form = await greenhouseBoard.readForm!('acme', '8', fetch);
+  assert.deepEqual(
+    form.map((q) => [q.key, q.label, q.kind, q.required, q.options]),
+    [
+      ['question_1', 'Skills you have', 'multi', true, ['Go', 'Rust']],
+      ['demographic_4', 'Pronouns', 'single', false, ['Prefer not to say']],
+      ['gdpr_consent_given', 'Consent to the processing of your data (GDPR)', 'consent', true, []],
+      [
+        'gdpr_demographic_data_consent_given',
+        'Consent to the processing of your answers to the demographic questions',
+        'consent',
+        false,
+        [],
+      ],
+    ],
+  );
+});
+
+test('says plainly why a job’s form could not be read', async () => {
+  const read = (form: Record<string, unknown>) =>
+    greenhouseBoard.readForm!('acme', '9', fakeGreenhouse({ acme: [{ id: 9, form }] }).fetch);
+  await assert.rejects(read({}), { message: 'Greenhouse gives no application form for this job.' });
+  await assert.rejects(read({ questions: 'none' }), {
+    message: 'Greenhouse answered with something other than an application form.',
+  });
+  await assert.rejects(
+    read({ questions: [{ label: 'Date', fields: [{ name: 'q', type: 'input_date' }] }] }),
+    { message: 'Greenhouse’s form has a field of a kind the app does not know: input_date.' },
+  );
+  await assert.rejects(
+    greenhouseBoard.readForm!('acme', '10', fakeGreenhouse({ acme: [] }).fetch),
+    {
+      message: 'The Greenhouse board acme no longer lists this job.',
+    },
+  );
+});

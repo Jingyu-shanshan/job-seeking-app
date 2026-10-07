@@ -14,6 +14,8 @@ import { RateLimiter } from './discovery/run.ts';
 import { documentRoutes } from './documents/routes.ts';
 import { draftRoutes } from './drafts/routes.ts';
 import { factRoutes } from './facts/routes.ts';
+import { answerRoutes } from './forms/answers.ts';
+import { jobFormRoutes } from './forms/job-form.ts';
 import { jdRoutes } from './jd/routes.ts';
 import { savedRoutes } from './jd/saved.ts';
 import { criteriaRoutes } from './matching/criteria.ts';
@@ -135,6 +137,8 @@ export function buildApp({
     app.register(documentRoutes, { prefix: '/api', pool });
     app.register(savedRoutes, { prefix: '/api', pool });
     app.register(alertRoutes, { prefix: '/api', pool });
+    app.register(answerRoutes, { prefix: '/api', pool });
+    app.register(jobFormRoutes, { prefix: '/api', pool, fetch, limiter });
   }
 
   // Without a web build (API-only dev, tests) the server still runs; `ng serve` proxies to it.

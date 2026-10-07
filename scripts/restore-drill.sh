@@ -108,6 +108,13 @@ insert into alert_email (source_id, message_key, sender, subject, sent_at, jobs,
 insert into alert_job (source_id, job_id, url, external_id, title, company, location, alert_email_id)
   values (:'alert_source_id', :'job_id', 'https://example.test/jobs/2', '2', 'Sample job', 'Example',
     'Helsinki', :'alert_email_id');
+insert into form_answer (wordings, answer, sensitive, places)
+  values ('{What is your notice period?}', '{One month}', false, '{Finland}');
+insert into job_form (job_id, catalog_id, questions)
+  values (:'job_id', 'greenhouse_board', '[{"key": "question_1", "label": "What is your notice period?",
+    "description": "", "required": true, "kind": "text", "options": [], "group": "questions"}]');
+insert into job_form_answer (job_id, question_key, label, answer)
+  values (:'job_id', 'question_1', 'What is your notice period?', '{Two months}');
 SQL
 
 pg_dump --format=custom --no-owner --file "$work/backup.dump" "$source_url"

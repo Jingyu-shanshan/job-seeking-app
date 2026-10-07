@@ -1,4 +1,4 @@
-import { maxJobTextLength } from '@jsa/shared';
+import { type FormQuestion, maxJobTextLength } from '@jsa/shared';
 import Type, { type TSchema } from 'typebox';
 
 // What every source adapter returns, and the one way adapters fetch: native fetch with a time
@@ -30,6 +30,12 @@ export interface JobText {
 export interface Adapter {
   listJobs(param: string, fetch: typeof globalThis.fetch): Promise<Posting[]>;
   readJob(param: string, externalId: string, fetch: typeof globalThis.fetch): Promise<JobText>;
+  /** The questions of a job's application form (T16), for sources that publish them. */
+  readForm?(
+    param: string,
+    externalId: string,
+    fetch: typeof globalThis.fetch,
+  ): Promise<FormQuestion[]>;
 }
 
 /**

@@ -44,7 +44,7 @@ export interface JdRoutesOptions {
 
 const IdParamsSchema = Type.Object({ id: Type.String({ format: 'uuid' }) });
 
-interface PostingRow {
+export interface PostingRow {
   title: string;
   company: string | null;
   location: string;
@@ -104,7 +104,7 @@ interface RequirementRow {
   created_at: Date;
 }
 
-async function postingsOf(pool: Pool, jobId: string): Promise<PostingRow[]> {
+export async function postingsOf(pool: Pool, jobId: string): Promise<PostingRow[]> {
   const { rows } = await pool.query<PostingRow>(
     `select p.title, p.company, p.location, p.url, p.closed_at, p.external_id,
        s.id as source_id, s.catalog_id, s.param, s.enabled
@@ -116,7 +116,8 @@ async function postingsOf(pool: Pool, jobId: string): Promise<PostingRow[]> {
   return rows;
 }
 
-function importSources(postings: PostingRow[]) {
+/** The sources the app may read this job from now, with their adapters. */
+export function importSources(postings: PostingRow[]) {
   const open = postings
     .filter((p) => p.closed_at === null)
     .map((p) => ({ ...p, id: p.source_id, catalogId: p.catalog_id }));
@@ -126,7 +127,7 @@ function importSources(postings: PostingRow[]) {
   });
 }
 
-async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetail | undefined> {
+export async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetail | undefined> {
   const postings = await postingsOf(pool, jobId);
   // The latest save from the desktop app, for a job no posting describes.
   const saves = await pool.query<SavedRow>(

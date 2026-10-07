@@ -83,6 +83,13 @@ async function documentState(pool: Pool, draftId: string) {
   return { document, pieces, text, inDocument };
 }
 
+/** The newest PDF kept of a draft whose text is still the draft's document, if there is one. */
+export async function currentPdf(pool: Pool, draftId: string) {
+  const state = await documentState(pool, draftId);
+  const pdf = state?.document.pdfs.find((p) => p.current);
+  return pdf ? { id: pdf.id, fileName: pdf.fileName } : null;
+}
+
 /** A Content-Disposition header that keeps the name's accents for browsers that read them. */
 function attachment(fileName: string): string {
   const plain = fileName

@@ -135,6 +135,9 @@ describe('JobDetailPage', () => {
   async function load(job: JobDetail) {
     http.expectOne(`/api/jobs/${jobId}`).flush(job);
     http.expectOne('/api/model-usage').flush(usage);
+    await settle();
+    // The application form section (T16) loads on its own.
+    http.expectOne(`/api/jobs/${jobId}/form`).flush({ canRead: false, form: null });
     await fixture.whenStable();
   }
 
@@ -182,7 +185,7 @@ describe('JobDetailPage', () => {
     TestBed.tick();
     const request = http.expectOne(`/api/snapshots/${snapshotId}/summary`);
     expect(request.request.method).toBe('POST');
-    expect(text(page().querySelector('[role=status]'))).toBe(
+    expect(text(page().querySelector(':scope > [role=status]'))).toBe(
       'Summarising with DeepSeek. This can take a minute.',
     );
     request.flush(
@@ -583,7 +586,7 @@ describe('JobDetailPage', () => {
     TestBed.tick();
     const request = http.expectOne(`/api/snapshots/${snapshotId}/match`);
     expect(request.request.method).toBe('POST');
-    expect(text(page().querySelector('[role=status]'))).toBe(
+    expect(text(page().querySelector(':scope > [role=status]'))).toBe(
       'Matching with your facts on DeepSeek. This can take a minute.',
     );
     request.flush(summarised([requirement({ evidence: evidence() })], {}, { match: matched }));
@@ -676,7 +679,7 @@ describe('JobDetailPage', () => {
     const request = http.expectOne(`/api/snapshots/${snapshotId}/drafts`);
     expect(request.request.body).toEqual({ kind: 'cover_letter' });
     await settle();
-    expect(text(page().querySelector('[role=status]'))).toContain(
+    expect(text(page().querySelector(':scope > [role=status]'))).toContain(
       'Writing the cover letter with DeepSeek.',
     );
     expect(button('Write again')!.disabled).toBe(true);
