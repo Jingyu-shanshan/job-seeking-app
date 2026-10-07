@@ -16,6 +16,9 @@ import { Session } from './auth/session';
           <a routerLink="/profile" routerLinkActive="active" ariaCurrentWhenActive="page">
             Your details
           </a>
+          <a routerLink="/answers" routerLinkActive="active" ariaCurrentWhenActive="page">
+            Form answers
+          </a>
           <a routerLink="/criteria" routerLinkActive="active" ariaCurrentWhenActive="page">
             Criteria
           </a>

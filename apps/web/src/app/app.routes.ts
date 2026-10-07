@@ -48,6 +48,11 @@ export const routes: Routes = [
         title: 'Your details',
       },
       {
+        path: 'answers',
+        loadComponent: () => import('./answers/answers').then((m) => m.Answers),
+        title: 'Form answers',
+      },
+      {
         path: 'facts',
         loadComponent: () => import('./facts/facts').then((m) => m.Facts),
         title: 'Facts about you',
