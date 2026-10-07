@@ -13,6 +13,7 @@ import {
 import { Router, RouterLink } from '@angular/router';
 import type { DraftKind, JobDetail, JobVerdict, ModelUsage } from '@jsa/shared';
 import { JobForm } from '../answers/job-form';
+import { JobFill } from '../runner/job-fill';
 import { errorMessage } from '../sources/sources-api';
 import { criterionLabels, describeResult } from './criteria-text';
 import { JobDrafts, draftNames } from './job-drafts';
@@ -36,7 +37,7 @@ const verdictLines: Record<JobVerdict, string> = {
 
 @Component({
   selector: 'app-job-detail',
-  imports: [DatePipe, JobDrafts, JobForm, JobSummaryView, PasteTextForm, RouterLink],
+  imports: [DatePipe, JobDrafts, JobFill, JobForm, JobSummaryView, PasteTextForm, RouterLink],
   template: `
     <p><a routerLink="/jobs">All jobs</a></p>
     @if (data.hasValue()) {
@@ -238,7 +239,8 @@ const verdictLines: Record<JobVerdict, string> = {
 
       <section aria-labelledby="form-heading">
         <h2 id="form-heading">Application form</h2>
-        <app-job-form [jobId]="job.id" />
+        <app-job-form [jobId]="job.id" (formChanged)="jobFill.refresh()" />
+        <app-job-fill #jobFill [jobId]="job.id" />
       </section>
 
       <p role="status">{{ status() }}</p>

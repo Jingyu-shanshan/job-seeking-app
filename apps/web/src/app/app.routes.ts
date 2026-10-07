@@ -67,6 +67,11 @@ export const routes: Routes = [
         loadComponent: () => import('./sources/sources').then((m) => m.Sources),
         title: 'Sources',
       },
+      {
+        path: 'runner',
+        loadComponent: () => import('./runner/runner').then((m) => m.RunnerPage),
+        title: 'Runner',
+      },
     ],
   },
   { path: '**', component: NotFound, title: 'Page not found' },

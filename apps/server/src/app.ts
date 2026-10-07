@@ -20,6 +20,9 @@ import { jdRoutes } from './jd/routes.ts';
 import { savedRoutes } from './jd/saved.ts';
 import { criteriaRoutes } from './matching/criteria.ts';
 import { profileRoutes } from './profile/routes.ts';
+import { runnerApiRoutes } from './runner/api.ts';
+import { fillRoutes } from './runner/fills.ts';
+import { runnerTokenId, runnerTokenRoutes } from './runner/tokens.ts';
 import { sourceRoutes } from './sources/routes.ts';
 
 export type AppOptions = Pick<Config, 'webRoot' | 'appUrl' | 'trustedOrigins'> &
@@ -106,11 +109,22 @@ export function buildApp({
     });
   }
 
+  app.decorateRequest('runnerTokenId', '');
+
   // Runs for every request under /api, also ones that match no route, so a route added later is
   // private unless it lives under /api/auth.
   app.addHook('onRequest', async (request, reply) => {
     const path = pathOf(request.url);
     if (!isApi(path)) return;
+    // The local runner (T17) signs in with its token in the Authorization header, never with the
+    // session cookie, and nothing else signs in with a token. A browser does not send the header
+    // by itself, so a cross-site page cannot make the runner's requests and no Origin is needed.
+    if (path.startsWith('/api/runner/')) {
+      const tokenId = pool && (await runnerTokenId(pool, request.headers.authorization));
+      if (!tokenId) return reply.code(401).send({ error: 'Unauthorized' });
+      request.runnerTokenId = tokenId;
+      return;
+    }
     // Cross-site writes are refused before anything else, sign-in included. Browsers send
     // Origin with every non-GET fetch, so a missing one is refused as well.
     if (
@@ -139,6 +153,9 @@ export function buildApp({
     app.register(alertRoutes, { prefix: '/api', pool });
     app.register(answerRoutes, { prefix: '/api', pool });
     app.register(jobFormRoutes, { prefix: '/api', pool, fetch, limiter });
+    app.register(runnerTokenRoutes, { prefix: '/api', pool });
+    app.register(fillRoutes, { prefix: '/api', pool });
+    app.register(runnerApiRoutes, { prefix: '/api', pool });
   }
 
   // Without a web build (API-only dev, tests) the server still runs; `ng serve` proxies to it.

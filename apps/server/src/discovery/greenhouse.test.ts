@@ -279,3 +279,14 @@ test('says plainly why a job’s form could not be read', async () => {
     },
   );
 });
+
+test('the runner opens the form Greenhouse hosts for embedding, never the company’s own site', () => {
+  assert.equal(
+    greenhouseBoard.formPage!('acme', '7'),
+    'https://job-boards.greenhouse.io/embed/job_app?for=acme&token=7',
+  );
+  assert.equal(
+    greenhouseBoard.formPage!('a&b', '7#x'),
+    'https://job-boards.greenhouse.io/embed/job_app?for=a%26b&token=7%23x',
+  );
+});

@@ -89,7 +89,15 @@ describe('App', () => {
 
     user.set({ email: 'owner@example.com' });
     fixture.detectChanges();
-    expect(links()).toEqual(['/jobs', '/facts', '/profile', '/answers', '/criteria', '/sources']);
+    expect(links()).toEqual([
+      '/jobs',
+      '/facts',
+      '/profile',
+      '/answers',
+      '/criteria',
+      '/sources',
+      '/runner',
+    ]);
   });
 
   it('shows who is signed in and signs out', async () => {

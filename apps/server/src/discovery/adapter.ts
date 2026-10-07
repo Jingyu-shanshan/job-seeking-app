@@ -36,6 +36,8 @@ export interface Adapter {
     externalId: string,
     fetch: typeof globalThis.fetch,
   ): Promise<FormQuestion[]>;
+  /** The page of a job's application form that the local runner fills (T17). */
+  formPage?(param: string, externalId: string): string;
 }
 
 /**
