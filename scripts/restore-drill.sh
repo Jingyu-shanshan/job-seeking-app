@@ -76,6 +76,15 @@ insert into artifact_claim (artifact_id, position, body, section, block, line, a
   returning id as claim_id \gset
 insert into artifact_claim_fact (artifact_claim_id, artifact_id, fact_version_id)
   values (:'claim_id', :'artifact_id', :'fact_version_id');
+update profile set name = 'Sample Person', email = 'sample@example.test', links = '{https://example.test/}';
+insert into artifact_claim_edit (artifact_id, artifact_claim_id, body, included)
+  values (:'artifact_id', :'claim_id', 'Maintained the invoice export.', true)
+  returning id as edit_id \gset
+insert into document_pdf (artifact_id, body, file_name, pages, text)
+  values (:'artifact_id', convert_to('%PDF-1.4 sample', 'UTF8'), 'Sample Person - Resume', 1,
+    E'Sample Person\nMaintained the invoice export.')
+  returning id as pdf_id \gset
+insert into document_pdf_statement values (:'pdf_id', :'artifact_id', :'claim_id', :'edit_id');
 insert into application (job_snapshot_id, status, submitted_at) values (:'snapshot_id', 'submitted', now())
   returning id as application_id \gset
 insert into application_artifact values (:'application_id', :'artifact_id');

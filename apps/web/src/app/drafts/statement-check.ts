@@ -1,9 +1,12 @@
 import { Component, computed, input } from '@angular/core';
 import type { DraftStatement } from '@jsa/shared';
+import { DiffText } from './diff-text';
+import { changedWords, wordDiff } from './word-diff';
 
-/** What the checks found for one draft statement, and what it rests on. */
+/** What the checks found for one draft statement, what it rests on and how it differs from it. */
 @Component({
   selector: 'app-statement-check',
+  imports: [DiffText],
   template: `
     @let s = statement();
     @if (s.problems.length) {
@@ -11,6 +14,8 @@ import type { DraftStatement } from '@jsa/shared';
       @for (p of s.problems; track p.message) {
         {{ p.message }}
       }
+    } @else if (!s.included) {
+      <span class="left-out">Left out by you.</span> It passes the checks; put it back to use it.
     } @else {
       <span class="tag">In the document</span> {{ passedLine() }}
     }
@@ -45,7 +50,17 @@ import type { DraftStatement } from '@jsa/shared';
           <p>Nothing: a connecting sentence may name only the job title and the company.</p>
         }
       }
+      @if (fromSource(); as diff) {
+        <p class="diff-label">{{ diff.label }}</p>
+        <app-diff-text [parts]="diff.parts" />
+      }
     </details>
+    @if (s.edited) {
+      <details>
+        <summary>Your changes to DeepSeek’s text</summary>
+        <app-diff-text [parts]="fromModel()" />
+      </details>
+    }
   `,
   styles: `
     :host {
@@ -72,6 +87,9 @@ import type { DraftStatement } from '@jsa/shared';
     ul {
       padding-left: 1.25rem;
     }
+    .diff-label {
+      font-style: italic;
+    }
   `,
 })
 export class StatementCheck {
@@ -81,8 +99,30 @@ export class StatementCheck {
     const s = this.statement();
     if (s.about === 'job') return 'About the job, checked against its quote.';
     if (s.about === 'other') return 'A connecting sentence: it states nothing to check.';
-    return s.verbatim
-      ? 'Your fact word for word.'
+    if (s.verbatim) return 'Your fact word for word.';
+    return s.edited
+      ? 'In your words: read it against the facts it cites.'
       : 'In DeepSeek’s words: read it against the facts it cites.';
   });
+
+  /** How the statement differs from its closest cited fact, or from its quote. */
+  protected readonly fromSource = computed(() => {
+    const s = this.statement();
+    if (s.about === 'job' && s.quote) {
+      return { label: 'How it differs from the quote:', parts: wordDiff(s.quote, s.text) };
+    }
+    if (s.about !== 'me' || s.facts.length === 0 || s.verbatim) return undefined;
+    const closest = s.facts
+      .map((f) => wordDiff(f.body, s.text))
+      .reduce((best, parts) => (changedWords(parts) < changedWords(best) ? parts : best));
+    const label =
+      s.facts.length > 1
+        ? 'How it differs from the fact it is closest to:'
+        : 'How it differs from the fact:';
+    return { label, parts: closest };
+  });
+
+  protected readonly fromModel = computed(() =>
+    wordDiff(this.statement().modelText, this.statement().text),
+  );
 }

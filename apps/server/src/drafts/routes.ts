@@ -1,5 +1,5 @@
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
-import { DraftSchema, WriteDraftRequestSchema } from '@jsa/shared';
+import { DraftSchema, EditStatementRequestSchema, WriteDraftRequestSchema } from '@jsa/shared';
 import type { Pool } from 'pg';
 import Type from 'typebox';
 import { httpError } from '../http-error.ts';
@@ -14,6 +14,10 @@ export interface DraftRoutesOptions {
 }
 
 const IdParamsSchema = Type.Object({ id: Type.String({ format: 'uuid' }) });
+const StatementParamsSchema = Type.Object({
+  id: Type.String({ format: 'uuid' }),
+  statementId: Type.String({ format: 'uuid' }),
+});
 
 export const draftRoutes: FastifyPluginAsyncTypebox<DraftRoutesOptions> = async (
   app,
@@ -72,6 +76,37 @@ export const draftRoutes: FastifyPluginAsyncTypebox<DraftRoutesOptions> = async 
       const draft = await loadDraft(pool, request.params.id, await loadFactState(pool));
       if (!draft) throw httpError(404, 'There is no such draft.');
       return draft;
+    },
+  );
+
+  // The user's version of a statement (T08): a new row next to DeepSeek's, checked like it when
+  // the draft is read. Saving what the statement already is adds nothing.
+  app.put(
+    '/drafts/:id/statements/:statementId',
+    {
+      schema: {
+        params: StatementParamsSchema,
+        body: EditStatementRequestSchema,
+        response: { 200: DraftSchema },
+      },
+    },
+    async (request) => {
+      const { id, statementId } = request.params;
+      const facts = await loadFactState(pool);
+      const draft = await loadDraft(pool, id, facts);
+      if (!draft) throw httpError(404, 'There is no such draft.');
+      const statement = draft.statements.find((s) => s.id === statementId);
+      if (!statement) throw httpError(404, 'There is no such statement in this draft.');
+      // A statement is one line of the document.
+      const text = request.body.text.trim().replace(/\s+/g, ' ');
+      const { included } = request.body;
+      if (text === statement.text && included === statement.included) return draft;
+      await pool.query(
+        `insert into artifact_claim_edit (artifact_id, artifact_claim_id, body, included)
+         values ($1, $2, $3, $4)`,
+        [id, statementId, text, included],
+      );
+      return (await loadDraft(pool, id, facts))!;
     },
   );
 };

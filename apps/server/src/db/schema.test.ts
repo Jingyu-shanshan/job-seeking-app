@@ -429,6 +429,123 @@ describe('schema', needsDatabase, () => {
     });
   });
 
+  describe('reviews and PDFs', () => {
+    const editInsert = `insert into artifact_claim_edit (artifact_id, artifact_claim_id, body, included)
+      values ($1, $2, $3, $4)`;
+    const pdfInsert = `insert into document_pdf (artifact_id, body, file_name, pages, text)
+      values ($1, $2, 'Test Person - Resume', $3, 'Test Person')`;
+
+    async function newClaim(artifactId?: string) {
+      const artifact = artifactId ?? (await newArtifact((await newSnapshot()).id)).id;
+      const claim = await row(`${claimInsert} returning id`, [artifact, 0, ...resumeLine]);
+      return { artifact, claim: claim.id as string };
+    }
+
+    test('the user’s details are one row, empty at first, with at most three links', async () => {
+      assert.deepEqual(
+        (await client.query('select name, email, phone, location, links from profile')).rows,
+        [{ name: '', email: '', phone: '', location: '', links: [] }],
+      );
+      await assert.rejects(client.query('insert into profile default values'), { code: '23505' });
+      await assert.rejects(client.query('insert into profile (singleton) values (false)'), {
+        code: '23514',
+      });
+      await assert.rejects(client.query(`update profile set links = '{a,b,c,d}'`), {
+        code: '23514',
+      });
+    });
+
+    test('an edit is of a statement of the same draft, has text, and never changes', async () => {
+      const { artifact, claim } = await newClaim();
+      const other = await newClaim();
+      const edit = await row(`${editInsert} returning id`, [
+        artifact,
+        claim,
+        'Kept it short.',
+        true,
+      ]);
+      await assert.rejects(
+        client.query(editInsert, [other.artifact, claim, 'x', true]),
+        foreignKey,
+      );
+      for (const body of ['  ', 'x'.repeat(2001)]) {
+        await assert.rejects(client.query(editInsert, [artifact, claim, body, true]), {
+          code: '23514',
+        });
+      }
+      await assert.rejects(
+        client.query(`update artifact_claim_edit set body = 'Changed.' where id = $1`, [edit.id]),
+        immutable,
+      );
+      await assert.rejects(
+        client.query('delete from artifact_claim_edit where id = $1', [edit.id]),
+        {
+          message: /cannot be deleted/,
+        },
+      );
+    });
+
+    test('a kept PDF gets its hash from the database, is capped at 2 MiB and kept once per draft', async () => {
+      const { artifact } = await newClaim();
+      const body = Buffer.from('%PDF-1.4 made up');
+      const pdf = await row(
+        `insert into document_pdf (artifact_id, body, body_sha256, file_name, pages, text)
+         values ($1, $2, 'not the hash', 'Test Person - Resume', 1, 'Test Person') returning *`,
+        [artifact, body],
+      );
+      assert.equal(pdf.body_sha256, createHash('sha256').update(body).digest('hex'));
+      await assert.rejects(client.query(pdfInsert, [artifact, body, 1]), { code: '23505' });
+      for (const [bytes, pages] of [
+        [Buffer.alloc(0), 1],
+        [Buffer.alloc(2 * 1024 * 1024 + 1), 1],
+        [Buffer.from('%PDF other'), 0],
+        [Buffer.from('%PDF other'), 21],
+      ] as const) {
+        await assert.rejects(client.query(pdfInsert, [artifact, bytes, pages]), { code: '23514' });
+      }
+      await assert.rejects(
+        client.query(`update document_pdf set file_name = 'Other' where id = $1`, [pdf.id]),
+        immutable,
+      );
+      await assert.rejects(client.query('delete from document_pdf where id = $1', [pdf.id]), {
+        message: /cannot be deleted/,
+      });
+    });
+
+    test('a kept PDF lists statements of its draft, each with an edit of that statement', async () => {
+      const { artifact, claim } = await newClaim();
+      const second = await row(`${claimInsert} returning id`, [artifact, 1, ...resumeLine]);
+      const other = await newClaim();
+      const edit = await row(`${editInsert} returning id`, [
+        artifact,
+        claim,
+        'Kept it short.',
+        true,
+      ]);
+      const pdf = await row(`${pdfInsert} returning id`, [artifact, Buffer.from('%PDF a'), 1]);
+      const insert = `insert into document_pdf_statement
+        (document_pdf_id, artifact_id, artifact_claim_id, artifact_claim_edit_id) values ($1, $2, $3, $4)`;
+      await client.query(insert, [pdf.id, artifact, claim, edit.id]);
+      await client.query(insert, [pdf.id, artifact, second.id, null]);
+      await assert.rejects(
+        client.query(insert, [pdf.id, other.artifact, other.claim, null]),
+        foreignKey,
+      );
+      await assert.rejects(client.query(insert, [pdf.id, artifact, other.claim, null]), foreignKey);
+      const third = await row(`${claimInsert} returning id`, [artifact, 2, ...resumeLine]);
+      // The edit is of another statement.
+      await assert.rejects(client.query(insert, [pdf.id, artifact, third.id, edit.id]), foreignKey);
+      for (const change of [
+        'update document_pdf_statement set artifact_claim_edit_id = null',
+        'delete from document_pdf_statement',
+      ]) {
+        await assert.rejects(client.query(`${change} where document_pdf_id = $1`, [pdf.id]), {
+          message: /cannot be changed or deleted/,
+        });
+      }
+    });
+  });
+
   describe('references to fact versions', () => {
     test('claims and applications cite fact versions by foreign key', async () => {
       const version = await newFactVersion();
