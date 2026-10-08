@@ -59,8 +59,6 @@ export const DraftDocumentSchema = Type.Object({
 
 export type DraftDocument = Static<typeof DraftDocumentSchema>;
 
-export const maxPdfBytes = 2 * 1024 * 1024;
-
 /** What became of an uploaded PDF: kept (`pdf`), or the reasons it was not. */
 export const PdfCheckSchema = Type.Object({
   pdf: Type.Union([DocumentPdfSchema, Type.Null()]),

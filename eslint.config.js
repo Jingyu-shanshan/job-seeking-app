@@ -25,6 +25,22 @@ export default defineConfig(
         'error',
         { type: 'attribute', prefix: 'app', style: 'camelCase' },
       ],
+      // A value import from @jsa/shared pulls its TypeBox schemas into the browser bundle, and with
+      // verbatimModuleSyntax so does `import { type X }` (it stays as `import '@jsa/shared'`).
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@jsa/shared',
+              allowTypeImports: true,
+              message:
+                'apps/web imports only types from @jsa/shared (import type { ... }); plain values come from @jsa/shared/limits.',
+            },
+          ],
+        },
+      ],
+      '@typescript-eslint/no-import-type-side-effects': 'error',
     },
   },
   {
