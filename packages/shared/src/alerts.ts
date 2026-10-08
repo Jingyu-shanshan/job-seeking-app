@@ -1,10 +1,8 @@
 import Type, { type Static } from 'typebox';
+import { maxAlertEmailLength } from './limits.ts';
 
 // Job-alert emails (T20): the user pastes an email's source or uploads it as an .eml file, and the
 // app reads the jobs it lists. Everything in an email is untrusted text.
-
-/** The longest email source the app takes, in characters. */
-export const maxAlertEmailLength = 2_000_000;
 
 /** Body of `POST /api/alert-emails`: one email's full source, headers included. */
 export const ImportAlertEmailRequestSchema = Type.Object({

@@ -11,7 +11,8 @@ import {
 } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
-import { type DraftDocument, type DraftKind, maxPdfBytes } from '@jsa/shared';
+import type { DraftDocument, DraftKind } from '@jsa/shared';
+import { maxPdfBytes } from '@jsa/shared/limits';
 import { errorMessage } from '../sources/sources-api';
 import { DocumentSheet } from './document-sheet';
 import { DraftsApi } from './drafts-api';

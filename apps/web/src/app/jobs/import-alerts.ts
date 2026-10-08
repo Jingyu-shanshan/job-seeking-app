@@ -3,13 +3,13 @@ import { httpResource } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormField, FormRoot, form, maxLength, required } from '@angular/forms/signals';
 import { RouterLink } from '@angular/router';
-import {
-  maxAlertEmailLength,
-  type AlertEmailsResponse,
-  type AlertJob,
-  type ImportAlertEmailResponse,
-  type SourcesResponse,
+import type {
+  AlertEmailsResponse,
+  AlertJob,
+  ImportAlertEmailResponse,
+  SourcesResponse,
 } from '@jsa/shared';
+import { maxAlertEmailLength } from '@jsa/shared/limits';
 import { errorMessage } from '../sources/sources-api';
 import { JobsApi } from './jobs-api';
 

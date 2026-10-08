@@ -136,7 +136,6 @@ export {
   AlertListingSchema,
   ImportAlertEmailRequestSchema,
   ImportAlertEmailResponseSchema,
-  maxAlertEmailLength,
   type AlertEmail,
   type AlertEmailsResponse,
   type AlertJob,
@@ -175,7 +174,6 @@ export {
   DocumentPdfSchema,
   DraftDocumentSchema,
   PdfCheckSchema,
-  maxPdfBytes,
   type DocumentBlock,
   type DocumentPdf,
   type DraftDocument,
@@ -264,3 +262,4 @@ export {
   type SubmitReceipt,
   type SubmitResultRequest,
 } from './runner.ts';
+export { maxAlertEmailLength, maxPdfBytes } from './limits.ts';
