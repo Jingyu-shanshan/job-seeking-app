@@ -36,13 +36,19 @@ export type CreatedRunnerToken = Static<typeof CreatedRunnerTokenSchema>;
 
 /**
  * Where a fill is: waiting for a runner, being filled, paused until the user acts in the window,
- * filled and stopped before Submit, closed by the user (or their window closed), or failed.
+ * filled and stopped before Submit, approved by the user for submitting (T18), Submit pressed and
+ * the runner watching for the result, submitted (the confirmation page showed), submitted with an
+ * unknown result, closed by the user (or their window closed), or failed.
  */
 export const FillTaskStatusSchema = Type.Union([
   Type.Literal('waiting'),
   Type.Literal('filling'),
   Type.Literal('paused'),
   Type.Literal('filled'),
+  Type.Literal('approved'),
+  Type.Literal('submitting'),
+  Type.Literal('submitted'),
+  Type.Literal('to_verify'),
   Type.Literal('closed'),
   Type.Literal('failed'),
 ]);
@@ -198,6 +204,70 @@ export const FillTaskSchema = Type.Object({
 
 export type FillTask = Static<typeof FillTaskSchema>;
 
+/** A file the runner attached, as the approval binds it. */
+export const ApprovalFileSchema = Type.Object({
+  label: Type.String(),
+  fileName: Type.String(),
+  sha256: Type.String(),
+});
+
+export type ApprovalFile = Static<typeof ApprovalFileSchema>;
+
+/**
+ * Approving the submission of a filled form (T18): what an approval binds, and whether the user
+ * may approve now. It binds the runner's latest look at the form (each field's value), the job's
+ * current text, and the fill's answers and PDFs; any change voids it.
+ */
+export const FillApprovalSchema = Type.Object({
+  /** Why the user cannot approve now (or why the approval no longer holds), or null. */
+  problem: nullable(Type.String()),
+  /** The job text the approval binds. */
+  snapshot: nullable(Type.Object({ id: Type.String({ format: 'uuid' }), capturedAt: date })),
+  files: Type.Array(ApprovalFileSchema),
+  /** Applications that went in or may have in the last 24 hours, and how many the app allows. */
+  submittedLastDay: Type.Integer(),
+  dailyCap: Type.Integer(),
+  /** When the user approved this fill, while the approval may still be used. */
+  approvedAt: nullable(date),
+});
+
+export type FillApproval = Static<typeof FillApprovalSchema>;
+
+/**
+ * An application the runner submitted: the confirmation page showed (`submitted`), the result is
+ * unknown (`to_verify`), or the user found it did not go through (`not_submitted`).
+ */
+export const ApplicationStatusSchema = Type.Union([
+  Type.Literal('to_verify'),
+  Type.Literal('submitted'),
+  Type.Literal('not_submitted'),
+]);
+
+export type ApplicationStatus = Static<typeof ApplicationStatusSchema>;
+
+/** What the runner saw after it pressed Submit. */
+export const SubmitReceiptSchema = Type.Object({
+  confirmed: Type.Boolean(),
+  pageUrl: nullable(Type.String()),
+  pageText: Type.String(),
+  note: Type.String(),
+  checkedAt: date,
+  screenshotUrl: nullable(Type.String()),
+});
+
+export type SubmitReceipt = Static<typeof SubmitReceiptSchema>;
+
+export const JobApplicationSchema = Type.Object({
+  id: Type.String({ format: 'uuid' }),
+  status: ApplicationStatusSchema,
+  /** When the runner was let press Submit. */
+  createdAt: date,
+  submittedAt: nullable(date),
+  receipt: nullable(SubmitReceiptSchema),
+});
+
+export type JobApplication = Static<typeof JobApplicationSchema>;
+
 /** Filling a job's form with the runner. */
 export const JobFillStateSchema = Type.Object({
   /** Why a fill cannot start now, or null when it can. */
@@ -206,6 +276,58 @@ export const JobFillStateSchema = Type.Object({
   task: nullable(FillTaskSchema),
   /** When a runner last asked the app for work, with any token. */
   runnerSeenAt: nullable(date),
+  /** Approving the latest fill's submission, while it is filled or approved. */
+  approval: nullable(FillApprovalSchema),
+  /** The job's latest application. */
+  application: nullable(JobApplicationSchema),
 });
 
 export type JobFillState = Static<typeof JobFillStateSchema>;
+
+/** The user approves the look at the form they saw. */
+export const ApproveFillRequestSchema = Type.Object({
+  checkId: Type.String({ format: 'uuid' }),
+});
+
+export type ApproveFillRequest = Static<typeof ApproveFillRequestSchema>;
+
+/** The user's word on an application whose result was unknown. */
+export const SettleApplicationRequestSchema = Type.Object({
+  submitted: Type.Boolean(),
+});
+
+export type SettleApplicationRequest = Static<typeof SettleApplicationRequestSchema>;
+
+/** What the page shows while the runner waits for the result of Submit. */
+export const SubmitProgressSchema = Type.Union([
+  /** A CAPTCHA challenge. */
+  Type.Literal('captcha'),
+  /** Greenhouse asks for the security code it emailed. */
+  Type.Literal('security_code'),
+  /** The form, with fields it did not accept. */
+  Type.Literal('form_errors'),
+  /** Anything else that is not the confirmation page. */
+  Type.Literal('other'),
+]);
+
+export type SubmitProgress = Static<typeof SubmitProgressSchema>;
+
+export const SubmitProgressRequestSchema = Type.Object({ shows: SubmitProgressSchema });
+
+export type SubmitProgressRequest = Static<typeof SubmitProgressRequestSchema>;
+
+/** What the runner saw in the end after pressing Submit. */
+export const SubmitResultRequestSchema = Type.Object({
+  /** Whether the page was Greenhouse's confirmation page; the app checks its address too. */
+  confirmation: Type.Boolean(),
+  pageUrl: nullable(Type.String({ maxLength: 2000 })),
+  pageText: Type.String({ maxLength: 20_000 }),
+  /** Why the runner stopped watching, in words for the user; '' after the confirmation page. */
+  note: Type.String({ maxLength: 1000 }),
+  /** A PNG of the page in base64, or null when the window is gone. */
+  screenshot: nullable(
+    Type.String({ minLength: 1, maxLength: Math.ceil(maxScreenshotBytes / 3) * 4 }),
+  ),
+});
+
+export type SubmitResultRequest = Static<typeof SubmitResultRequestSchema>;

@@ -15,10 +15,12 @@ import { RunnerApi } from './runner-api';
     <p>
       The runner is a program on your computer that fills in a job’s application form in a Chrome
       window you can see. You start each fill on the job’s page; the runner takes one at a time,
-      puts in the answers the app shows there, and stops before Submit, so nothing is sent to the
-      company. It never solves a CAPTCHA, signs in for you or keeps a password: when the page asks
-      for one, it pauses and you deal with it in the window. Each fill gets a new Chrome profile,
-      which keeps nothing afterwards. For now it fills only Greenhouse’s forms.
+      puts in the answers the app shows there, and stops before Submit. Nothing is sent to the
+      company until you look at the filled form on the job’s page and approve submitting it; then
+      the runner presses Submit once, if the form has not changed, and shows you what the page said.
+      It never solves a CAPTCHA, signs in for you or keeps a password: when the page asks for one,
+      it pauses and you deal with it in the window. Each fill gets a new Chrome profile, which keeps
+      nothing afterwards. For now it fills only Greenhouse’s forms.
     </p>
     <h2>Starting it</h2>
     <ol>

@@ -5,7 +5,8 @@ import { type RawField, findBlocker, readGreenhouseForm } from './page-readers.t
 // Greenhouse's hosted application form (T17), the first form the runner fills. The app's keys for
 // its questions are Greenhouse's field names (T16), which are the page's ids, except for the
 // location search and the demographic questions. The runner types, picks options, ticks boxes and
-// attaches files; it never presses Enter or clicks Submit, so the form is never sent.
+// attaches files; it never presses Enter or clicks Submit while filling, so the form is not sent.
+// Only submit.ts presses Submit, once, for a form the user approved (T18).
 
 /** Greenhouse's own form, which the runner fills; any other page it refuses. */
 export function isGreenhouseForm(url: string): boolean {
@@ -183,6 +184,12 @@ export interface Look {
 
 const maxScreenshot = 8 * 1024 * 1024;
 
+/** A PNG of the whole page, or of what the window shows when the page is very long. */
+export async function pageScreenshot(page: Page): Promise<Buffer> {
+  const whole = await page.screenshot({ fullPage: true });
+  return whole.length > maxScreenshot ? page.screenshot() : whole;
+}
+
 /** What the page shows now: the form's fields with their values, a blocker, and a screenshot. */
 export async function lookAt(page: Page): Promise<Look> {
   const blocker = await page.evaluate(findBlocker);
@@ -195,3 +202,7 @@ export async function lookAt(page: Page): Promise<Look> {
   if (screenshot.length > maxScreenshot) screenshot = await page.screenshot();
   return { fields: raw && pageFields(raw), blocker, screenshot };
 }
+
+/** The form's own Submit button: the one submit button inside Greenhouse's application form. */
+export const submitButton = (page: Page) =>
+  page.locator('form#application-form button[type="submit"]');

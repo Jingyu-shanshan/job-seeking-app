@@ -4,7 +4,8 @@ import { runnerConfig } from './config.ts';
 import { runRunner } from './runner.ts';
 
 // The local runner (T17): `npm run runner`. It fills the application forms the user starts in the
-// app, in Google Chrome windows the user sees, and stops before Submit. It never solves CAPTCHAs,
+// app, in Google Chrome windows the user sees, and stops before Submit; it presses Submit once
+// for a form the user approved in the app (T18), if the app lets it. It never solves CAPTCHAs,
 // never hides that it is automated, and keeps no third-party passwords.
 
 let config;
@@ -23,7 +24,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 const log = (line: string) => console.log(`${new Date().toLocaleTimeString()}  ${line}`);
 
 log(
-  `The runner fills the forms you start in the app at ${config.appUrl.origin}, in Chrome windows you can see, and stops before Submit. Press Ctrl+C to stop.`,
+  `The runner fills the forms you start in the app at ${config.appUrl.origin}, in Chrome windows you can see, and stops before Submit. It presses Submit only for a form you approve in the app. Press Ctrl+C to stop.`,
 );
 try {
   await runRunner({

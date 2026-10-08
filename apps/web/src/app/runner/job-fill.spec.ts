@@ -2,7 +2,14 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import type { FillTask, FormCheck, JobFillState, PreviewField } from '@jsa/shared';
+import type {
+  FillApproval,
+  FillTask,
+  FormCheck,
+  JobApplication,
+  JobFillState,
+  PreviewField,
+} from '@jsa/shared';
 import { JobFill } from './job-fill';
 
 const jobId = '00000000-0000-4000-8000-000000000001';
@@ -61,7 +68,29 @@ const state = (s: Partial<JobFillState> = {}): JobFillState => ({
   cannotStart: null,
   task: null,
   runnerSeenAt: now(),
+  approval: null,
+  application: null,
   ...s,
+});
+
+const approval = (a: Partial<FillApproval> = {}): FillApproval => ({
+  problem: null,
+  snapshot: { id: '00000000-0000-4000-8000-000000000009', capturedAt: '2026-10-07T09:00:00.000Z' },
+  files: [{ label: 'Resume/CV', fileName: 'Test Person - Resume.pdf', sha256: 'ab'.repeat(32) }],
+  submittedLastDay: 1,
+  dailyCap: 5,
+  approvedAt: null,
+  ...a,
+});
+
+const applicationId = '00000000-0000-4000-8000-000000000004';
+const application = (a: Partial<JobApplication> = {}): JobApplication => ({
+  id: applicationId,
+  status: 'to_verify',
+  createdAt: '2026-10-07T09:05:00.000Z',
+  submittedAt: null,
+  receipt: null,
+  ...a,
 });
 
 async function settle() {
@@ -111,7 +140,9 @@ describe('JobFill', () => {
 
   it('says why a fill cannot start', async () => {
     await load(state({ cannotStart: 'Answer these questions first: “First Name”.' }));
-    expect(text()).toContain('stops before Submit, so nothing is sent to the company');
+    expect(text()).toContain(
+      'Nothing is sent to the company until you approve submitting this one form below.',
+    );
     expect(text()).toContain('Answer these questions first: “First Name”.');
     expect(button('Fill in the form with the runner')).toBeUndefined();
   });
@@ -237,5 +268,140 @@ describe('JobFill', () => {
     expect(text(page().querySelector('[role=alert]'))).toBe(
       'This fill is closed, so that cannot be done now.',
     );
+  });
+
+  it('a filled form: what an approval binds, and approving it', async () => {
+    const filled = task({ status: 'filled', message: 'Filled in.', runnerSeenAt: now(), check });
+    await load(state({ task: filled, approval: approval() }));
+    const section = page().querySelector('section.approval')!;
+    expect(text(section)).toContain(
+      'Approving lets the runner press Submit once, for this job only',
+    );
+    expect([...section.querySelectorAll('.binds > li')].map((li) => text(li))).toEqual([
+      expect.stringMatching(/^the value of every field below, as read at \d\d:00:00;$/),
+      expect.stringMatching(/^the job’s text as read on 7 Oct 2026, \d\d:00;$/),
+      'Resume/CV: Test Person - Resume.pdf (SHA-256 abababababab…);',
+      'your answers and documents as the fill started with them.',
+    ]);
+    expect(text(section)).toContain(
+      '1 of at most 5 applications went in (or may have) in the last 24 hours.',
+    );
+    button('Approve and submit')!.click();
+    TestBed.tick();
+    const request = http.expectOne(`/api/fill-tasks/${taskId}/approve`);
+    expect(request.request.body).toEqual({ checkId });
+    request.flush(
+      state({
+        task: { ...filled, status: 'approved', message: 'You approved submitting this form.' },
+        approval: approval({ approvedAt: now() }),
+      }),
+    );
+    await settle();
+    await fixture.whenStable();
+    expect(text()).toContain('Approved for submitting. You approved submitting this form.');
+    expect(button('Approve and submit')).toBeUndefined();
+    await click(
+      'Withdraw your approval',
+      `/api/fill-tasks/${taskId}/withdraw`,
+      state({ task: filled, approval: approval() }),
+    );
+    expect(button('Approve and submit')).toBeDefined();
+  });
+
+  it('says why a form cannot be approved, or why an approval no longer holds', async () => {
+    const filled = task({ status: 'filled', runnerSeenAt: now(), check });
+    await load(
+      state({ task: filled, approval: approval({ problem: 'The form is not complete.' }) }),
+    );
+    expect(text(page().querySelector('.approval .warning'))).toBe('The form is not complete.');
+    expect(button('Approve and submit')).toBeUndefined();
+
+    await click(
+      'Look at the form again',
+      `/api/fill-tasks/${taskId}/continue`,
+      state({
+        task: { ...filled, status: 'approved' },
+        approval: approval({
+          approvedAt: now(),
+          problem: 'The job’s text changed since you approved.',
+        }),
+      }),
+    );
+    expect(text(page().querySelector('.approval .warning'))).toBe(
+      'This approval no longer holds: The job’s text changed since you approved. The runner will not press Submit; it gives the form back to you.',
+    );
+  });
+
+  it('while Submit is pressed there is nothing to close; then the receipt', async () => {
+    const submitting = task({
+      status: 'submitting',
+      message: 'The runner pressed Submit and waits for Greenhouse’s confirmation page.',
+      runnerSeenAt: now(),
+      check,
+    });
+    await load(state({ task: submitting, application: application() }));
+    expect(text()).toContain('Submit pressed. The runner pressed Submit and waits');
+    expect(button('Close the window')).toBeUndefined();
+    // Not settled while the runner watches.
+    expect(button('It went through')).toBeUndefined();
+  });
+
+  it('a submitted application: the confirmation the runner saw', async () => {
+    await load(
+      state({
+        task: task({ status: 'submitted', message: 'Greenhouse showed its confirmation page.' }),
+        cannotStart: 'This job’s application went in already.',
+        application: application({
+          status: 'submitted',
+          submittedAt: '2026-10-07T09:05:00.000Z',
+          receipt: {
+            confirmed: true,
+            pageUrl: 'https://job-boards.greenhouse.io/embed/job_app/confirmation?for=acme&token=7',
+            pageText: 'Thank you for applying to Acme!',
+            note: '',
+            checkedAt: '2026-10-07T09:05:03.000Z',
+            screenshotUrl: '/api/submit-receipts/r1/screenshot',
+          },
+        }),
+      }),
+    );
+    const section = page().querySelector('section.application')!;
+    expect(text(section.querySelector('h4'))).toBe('Application: Submitted');
+    expect(text(section)).toContain('and Greenhouse showed its confirmation page.');
+    expect(text(section)).toContain('Thank you for applying to Acme!');
+    expect(section.querySelector('img')!.getAttribute('src')).toBe(
+      '/api/submit-receipts/r1/screenshot',
+    );
+    expect(text()).toContain('This job’s application went in already.');
+  });
+
+  it('a result to verify: the user says whether it went through', async () => {
+    await load(
+      state({
+        task: task({ status: 'to_verify', message: 'Submit was pressed.' }),
+        cannotStart: 'The result of this job’s application is unknown.',
+        application: application({
+          receipt: {
+            confirmed: false,
+            pageUrl: null,
+            pageText: '',
+            note: 'The window was closed before Greenhouse’s confirmation page showed.',
+            checkedAt: '2026-10-07T09:06:00.000Z',
+            screenshotUrl: null,
+          },
+        }),
+      }),
+    );
+    expect(text()).toContain('Application: Result unknown');
+    expect(text()).toContain('The window was closed before Greenhouse’s confirmation page showed.');
+    button('It did not go through')!.click();
+    TestBed.tick();
+    const request = http.expectOne(`/api/applications/${applicationId}/settle`);
+    expect(request.request.body).toEqual({ submitted: false });
+    request.flush(state({ application: application({ status: 'not_submitted' }) }));
+    await settle();
+    await fixture.whenStable();
+    expect(text()).toContain('Application: Did not go through');
+    expect(button('Fill in the form with the runner')).toBeDefined();
   });
 });

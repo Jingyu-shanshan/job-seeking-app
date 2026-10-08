@@ -439,6 +439,9 @@
           };
           const choose = (label) => {
             values.querySelector('.select__placeholder')?.remove();
+            // The stand-in that makes the browser require a value has one now.
+            const standIn = container.querySelector('input[aria-hidden="true"]');
+            if (standIn) standIn.value = label;
             if (multi) {
               const chip = document.createElement('div');
               chip.className = 'select__multi-value';
@@ -480,9 +483,34 @@
           input.addEventListener('blur', () => setTimeout(close, 200));
         }
       };
-      document.getElementById('application-form').addEventListener('submit', (event) => {
+      // As Greenhouse's script does on Submit: the application goes in a request of its own, and
+      // the page moves to the confirmation page. With `data-after-submit` on the body the answer
+      // asks for the security code Greenhouse emailed instead (the next Submit with the code typed
+      // in goes through), or nothing more happens.
+      document.getElementById('application-form').addEventListener('submit', async (event) => {
         event.preventDefault();
         document.body.dataset.submitted = 'yes';
+        await fetch('/embed/job_app/made-up-submit', { method: 'POST', body: '' });
+        const code = [...document.querySelectorAll('input[id^="security-input-"]')];
+        const after = document.body.dataset.afterSubmit;
+        if (after === 'security-code' && !(code.length && code.every((input) => input.value))) {
+          if (code.length) return;
+          const box = document.createElement('div');
+          box.className = 'email-verification';
+          box.innerHTML =
+            '<label id="email-verification-label" for="security-input-0">Security code</label>';
+          for (let i = 0; i < 8; i++) {
+            const input = document.createElement('input');
+            input.id = `security-input-${i}`;
+            input.type = 'text';
+            input.maxLength = 1;
+            box.append(input);
+          }
+          document.querySelector('.application--submit').before(box);
+          return;
+        }
+        if (after === 'nothing') return;
+        location.assign(`/embed/job_app/confirmation${location.search}`);
       });
     </script>
   </body>

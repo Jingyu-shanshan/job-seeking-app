@@ -7,6 +7,7 @@ import {
   cannotFill,
   checkOutcome,
   fillFields,
+  lostStatus,
   previewFields,
   problems,
 } from './fill.ts';
@@ -243,19 +244,52 @@ describe('where a look at the form leaves the fill', () => {
 });
 
 test('what may happen to a fill in each status', () => {
-  const events: FillEvent[] = ['claim', 'check', 'fail', 'window_closed', 'continue', 'close'];
+  const events: FillEvent[] = [
+    'claim',
+    'check',
+    'fail',
+    'window_closed',
+    'continue',
+    'close',
+    'approve',
+    'withdraw',
+    'submit',
+    'progress',
+    'result',
+  ];
+  const statuses = [
+    'waiting',
+    'filling',
+    'paused',
+    'filled',
+    'approved',
+    'submitting',
+    'submitted',
+    'to_verify',
+    'closed',
+    'failed',
+  ] as const;
   const table = Object.fromEntries(
-    (['waiting', 'filling', 'paused', 'filled', 'closed', 'failed'] as const).map((status) => [
-      status,
-      events.filter((event) => canHappen(status, event)),
-    ]),
+    statuses.map((status) => [status, events.filter((event) => canHappen(status, event))]),
   );
   assert.deepEqual(table, {
     waiting: ['claim', 'close'],
     filling: ['check', 'fail', 'window_closed', 'close'],
     paused: ['fail', 'window_closed', 'continue', 'close'],
-    filled: ['fail', 'window_closed', 'continue', 'close'],
+    filled: ['fail', 'window_closed', 'continue', 'close', 'approve'],
+    approved: ['fail', 'window_closed', 'close', 'withdraw', 'submit'],
+    // Once Submit is pressed, only the result (or losing the runner) ends the fill.
+    submitting: ['fail', 'window_closed', 'progress', 'result'],
+    submitted: [],
+    to_verify: [],
     closed: [],
     failed: [],
   });
+});
+
+test('a runner lost after Submit leaves the result to verify', () => {
+  assert.equal(lostStatus('submitting', 'fail'), 'to_verify');
+  assert.equal(lostStatus('submitting', 'window_closed'), 'to_verify');
+  assert.equal(lostStatus('approved', 'fail'), 'failed');
+  assert.equal(lostStatus('filled', 'window_closed'), 'closed');
 });
