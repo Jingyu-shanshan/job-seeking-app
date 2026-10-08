@@ -256,6 +256,8 @@ describe('the local runner', needsDatabase, () => {
       cannotStart: 'The runner fills only the forms of jobs on a Greenhouse board you use.',
       task: null,
       runnerSeenAt: (await fillState(pasted.id)).runnerSeenAt,
+      approval: null,
+      application: null,
     });
     assert.equal(
       (await fillState(jobs.helsinki!)).cannotStart,
@@ -562,6 +564,426 @@ describe('the local runner', needsDatabase, () => {
     );
   });
 
+  // T18: approving and submitting.
+
+  /** The page with every answer of the fill in it, as the runner reads it. */
+  const pageOf = (fields: RunnerTask['fields']): PageField[] =>
+    fields.map((f) => ({
+      key: f.key,
+      label: f.label,
+      required: f.required,
+      kind: 'text',
+      value: f.kind === 'consent' && f.answer.length ? ['checked'] : f.answer,
+    }));
+  const approve = (taskId: string, checkId: string) =>
+    ok<JobFillState>({
+      method: 'POST',
+      url: `/api/fill-tasks/${taskId}/approve`,
+      payload: { checkId },
+    });
+  const submit = (runner: string, task: RunnerTask, fields = pageOf(task.fields), blocker = null) =>
+    asRunner(runner, {
+      method: 'POST',
+      url: `/api/runner/tasks/${task.id}/submit`,
+      payload: { filledNow: false, blocker, fields, screenshot },
+    });
+  const result = (runner: string, taskId: string, body: object, status = 200) =>
+    runnerState(
+      runner,
+      {
+        method: 'POST',
+        url: `/api/runner/tasks/${taskId}/result`,
+        payload: {
+          confirmation: false,
+          pageUrl: null,
+          pageText: '',
+          note: '',
+          screenshot,
+          ...body,
+        },
+      },
+      status,
+    );
+  const confirmationUrl =
+    'https://job-boards.greenhouse.io/embed/job_app/confirmation?for=acme&token=7';
+  let submitter = '';
+
+  /** A fill of the Helsinki job, filled with every answer, and its state. */
+  const filled = async () => {
+    await start(jobs.helsinki!);
+    const task = await claim(submitter);
+    assert.equal(
+      (await check(submitter, task.id, { fields: pageOf(task.fields) })).status,
+      'filled',
+    );
+    return { task, state: await fillState(jobs.helsinki!) };
+  };
+  /** Approved, and Submit let press. */
+  const pressed = async () => {
+    const { task, state } = await filled();
+    await approve(task.id, state.task!.check!.id);
+    const res = await submit(submitter, task);
+    assert.equal(res.statusCode, 200, res.body);
+    assert.equal(res.json<RunnerTaskState>().status, 'submitting');
+    return task;
+  };
+  const settle = (applicationId: string, submitted: boolean) =>
+    ok<JobFillState>({
+      method: 'POST',
+      url: `/api/applications/${applicationId}/settle`,
+      payload: { submitted },
+    });
+
+  test('approval: binds the look the user saw, the job text and the PDFs; it can be withdrawn', async () => {
+    submitter = (await issue('Submitter')).token;
+    const { task, state } = await filled();
+    const snapshot = await pool.query<{ id: string }>(
+      'select id from job_snapshot where job_id = $1',
+      [jobs.helsinki],
+    );
+    const pdf = await pool.query<{ body_sha256: string }>(
+      'select body_sha256 from document_pdf where id = $1',
+      [resumePdfId],
+    );
+    assert.deepEqual(
+      { ...state.approval!, snapshot: state.approval!.snapshot?.id },
+      {
+        problem: null,
+        snapshot: snapshot.rows[0]!.id,
+        files: [
+          {
+            label: 'Resume/CV',
+            fileName: 'Test Person - Resume - Acme - Platform Engineer.pdf',
+            sha256: pdf.rows[0]!.body_sha256,
+          },
+        ],
+        submittedLastDay: 0,
+        dailyCap: 5,
+        approvedAt: null,
+      },
+    );
+    assert.equal(state.application, null);
+
+    await refused(
+      { method: 'POST', url: `/api/fill-tasks/${task.id}/approve`, payload: { checkId: uuid } },
+      409,
+      'The runner read the form again since. Look at it as it is now.',
+    );
+    const approved = await approve(task.id, state.task!.check!.id);
+    assert.equal(approved.task!.status, 'approved');
+    assert.notEqual(approved.approval!.approvedAt, null);
+    assert.equal(
+      (await runnerState(submitter, { method: 'GET', url: `/api/runner/tasks/${task.id}` })).status,
+      'approved',
+    );
+    await refused(
+      {
+        method: 'POST',
+        url: `/api/fill-tasks/${task.id}/approve`,
+        payload: { checkId: state.task!.check!.id },
+      },
+      409,
+      'This fill is approved for submitting, so it cannot be approved.',
+    );
+    await refused({ method: 'POST', url: `/api/fill-tasks/${task.id}/continue` }, 409);
+
+    const withdrawn = await ok<JobFillState>({
+      method: 'POST',
+      url: `/api/fill-tasks/${task.id}/withdraw`,
+    });
+    assert.deepEqual(
+      [withdrawn.task!.status, withdrawn.task!.message, withdrawn.approval!.approvedAt],
+      ['filled', 'You withdrew your approval. Nothing has been sent to the company.', null],
+    );
+    await refused({ method: 'POST', url: `/api/fill-tasks/${task.id}/withdraw` }, 409);
+    // A withdrawn approval is never used: the runner's look before Submit finds none.
+    const none = await submit(submitter, task);
+    assert.equal(none.statusCode, 409);
+    assert.equal(none.json<RunnerTaskState>().status, 'filled');
+
+    // Approved again and closed: nothing is submitted.
+    await approve(task.id, state.task!.check!.id);
+    const closed = await ok<JobFillState>({
+      method: 'POST',
+      url: `/api/fill-tasks/${task.id}/close`,
+    });
+    assert.equal(closed.task!.status, 'closed');
+    assert.equal((await submit(submitter, task)).statusCode, 409);
+    const approvals = await pool.query(
+      'select used_at, withdrawn_at from submit_approval where fill_task_id = $1',
+      [task.id],
+    );
+    assert.equal(approvals.rowCount, 2);
+    assert.ok(approvals.rows.every((r) => r.used_at === null && r.withdrawn_at !== null));
+    assert.equal(Number((await pool.query('select count(*) from application')).rows[0].count), 0);
+  });
+
+  test('a change after approval voids it: answers, documents, the job text, the page', async () => {
+    // An answer changes.
+    let { task, state } = await filled();
+    await approve(task.id, state.task!.check!.id);
+    const answer = (value: string) =>
+      ok({
+        method: 'PUT',
+        url: `/api/jobs/${jobs.helsinki}/form/answers/question_103`,
+        payload: { answer: [value] },
+      });
+    await answer('Two months');
+    const changed = await fillState(jobs.helsinki!);
+    assert.equal(
+      changed.approval!.problem,
+      'Your answers or documents changed since the runner filled the form: “What is your notice period?”. Close this fill and start another, so the form holds them.',
+    );
+    let res = await submit(submitter, task);
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.json<RunnerTaskState>(), {
+      status: 'filled',
+      message: `The runner did not press Submit. ${changed.approval!.problem}`,
+    });
+    await answer('One month');
+    await ok({ method: 'POST', url: `/api/fill-tasks/${task.id}/close` });
+
+    // The job's text changes: the PDF of the old text is no longer the job's either.
+    ({ task, state } = await filled());
+    await approve(task.id, state.task!.check!.id);
+    const old = state.approval!.snapshot!.id;
+    const { rows } = await pool.query<{ id: string }>(
+      `insert into job_snapshot (job_id, body, catalog_id, title, company, location, source_url)
+       select job_id, body || ' Changed.', catalog_id, title, company, location, source_url
+       from job_snapshot where id = $1 returning id`,
+      [old],
+    );
+    res = await submit(submitter, task);
+    assert.equal(
+      res.json<RunnerTaskState>().message,
+      'The runner did not press Submit. The job’s text changed since you approved.',
+    );
+    await pool.query('update job_snapshot set last_captured_at = now() where id = $1', [old]);
+    assert.notEqual(rows[0]!.id, old);
+    await ok({ method: 'POST', url: `/api/fill-tasks/${task.id}/close` });
+
+    // The page: a value the user changed in the window after approving, or a CAPTCHA.
+    ({ task, state } = await filled());
+    await approve(task.id, state.task!.check!.id);
+    const typed = pageOf(task.fields).map((f) =>
+      f.key === 'email' ? { ...f, value: ['other@example.com'] } : f,
+    );
+    res = await submit(submitter, task, typed);
+    assert.equal(
+      res.json<RunnerTaskState>().message,
+      'The runner did not press Submit. The form changed after you approved it: “Email”. Look at it again and approve it again if it is right.',
+    );
+    // That look is the latest: the preview shows it, and approving needs the user to look again.
+    assert.equal(
+      (await fillState(jobs.helsinki!)).task!.check!.fields.find((f) => f.key === 'email')!.state,
+      'changed',
+    );
+    await ok({ method: 'POST', url: `/api/fill-tasks/${task.id}/continue` });
+    await check(submitter, task.id, { fields: pageOf(task.fields), filledNow: false });
+    await approve(task.id, (await fillState(jobs.helsinki!)).task!.check!.id);
+    res = await asRunner(submitter, {
+      method: 'POST',
+      url: `/api/runner/tasks/${task.id}/submit`,
+      payload: { filledNow: false, blocker: 'captcha', fields: pageOf(task.fields), screenshot },
+    });
+    assert.equal(res.json<RunnerTaskState>().status, 'paused');
+    await ok({ method: 'POST', url: `/api/fill-tasks/${task.id}/close` });
+
+    // The 24 hours are full.
+    const others = await pool.query<{ job_id: string; id: string }>(
+      `with jobs as (insert into job select from generate_series(1, 5) returning id),
+       texts as (
+         insert into job_snapshot (job_id, body, catalog_id, title, source_url)
+         select id, 'Made up ' || id, 'paste', 'Made up', 'https://example.com/made-up'
+         from jobs returning id, job_id
+       )
+       insert into application (job_id, job_snapshot_id, status) select job_id, id, 'to_verify' from texts
+       returning job_id, id`,
+    );
+    ({ task, state } = await filled());
+    assert.equal(
+      state.approval!.problem,
+      '5 applications went in (or may have) in the last 24 hours, which is the most the app allows (5). Try again later.',
+    );
+    await refused(
+      {
+        method: 'POST',
+        url: `/api/fill-tasks/${task.id}/approve`,
+        payload: { checkId: state.task!.check!.id },
+      },
+      409,
+      state.approval!.problem!,
+    );
+    await pool.query(`update application set status = 'not_submitted' where id = any($1)`, [
+      others.rows.map((r) => r.id),
+    ]);
+    await ok({ method: 'POST', url: `/api/fill-tasks/${task.id}/close` });
+    assert.equal(
+      Number(
+        (await pool.query(`select count(*) from application where status <> 'not_submitted'`))
+          .rows[0].count,
+      ),
+      0,
+    );
+  });
+
+  test('to verify: Submit pressed once, then no confirmation, a closed window, a stopped runner', async () => {
+    // Two looks at once (a runner repeating itself): only one may press Submit.
+    const { task, state } = await filled();
+    await approve(task.id, state.task!.check!.id);
+    const both = await Promise.all([submit(submitter, task), submit(submitter, task)]);
+    assert.deepEqual(both.map((r) => r.statusCode).sort(), [200, 409]);
+    assert.ok(both.every((r) => r.json<RunnerTaskState>().status === 'submitting'));
+    const submitting = await fillState(jobs.helsinki!);
+    assert.equal(submitting.task!.status, 'submitting');
+    assert.equal(submitting.application!.status, 'to_verify');
+    assert.equal(
+      submitting.cannotStart,
+      'The runner has this job’s form already. Close that fill to start another.',
+    );
+    await refused({ method: 'POST', url: `/api/fill-tasks/${task.id}/close` }, 409);
+    await refused({ method: 'POST', url: `/api/fill-tasks/${task.id}/withdraw` }, 409);
+    // Not settled while the runner watches.
+    await refused(
+      {
+        method: 'POST',
+        url: `/api/applications/${submitting.application!.id}/settle`,
+        payload: { submitted: false },
+      },
+      409,
+    );
+    const shows = await runnerState(submitter, {
+      method: 'POST',
+      url: `/api/runner/tasks/${task.id}/progress`,
+      payload: { shows: 'security_code' },
+    });
+    assert.match(shows.message, /Greenhouse emailed you a security code/);
+    // The confirmation page of another job does not count.
+    const unclear = await result(submitter, task.id, {
+      confirmation: true,
+      pageUrl: 'https://job-boards.greenhouse.io/embed/job_app/confirmation?for=acme&token=8',
+      note: 'Greenhouse’s confirmation page did not show within 10 minutes.',
+    });
+    assert.deepEqual(unclear, {
+      status: 'to_verify',
+      message:
+        'Submit was pressed, but the runner did not see Greenhouse’s confirmation page. Greenhouse’s confirmation page did not show within 10 minutes. Check your email or the company’s site, then say below whether the application went through. The app never presses Submit again by itself.',
+    });
+    await result(submitter, task.id, {}, 409);
+    const verify = await fillState(jobs.helsinki!);
+    assert.equal(verify.application!.status, 'to_verify');
+    assert.equal(verify.application!.receipt!.confirmed, false);
+    assert.equal(
+      verify.cannotStart,
+      'The result of this job’s application is unknown. Say below whether it went through first.',
+    );
+    await refused(
+      { method: 'POST', url: `/api/jobs/${jobs.helsinki}/fill` },
+      409,
+      verify.cannotStart!,
+    );
+    const receipt = await call({ method: 'GET', url: verify.application!.receipt!.screenshotUrl! });
+    assert.equal(receipt.headers['content-type'], 'image/png');
+    const notSent = await settle(verify.application!.id, false);
+    assert.deepEqual(
+      [notSent.application!.status, notSent.application!.submittedAt, notSent.cannotStart],
+      ['not_submitted', null, null],
+    );
+    await refused(
+      {
+        method: 'POST',
+        url: `/api/applications/${verify.application!.id}/settle`,
+        payload: { submitted: true },
+      },
+      409,
+    );
+    await refused(
+      { method: 'POST', url: `/api/applications/${uuid}/settle`, payload: { submitted: true } },
+      404,
+    );
+
+    // The window closes after Submit.
+    const pressedTask = await pressed();
+    assert.deepEqual(
+      await runnerState(submitter, {
+        method: 'POST',
+        url: `/api/runner/tasks/${pressedTask.id}/window-closed`,
+      }),
+      {
+        status: 'to_verify',
+        message:
+          'The browser window was closed after Submit was pressed, before the runner saw the result. Check your email or the company’s site, then say below whether the application went through. The app never presses Submit again by itself.',
+      },
+    );
+    await settle((await fillState(jobs.helsinki!)).application!.id, false);
+
+    // The runner stops (or its token is revoked) after Submit.
+    await pressed();
+    await asRunner(submitter, { method: 'POST', url: '/api/runner/reset' });
+    const stopped = await fillState(jobs.helsinki!);
+    assert.equal(stopped.task!.status, 'to_verify');
+    assert.match(stopped.task!.message, /^The runner stopped after it pressed Submit/);
+    assert.equal(stopped.application!.receipt, null);
+    await settle(stopped.application!.id, false);
+    assert.equal(
+      Number(
+        (await pool.query('select count(*) from application where job_id = $1', [jobs.helsinki]))
+          .rows[0].count,
+      ),
+      3,
+    );
+  });
+
+  test('submitted: Greenhouse’s confirmation page after the one Submit', async () => {
+    const task = await pressed();
+    const done = await result(submitter, task.id, {
+      confirmation: true,
+      pageUrl: confirmationUrl,
+      pageText: 'Thank you for applying to Acme!',
+    });
+    assert.deepEqual(done, {
+      status: 'submitted',
+      message: 'Greenhouse showed its confirmation page: the application went in.',
+    });
+    const state = await fillState(jobs.helsinki!);
+    const application = state.application!;
+    assert.equal(application.status, 'submitted');
+    assert.equal(application.submittedAt, application.createdAt);
+    assert.deepEqual(
+      { ...application.receipt!, checkedAt: null, screenshotUrl: null },
+      {
+        confirmed: true,
+        pageUrl: confirmationUrl,
+        pageText: 'Thank you for applying to Acme!',
+        note: '',
+        checkedAt: null,
+        screenshotUrl: null,
+      },
+    );
+    assert.equal(state.approval, null);
+    assert.equal(state.cannotStart, 'This job’s application went in already.');
+    await refused(
+      { method: 'POST', url: `/api/jobs/${jobs.helsinki}/fill` },
+      409,
+      state.cannotStart!,
+    );
+    await refused(
+      {
+        method: 'POST',
+        url: `/api/applications/${application.id}/settle`,
+        payload: { submitted: false },
+      },
+      409,
+    );
+    // The approval was used once, by this application.
+    const { rows } = await pool.query(
+      `select a.status, s.used_at is not null as used from application a
+       join submit_approval s on s.id = a.submit_approval_id where a.id = $1`,
+      [application.id],
+    );
+    assert.deepEqual(rows, [{ status: 'submitted', used: true }]);
+  });
+
   test('refusals: no session, no Origin', async () => {
     const noSession = await app.inject({ method: 'GET', url: `/api/jobs/${jobs.helsinki}/fill` });
     assert.equal(noSession.statusCode, 401);
@@ -605,6 +1027,42 @@ describe('the local runner', needsDatabase, () => {
         [rows[0]!.job_id, rows[0]!.job_form_id],
       ),
       /check constraint/,
+    );
+
+    // T18: an approval, an application and a receipt keep what they recorded; one application
+    // that went in (or may have) per job, and one per approval.
+    await assert.rejects(
+      pool.query(`update submit_approval set created_at = now() - interval '1 day'`),
+      /is immutable/,
+    );
+    await assert.rejects(pool.query('delete from submit_approval'), /cannot be deleted/);
+    await assert.rejects(
+      pool.query(`update application set created_at = now() - interval '1 day'`),
+      /is immutable/,
+    );
+    await assert.rejects(pool.query('delete from application'), /cannot be deleted/);
+    await assert.rejects(pool.query(`update submit_receipt set note = 'x'`), /is immutable/);
+    const sent = await pool.query<{
+      job_id: string;
+      job_snapshot_id: string;
+      submit_approval_id: string;
+    }>(
+      `select job_id, job_snapshot_id, submit_approval_id from application where status = 'submitted'`,
+    );
+    const { job_id, job_snapshot_id, submit_approval_id } = sent.rows[0]!;
+    await assert.rejects(
+      pool.query(
+        `insert into application (job_id, job_snapshot_id, status) values ($1, $2, 'to_verify')`,
+        [job_id, job_snapshot_id],
+      ),
+      /application_job_open/,
+    );
+    await assert.rejects(
+      pool.query(
+        `insert into application (job_id, job_snapshot_id, submit_approval_id, status) values ($1, $2, $3, 'not_submitted')`,
+        [job_id, job_snapshot_id, submit_approval_id],
+      ),
+      /application_submit_approval_id_key/,
     );
   });
 });

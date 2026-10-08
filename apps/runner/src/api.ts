@@ -1,4 +1,10 @@
-import type { FormCheckRequest, RunnerTask, RunnerTaskState } from '@jsa/shared';
+import type {
+  FormCheckRequest,
+  RunnerTask,
+  RunnerTaskState,
+  SubmitProgress,
+  SubmitResultRequest,
+} from '@jsa/shared';
 
 // The app's API as the runner calls it (/api/runner, apps/server/src/runner/api.ts), with the
 // runner's token. Each move on a fill answers with the fill's status now, also when the move could
@@ -69,6 +75,18 @@ export function runnerApi(appUrl: URL, token: string, fetch = globalThis.fetch) 
       return Buffer.from(await response.arrayBuffer());
     },
     check: (id: string, check: FormCheckRequest) => move(id, 'checks', check),
+    /**
+     * The last look before Submit (T18). `go` only when the app let this runner press Submit now:
+     * a 200 that moved the fill to `submitting`.
+     */
+    async submit(id: string, look: FormCheckRequest) {
+      const response = await call('POST', `/tasks/${id}/submit`, look);
+      const go = response.status === 200;
+      const state = await expect<RunnerTaskState>(response, 200, 409);
+      return { go: go && state.status === 'submitting', state };
+    },
+    progress: (id: string, shows: SubmitProgress) => move(id, 'progress', { shows }),
+    result: (id: string, result: SubmitResultRequest) => move(id, 'result', result),
     fail: (id: string, message: string) => move(id, 'failure', { message }),
     windowClosed: (id: string) => move(id, 'window-closed'),
   };

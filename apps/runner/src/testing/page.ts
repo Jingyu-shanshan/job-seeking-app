@@ -7,6 +7,12 @@ export const greenhouseFormHtml = readFileSync(
   'utf8',
 );
 
+/** Greenhouse's confirmation page after Submit, made up after its markup (2026-10-08). */
+export const greenhouseConfirmationHtml = `<main class="main font-secondary"><div class="confirmation">
+<div class="confirmation__content"><div><div class="body"><span><h1>Thank you for applying to Example Oy!</h1></span></div>
+<div class="confirmation__links"><a href="https://job-boards.greenhouse.io/example" class="btn btn--pill">View more jobs at Example Oy</a></div>
+</div></div></div></main>`;
+
 /**
  * A page for the page readers' tests. The readers run as source text inside it, as Playwright
  * runs them, so a reader that uses anything from outside itself fails here too. The page's own

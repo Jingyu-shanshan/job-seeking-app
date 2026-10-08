@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
-import type { FillField, FormCheckRequest, RunnerTask, RunnerTaskState } from '@jsa/shared';
+import type {
+  FillField,
+  FormCheckRequest,
+  RunnerTask,
+  RunnerTaskState,
+  SubmitProgress,
+  SubmitResultRequest,
+} from '@jsa/shared';
 import { type Browser, type Page, chromium } from 'playwright-core';
 import { Unauthorized, type RunnerApi } from './api.ts';
 import { runRunner } from './runner.ts';
-import { runTask } from './task.ts';
-import { greenhouseFormHtml } from './testing/page.ts';
+import { type TaskOptions, runTask } from './task.ts';
+import { greenhouseConfirmationHtml, greenhouseFormHtml } from './testing/page.ts';
 
 // The runner in a real browser: the installed Google Chrome, without a window. The form is the
 // made-up one of the tests, served for Greenhouse's address inside the browser, so nothing goes
@@ -94,15 +101,21 @@ const task = (more: Partial<RunnerTask> = {}): RunnerTask => ({
 /**
  * The app as the runner sees it: each look at the form answers with the next of `afterChecks`, and
  * each status poll with the next of `polls`. `onCheck` runs in the page's time, as the user would.
+ * The look before Submit (T18) lets the runner press it when the next of `goes` is true; `onProgress`
+ * runs when the runner tells what the page shows after Submit.
  */
 function fakeApp({
   afterChecks,
   polls,
   onCheck,
+  goes = [],
+  onProgress,
 }: {
   afterChecks: RunnerTaskState['status'][];
   polls: RunnerTaskState['status'][];
   onCheck?: (check: FormCheckRequest, page: Page) => Promise<void>;
+  goes?: boolean[];
+  onProgress?: (shows: SubmitProgress, page: Page) => Promise<void>;
 }) {
   const seen = {
     checks: [] as FormCheckRequest[],
@@ -110,10 +123,15 @@ function fakeApp({
     windowClosed: 0,
     files: [] as string[],
     submitted: [] as (string | null)[],
+    beforeSubmit: [] as FormCheckRequest[],
+    progress: [] as SubmitProgress[],
+    results: [] as SubmitResultRequest[],
+    /** The applications that reached the made-up Greenhouse. */
+    posts: 0,
   };
   let page: Page | undefined;
   const state = (status: RunnerTaskState['status']) => ({ status, message: `Now ${status}.` });
-  const api: Pick<RunnerApi, 'state' | 'file' | 'check' | 'fail' | 'windowClosed'> = {
+  const api: TaskOptions['api'] = {
     async state() {
       return state(polls.shift() ?? 'closed');
     },
@@ -135,15 +153,38 @@ function fakeApp({
       seen.windowClosed++;
       return state('closed');
     },
+    async submit(_id, look) {
+      seen.beforeSubmit.push(look);
+      const go = goes.shift() ?? false;
+      return { go, state: state(go ? 'submitting' : (polls.shift() ?? 'closed')) };
+    },
+    async progress(_id, shows) {
+      seen.progress.push(shows);
+      await onProgress?.(shows, page!);
+      return state('submitting');
+    },
+    async result(_id, result) {
+      seen.results.push(result);
+      return state(result.confirmation ? 'submitted' : 'to_verify');
+    },
   };
-  /** A window whose Greenhouse pages are `html`. */
+  /**
+   * A window whose Greenhouse pages are `html`, and the confirmation page. An application sent to
+   * the made-up Greenhouse is counted, never sent anywhere.
+   */
   const open =
     (html = greenhouseFormHtml) =>
     async () => {
       const context = await chrome!.newContext();
-      await context.route('https://job-boards.greenhouse.io/**', (route) =>
-        route.fulfill({ contentType: 'text/html', body: html }),
-      );
+      await context.route('https://job-boards.greenhouse.io/**', (route) => {
+        const { pathname } = new URL(route.request().url());
+        if (route.request().method() === 'POST') {
+          seen.posts++;
+          return route.fulfill({ contentType: 'application/json', body: '{}' });
+        }
+        const body = pathname === '/embed/job_app/confirmation' ? greenhouseConfirmationHtml : html;
+        return route.fulfill({ contentType: 'text/html', body });
+      });
       page = await context.newPage();
       return page;
     };
@@ -154,6 +195,19 @@ const valueOf = (check: FormCheckRequest, key: string) =>
   check.fields.find((f) => f.key === key)?.value;
 
 const quiet = { log: () => undefined, signal: new AbortController().signal, pollMs: 20 };
+
+/**
+ * The user picks the phone number's country in the window: a required field the app has no
+ * answer for, without which the browser does not let the form be submitted.
+ */
+const pickCountry = async (_check: FormCheckRequest, page: Page) => {
+  await page
+    .locator('.select__container', { has: page.locator('#country') })
+    .locator('.select__control')
+    .click();
+  await page.locator('#country').fill('Finland');
+  await page.locator('#react-select-country-option-0').click();
+};
 
 describe(
   'filling in Greenhouse’s form',
@@ -302,6 +356,122 @@ describe(
       await runTask(task(), { ...quiet, api: app.api, open: app.open(dead), formWaitMs: 300 });
       assert.deepEqual(app.seen.failures, ['The form did not start working in the page.']);
       assert.deepEqual(app.seen.checks, []);
+    });
+
+    test('approved: one look before Submit, Submit pressed once, the confirmation page', async () => {
+      const app = fakeApp({
+        afterChecks: ['filled'],
+        polls: ['approved'],
+        goes: [true],
+        onCheck: pickCountry,
+      });
+      const lines: string[] = [];
+      await runTask(task(), {
+        ...quiet,
+        api: app.api,
+        open: app.open(),
+        log: (l) => lines.push(l),
+      });
+      assert.equal(app.seen.beforeSubmit.length, 1);
+      const [look] = app.seen.beforeSubmit;
+      assert.equal(look!.filledNow, false);
+      assert.deepEqual(valueOf(look!, 'first_name'), ['Test']);
+      assert.deepEqual(valueOf(look!, 'resume'), ['Test Person - Resume.pdf']);
+      assert.equal(app.seen.posts, 1);
+      assert.equal(app.seen.results.length, 1);
+      const [result] = app.seen.results;
+      assert.deepEqual(
+        { ...result!, screenshot: result!.screenshot?.slice(0, 8) },
+        {
+          confirmation: true,
+          pageUrl:
+            'https://job-boards.greenhouse.io/embed/job_app/confirmation?for=example&token=7',
+          pageText: 'Thank you for applying to Example Oy! View more jobs at Example Oy',
+          note: '',
+          screenshot: 'iVBORw0K',
+        },
+      );
+      assert.deepEqual(lines.slice(1), ['Pressing Submit, once.', 'Submitted. Now submitted.']);
+      assert.ok(app.page().isClosed());
+    });
+
+    test('approved, but the app does not let it press Submit: nothing is sent', async () => {
+      const app = fakeApp({
+        afterChecks: ['filled'],
+        polls: ['approved', 'filled', 'closed'],
+        goes: [false],
+      });
+      await runTask(task(), { ...quiet, api: app.api, open: app.open() });
+      assert.equal(app.seen.beforeSubmit.length, 1);
+      assert.equal(app.seen.posts, 0);
+      assert.deepEqual(app.seen.results, []);
+    });
+
+    test('an emailed security code is the user’s to type; the runner never presses Submit again', async () => {
+      const html = greenhouseFormHtml.replace('<body>', '<body data-after-submit="security-code">');
+      const app = fakeApp({
+        afterChecks: ['filled'],
+        polls: ['approved'],
+        goes: [true],
+        onCheck: pickCountry,
+        // The user types the code and presses Submit in the window.
+        onProgress: async (shows, page) => {
+          if (shows !== 'security_code') return;
+          for (let i = 0; i < 8; i++) await page.locator(`#security-input-${i}`).fill(String(i));
+          await page.getByRole('button', { name: 'Submit application' }).click();
+        },
+      });
+      await runTask(task(), { ...quiet, api: app.api, open: app.open(html) });
+      assert.deepEqual(app.seen.progress, ['security_code']);
+      // The runner's Submit and the user's.
+      assert.equal(app.seen.posts, 2);
+      assert.equal(app.seen.results[0]!.confirmation, true);
+    });
+
+    test('no confirmation page in time: the result is unknown, and Submit was pressed once', async () => {
+      const html = greenhouseFormHtml.replace('<body>', '<body data-after-submit="nothing">');
+      const app = fakeApp({
+        afterChecks: ['filled'],
+        polls: ['approved'],
+        goes: [true],
+        onCheck: pickCountry,
+      });
+      await runTask(task(), {
+        ...quiet,
+        api: app.api,
+        open: app.open(html),
+        submitWaitMs: 1500,
+      });
+      assert.equal(app.seen.posts, 1);
+      const [result] = app.seen.results;
+      assert.equal(result!.confirmation, false);
+      assert.equal(result!.note, 'Greenhouse’s confirmation page did not show within 1.5 seconds.');
+      assert.equal(result!.pageUrl, url);
+      assert.match(result!.screenshot!, /^iVBORw0K/);
+    });
+
+    test('the window closed after Submit: the result is unknown', async () => {
+      const html = greenhouseFormHtml.replace('<body>', '<body data-after-submit="security-code">');
+      const app = fakeApp({
+        afterChecks: ['filled'],
+        polls: ['approved'],
+        goes: [true],
+        onCheck: pickCountry,
+        onProgress: async (_shows, page) => {
+          setTimeout(() => void page.close(), 20);
+        },
+      });
+      await runTask(task(), { ...quiet, api: app.api, open: app.open(html) });
+      assert.deepEqual(app.seen.results, [
+        {
+          confirmation: false,
+          pageUrl: null,
+          pageText: '',
+          note: 'The window was closed before Greenhouse’s confirmation page showed.',
+          screenshot: null,
+        },
+      ]);
+      assert.equal(app.seen.windowClosed, 0);
     });
 
     test('stopping the runner closes the window and leaves the fill to the app', async () => {

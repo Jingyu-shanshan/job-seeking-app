@@ -54,7 +54,9 @@ describe('RunnerPage', () => {
 
   it('says what the runner does and how to start it', async () => {
     await load([]);
-    expect(text()).toContain('stops before Submit, so nothing is sent to the company');
+    expect(text()).toContain(
+      'Nothing is sent to the company until you look at the filled form on the job’s page and approve submitting it',
+    );
     expect(text()).toContain('It never solves a CAPTCHA, signs in for you or keeps a password');
     expect(text()).toContain('JSA_RUNNER_TOKEN=…');
     expect(text()).toContain('npm run runner');

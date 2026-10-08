@@ -29,4 +29,22 @@ export class RunnerApi {
   closeFill(taskId: string): Promise<JobFillState> {
     return firstValueFrom(this.http.post<JobFillState>(`/api/fill-tasks/${taskId}/close`, {}));
   }
+
+  /** Approves submitting the form as the runner last read it (`checkId`, the look the user saw). */
+  approve(taskId: string, checkId: string): Promise<JobFillState> {
+    return firstValueFrom(
+      this.http.post<JobFillState>(`/api/fill-tasks/${taskId}/approve`, { checkId }),
+    );
+  }
+
+  withdraw(taskId: string): Promise<JobFillState> {
+    return firstValueFrom(this.http.post<JobFillState>(`/api/fill-tasks/${taskId}/withdraw`, {}));
+  }
+
+  /** The user's word on an application whose result was unknown. */
+  settle(applicationId: string, submitted: boolean): Promise<JobFillState> {
+    return firstValueFrom(
+      this.http.post<JobFillState>(`/api/applications/${applicationId}/settle`, { submitted }),
+    );
+  }
 }

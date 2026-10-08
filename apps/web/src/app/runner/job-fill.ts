@@ -1,8 +1,14 @@
 import { httpResource } from '@angular/common/http';
-import { DatePipe } from '@angular/common';
+import { DatePipe, SlicePipe } from '@angular/common';
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import type { FillTaskStatus, JobFillState, PreviewField, PreviewFieldState } from '@jsa/shared';
+import type {
+  ApplicationStatus,
+  FillTaskStatus,
+  JobFillState,
+  PreviewField,
+  PreviewFieldState,
+} from '@jsa/shared';
 import { errorMessage } from '../sources/sources-api';
 import { RunnerApi } from './runner-api';
 
@@ -11,8 +17,18 @@ const statusLabels: Record<FillTaskStatus, string> = {
   filling: 'Filling in',
   paused: 'Paused: your turn',
   filled: 'Filled in, stopped before Submit',
+  approved: 'Approved for submitting',
+  submitting: 'Submit pressed',
+  submitted: 'Submitted',
+  to_verify: 'Submitted, result unknown',
   closed: 'Closed',
   failed: 'Failed',
+};
+
+const applicationLabels: Record<ApplicationStatus, string> = {
+  submitted: 'Submitted',
+  to_verify: 'Result unknown',
+  not_submitted: 'Did not go through',
 };
 
 const stateLabels: Record<PreviewFieldState, string> = {
@@ -24,7 +40,14 @@ const stateLabels: Record<PreviewFieldState, string> = {
   missing: 'Not on the page',
 };
 
-const open: readonly FillTaskStatus[] = ['waiting', 'filling', 'paused', 'filled'];
+const open: readonly FillTaskStatus[] = [
+  'waiting',
+  'filling',
+  'paused',
+  'filled',
+  'approved',
+  'submitting',
+];
 
 /** How long a runner may be quiet before the page says so. */
 const quietMs = 30_000;
@@ -32,18 +55,20 @@ const pollMs = 2000;
 
 /**
  * Filling the job's form with the local runner (T17): start a fill, follow it while the runner
- * works, continue it after acting in the window, close it, and see what the form holds.
+ * works, continue it after acting in the window, close it, and see what the form holds. Then
+ * (T18) approve submitting it, follow the submission, and say whether a submission whose result is
+ * unknown went through.
  */
 @Component({
   selector: 'app-job-fill',
-  imports: [DatePipe, RouterLink],
+  imports: [DatePipe, RouterLink, SlicePipe],
   template: `
     <h3>Fill it in with the runner</h3>
     <p class="hint">
       The <a routerLink="/runner">runner</a> on your computer opens this form in a Chrome window you
-      can see, puts in the answers above and stops before Submit, so nothing is sent to the company.
-      When the page asks for something only you may do, such as a CAPTCHA or signing in, it pauses
-      and you do it in the window.
+      can see, puts in the answers above and stops before Submit. When the page asks for something
+      only you may do, such as a CAPTCHA or signing in, it pauses and you do it in the window.
+      Nothing is sent to the company until you approve submitting this one form below.
     </p>
     @if (state.hasValue()) {
       @let s = state.value();
@@ -63,7 +88,7 @@ const pollMs = 2000;
             It fills one form at a time.
           </p>
         }
-        @if ((task.status === 'filling' || task.status === 'paused') && quietSince(); as since) {
+        @if (runnerActs(task.status) && quietSince(); as since) {
           <p class="warning">
             The runner has not been in touch since {{ since | date: 'HH:mm:ss' }}. If it stopped,
             close this fill.
@@ -81,10 +106,70 @@ const pollMs = 2000;
                 Look at the form again
               </button>
             }
-            <button type="button" [disabled]="busy()" (click)="close(task.id)">
-              {{ task.status === 'waiting' ? 'Cancel' : 'Close the window' }}
-            </button>
+            @if (task.status === 'approved') {
+              <button type="button" [disabled]="busy()" (click)="withdraw(task.id)">
+                Withdraw your approval
+              </button>
+            }
+            @if (task.status !== 'submitting') {
+              <button type="button" [disabled]="busy()" (click)="close(task.id)">
+                {{ task.status === 'waiting' ? 'Cancel' : 'Close the window' }}
+              </button>
+            }
           </p>
+        }
+        @if (s.approval; as approval) {
+          <section class="approval" aria-labelledby="approval-heading">
+            <h4 id="approval-heading">Submit this application</h4>
+            <p class="hint">
+              Approving lets the runner press Submit once, for this job only, with the form exactly
+              as shown below. Just before, it reads the form again; if anything has changed, it does
+              not press Submit. The approval binds:
+            </p>
+            <ul class="binds">
+              <li>
+                the value of every field below, as read at
+                {{ task.check?.checkedAt | date: 'HH:mm:ss' }};
+              </li>
+              @if (approval.snapshot; as snapshot) {
+                <li>
+                  the job’s text as read on {{ snapshot.capturedAt | date: 'd MMM y, HH:mm' }};
+                </li>
+              }
+              @for (file of approval.files; track file.label) {
+                <li>
+                  {{ file.label }}: {{ file.fileName }}
+                  <span class="hint"
+                    >(SHA-256 <code>{{ file.sha256 | slice: 0 : 12 }}…</code>)</span
+                  >;
+                </li>
+              }
+              <li>your answers and documents as the fill started with them.</li>
+            </ul>
+            <p class="hint">
+              {{ approval.submittedLastDay }} of at most {{ approval.dailyCap }} applications went
+              in (or may have) in the last 24 hours.
+            </p>
+            @if (task.status === 'filled') {
+              @if (approval.problem) {
+                <p class="warning">{{ approval.problem }}</p>
+              } @else {
+                <button
+                  type="button"
+                  class="primary"
+                  [disabled]="busy()"
+                  (click)="approve(task.id, task.check!.id)"
+                >
+                  Approve and submit
+                </button>
+              }
+            } @else if (approval.problem) {
+              <p class="warning">
+                This approval no longer holds: {{ approval.problem }} The runner will not press
+                Submit; it gives the form back to you.
+              </p>
+            }
+          </section>
         }
       }
       @if (!s.task || !isOpen(s.task.status)) {
@@ -120,6 +205,57 @@ const pollMs = 2000;
           <img class="screenshot" [src]="check.screenshotUrl" alt="The form as the runner saw it" />
         </a>
       }
+      @if (s.application; as application) {
+        <section class="application" aria-labelledby="application-heading">
+          <h4 id="application-heading">Application: {{ applicationLabels[application.status] }}</h4>
+          @switch (application.status) {
+            @case ('submitted') {
+              <p>
+                The runner pressed Submit on {{ application.createdAt | date: 'd MMM y, HH:mm' }}
+                @if (application.receipt?.confirmed) {
+                  and Greenhouse showed its confirmation page.
+                } @else {
+                  and you said it went through.
+                }
+              </p>
+            }
+            @case ('to_verify') {
+              <p>
+                The runner pressed Submit on {{ application.createdAt | date: 'd MMM y, HH:mm' }},
+                but did not see Greenhouse’s confirmation page. Check your email or the company’s
+                site. The app never presses Submit again by itself.
+              </p>
+              @if (s.task?.status !== 'submitting') {
+                <p class="actions">
+                  <button type="button" [disabled]="busy()" (click)="settle(application.id, true)">
+                    It went through
+                  </button>
+                  <button type="button" [disabled]="busy()" (click)="settle(application.id, false)">
+                    It did not go through
+                  </button>
+                </p>
+              }
+            }
+            @case ('not_submitted') {
+              <p>
+                The runner pressed Submit on {{ application.createdAt | date: 'd MMM y, HH:mm' }};
+                you said it did not go through, so the form may be filled and approved again.
+              </p>
+            }
+          }
+          @if (application.receipt; as receipt) {
+            <p class="hint">
+              What the runner saw at {{ receipt.checkedAt | date: 'HH:mm:ss' }}:
+              {{ receipt.note || receipt.pageText }}
+            </p>
+            @if (receipt.screenshotUrl) {
+              <a [href]="receipt.screenshotUrl" target="_blank" rel="noopener">
+                <img class="screenshot" [src]="receipt.screenshotUrl" alt="The page after Submit" />
+              </a>
+            }
+          }
+        </section>
+      }
       @if (failure()) {
         <p class="error" role="alert">{{ failure() }}</p>
       }
@@ -141,6 +277,19 @@ const pollMs = 2000;
     }
     .actions button {
       margin-right: 0.5rem;
+    }
+    .approval,
+    .application {
+      margin-top: 1rem;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+    }
+    .binds {
+      padding-left: 1.25rem;
+      overflow-wrap: anywhere;
+    }
+    .primary {
+      font-weight: 600;
     }
     .fields {
       padding-left: 1.25rem;
@@ -188,6 +337,7 @@ export class JobFill {
   protected readonly loadError = computed(() => errorMessage(this.state.error()));
 
   protected readonly statusLabels = statusLabels;
+  protected readonly applicationLabels = applicationLabels;
   protected readonly stateLabels = stateLabels;
   protected readonly busy = signal(false);
   protected readonly failure = signal('');
@@ -223,6 +373,11 @@ export class JobFill {
     this.state.reload();
   }
 
+  /** Whether the runner should be in touch about the fill now. */
+  protected runnerActs(status: FillTaskStatus) {
+    return ['filling', 'paused', 'approved', 'submitting'].includes(status);
+  }
+
   protected isOpen(status: FillTaskStatus) {
     return open.includes(status);
   }
@@ -246,6 +401,18 @@ export class JobFill {
 
   protected close(taskId: string) {
     return this.run(() => this.api.closeFill(taskId));
+  }
+
+  protected approve(taskId: string, checkId: string) {
+    return this.run(() => this.api.approve(taskId, checkId));
+  }
+
+  protected withdraw(taskId: string) {
+    return this.run(() => this.api.withdraw(taskId));
+  }
+
+  protected settle(applicationId: string, submitted: boolean) {
+    return this.run(() => this.api.settle(applicationId, submitted));
   }
 
   private async run(change: () => Promise<JobFillState>) {

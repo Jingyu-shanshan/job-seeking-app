@@ -142,3 +142,33 @@ export function findBlocker(): 'captcha' | 'login' | null {
   if ([...document.querySelectorAll('input[type="password"]')].some(shown)) return 'login';
   return null;
 }
+
+/** What the page shows after the runner pressed Submit (T18). */
+export interface AfterSubmit {
+  /** Greenhouse's confirmation page, with no application form on it. */
+  confirmation: boolean;
+  /** Greenhouse asks for the security code it emailed. */
+  securityCode: boolean;
+  /** The form is there, with fields it did not accept. */
+  formErrors: boolean;
+  /** The page's words: the confirmation's, else the whole page's. */
+  text: string;
+}
+
+/**
+ * What the page shows after Submit. Greenhouse's confirmation page (`/embed/job_app/confirmation`)
+ * shows a `.confirmation` block; asking for an emailed code, it shows inputs `security-input-<n>`;
+ * a field it did not accept is marked `aria-invalid`.
+ */
+export function readAfterSubmit(): AfterSubmit {
+  const form = document.querySelector('form#application-form');
+  const confirmation = document.querySelector('.confirmation');
+  const words = ((confirmation ?? document.body)?.textContent ?? '').replace(/\s+/g, ' ').trim();
+  return {
+    confirmation:
+      location.pathname === '/embed/job_app/confirmation' && confirmation !== null && !form,
+    securityCode: document.querySelector('input[id^="security-input-"]') !== null,
+    formErrors: form?.querySelector('[aria-invalid="true"]') != null,
+    text: words.slice(0, 20_000),
+  };
+}

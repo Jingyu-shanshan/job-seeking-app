@@ -161,11 +161,24 @@ export function checkOutcome(
 /**
  * What can happen to a fill: the runner takes it, sends a look at the form (`check`, which goes to
  * paused or filled), fails, or reports its window closed; the user continues it after acting in the
- * window, or closes it.
+ * window, or closes it. Then (T18): the user approves the filled form or withdraws the approval;
+ * the runner's last look before Submit (`submit`) lets it press Submit or voids the approval; while
+ * the runner watches it tells what the page shows (`progress`), and then the result.
  */
-export type FillEvent = 'claim' | 'check' | 'fail' | 'window_closed' | 'continue' | 'close';
+export type FillEvent =
+  | 'claim'
+  | 'check'
+  | 'fail'
+  | 'window_closed'
+  | 'continue'
+  | 'close'
+  | 'approve'
+  | 'withdraw'
+  | 'submit'
+  | 'progress'
+  | 'result';
 
-const open: FillTaskStatus[] = ['filling', 'paused', 'filled'];
+const open: FillTaskStatus[] = ['filling', 'paused', 'filled', 'approved', 'submitting'];
 
 const allowed: Record<FillEvent, readonly FillTaskStatus[]> = {
   claim: ['waiting'],
@@ -173,10 +186,28 @@ const allowed: Record<FillEvent, readonly FillTaskStatus[]> = {
   fail: open,
   window_closed: open,
   continue: ['paused', 'filled'],
-  close: ['waiting', ...open],
+  // Once Submit is pressed only the result ends the fill.
+  close: ['waiting', 'filling', 'paused', 'filled', 'approved'],
+  approve: ['filled'],
+  withdraw: ['approved'],
+  submit: ['approved'],
+  progress: ['submitting'],
+  result: ['submitting'],
 };
 
 /** Whether `event` may happen to a fill in `status`. */
 export function canHappen(status: FillTaskStatus, event: FillEvent): boolean {
   return allowed[event].includes(status);
+}
+
+/**
+ * Where a fill goes when its runner fails or loses its window. After Submit was pressed nobody
+ * knows whether the application went in, so it is to verify, never retried.
+ */
+export function lostStatus(
+  status: FillTaskStatus,
+  event: 'fail' | 'window_closed',
+): 'failed' | 'closed' | 'to_verify' {
+  if (status === 'submitting') return 'to_verify';
+  return event === 'fail' ? 'failed' : 'closed';
 }

@@ -4,7 +4,10 @@ import {
   RunnerFailureSchema,
   RunnerTaskSchema,
   RunnerTaskStateSchema,
+  SubmitProgressRequestSchema,
+  SubmitResultRequestSchema,
   maxScreenshotBytes,
+  type PageField,
   type RunnerTaskState,
 } from '@jsa/shared';
 import type { FastifyRequest } from 'fastify';
@@ -12,14 +15,24 @@ import type { Pool } from 'pg';
 import Type from 'typebox';
 import { httpError } from '../http-error.ts';
 import { loadJobDetail } from '../jd/routes.ts';
-import { canHappen, checkOutcome, previewFields } from '../rules/fill.ts';
-import { type TaskRow, moveFill, taskColumns } from './fills.ts';
-import { endRunnerFills } from './tokens.ts';
+import { canHappen, checkOutcome, lostStatus, previewFields } from '../rules/fill.ts';
+import {
+  approvalProblem,
+  dailyCap,
+  isConfirmationPage,
+  progressMessages,
+  submitProblem,
+} from '../rules/submit.ts';
+import { approvalFacts, liveApproval } from './approvals.ts';
+import { type TaskRow, currentFields, moveFill, taskColumns } from './fills.ts';
+import { endRunnerFills, lostMessages } from './tokens.ts';
 
 // The API of the local runner (T17), under /api/runner. The runner signs in with its token (the
 // onRequest hook in app.ts puts the token's id on the request) and sees only the fills it took. It
 // takes a fill the user started, follows its status, fetches the PDFs it attaches, and sends back
-// what the form holds. The rules decide where each look leaves the fill; nothing here submits.
+// what the form holds. The rules decide where each look leaves the fill. Once the user approved a
+// filled form (T18), the runner's last look before Submit decides whether it may press Submit,
+// once; then it reports what the page shows and the result.
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -35,6 +48,18 @@ const FileParamsSchema = Type.Object({
 });
 
 const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** A PNG of at most 8 MiB from base64, or a 400. */
+function pngOf(base64: string): Buffer {
+  const image = Buffer.from(base64, 'base64');
+  if (image.length > maxScreenshotBytes || !image.subarray(0, png.length).equals(png)) {
+    throw httpError(400, 'The screenshot is not a PNG of at most 8 MiB.');
+  }
+  return image;
+}
+
+/** The screenshot travels in base64. */
+const screenshotBodyLimit = Math.ceil(maxScreenshotBytes / 3) * 4 + 4 * 1024 * 1024;
 
 /** Each answer is the fill's status now; 409 when the runner's move could not happen. */
 const stateResponse = { 200: RunnerTaskStateSchema, 409: RunnerTaskStateSchema };
@@ -124,16 +149,12 @@ export const runnerApiRoutes: FastifyPluginAsyncTypebox<{ pool: Pool }> = async 
   app.post(
     '/runner/tasks/:id/checks',
     {
-      // The screenshot travels in base64.
-      bodyLimit: Math.ceil(maxScreenshotBytes / 3) * 4 + 4 * 1024 * 1024,
+      bodyLimit: screenshotBodyLimit,
       schema: { params: IdParamsSchema, body: FormCheckRequestSchema, response: stateResponse },
     },
     async (request, reply) => {
       const { filledNow, blocker, fields, screenshot } = request.body;
-      const image = Buffer.from(screenshot, 'base64');
-      if (image.length > maxScreenshotBytes || !image.subarray(0, png.length).equals(png)) {
-        throw httpError(400, 'The screenshot is not a PNG of at most 8 MiB.');
-      }
+      const image = pngOf(screenshot);
       const task = await taskOf(request, request.params.id);
       if (!canHappen(task.status, 'check')) {
         return reply.code(409).send({ status: task.status, message: task.message });
@@ -170,8 +191,13 @@ export const runnerApiRoutes: FastifyPluginAsyncTypebox<{ pool: Pool }> = async 
     },
     async (request, reply) => {
       const task = await taskOf(request, request.params.id);
-      const message = `The runner could not go on: ${request.body.message.trim()}`;
-      const moved = await moveFill(pool, task, 'fail', 'failed', message);
+      const status = lostStatus(task.status, 'fail');
+      const why = request.body.message.trim();
+      const message =
+        status === 'to_verify'
+          ? `${lostMessages.submitting} (${why})`
+          : `The runner could not go on: ${why}`;
+      const moved = await moveFill(pool, task, 'fail', status, message);
       return reply.code(moved ? 200 : 409).send(await stateOf(request, task.id));
     },
   );
@@ -181,14 +207,194 @@ export const runnerApiRoutes: FastifyPluginAsyncTypebox<{ pool: Pool }> = async 
     { schema: { params: IdParamsSchema, response: stateResponse } },
     async (request, reply) => {
       const task = await taskOf(request, request.params.id);
+      const status = lostStatus(task.status, 'window_closed');
       const moved = await moveFill(
         pool,
         task,
         'window_closed',
-        'closed',
-        'The browser window was closed.',
+        status,
+        status === 'to_verify'
+          ? `The browser window was closed after Submit was pressed, before the runner saw the result. ${lostMessages.verify}`
+          : 'The browser window was closed.',
       );
       return reply.code(moved ? 200 : 409).send(await stateOf(request, task.id));
+    },
+  );
+
+  // The runner's last look before Submit (T18), once the user approved the fill. The runner may
+  // press Submit only when this answers `submitting`: the approval still holds and the form has
+  // the approved values. Then the approval is used and the application recorded (to verify), in
+  // one statement under the fill's lock, so a withdrawal cannot cross it and no approval is used
+  // twice. Otherwise the approval is withdrawn and the fill goes back to the user.
+  app.post(
+    '/runner/tasks/:id/submit',
+    {
+      bodyLimit: screenshotBodyLimit,
+      schema: { params: IdParamsSchema, body: FormCheckRequestSchema, response: stateResponse },
+    },
+    async (request, reply) => {
+      const { blocker, fields, screenshot } = request.body;
+      const image = pngOf(screenshot);
+      const task = await taskOf(request, request.params.id);
+      if (!canHappen(task.status, 'submit')) {
+        return reply.code(409).send({ status: task.status, message: task.message });
+      }
+      const approval = await liveApproval(pool, task.id);
+      const approvedLook = approval
+        ? (
+            await pool.query<{ fields: PageField[] }>(
+              'select fields from fill_check where id = $1',
+              [approval.fill_check_id],
+            )
+          ).rows[0]
+        : undefined;
+      const look = { blocker, fields };
+      const problem = !approval
+        ? 'There is no approval to use.'
+        : (approvalProblem(
+            await approvalFacts(
+              pool,
+              task,
+              look,
+              await currentFields(pool, task.job_id),
+              approval.job_snapshot_id,
+            ),
+          ) ?? submitProblem(approvedLook!.fields, fields, blocker));
+      const lookValues = [false, blocker, JSON.stringify(fields), image];
+      if (!problem) {
+        try {
+          const { rowCount } = await pool.query(
+            `with task as (
+               select id, job_id from fill_task where id = $1 and status = 'approved' for update
+             ),
+             used as (
+               update submit_approval set used_at = now()
+               where id = $2 and used_at is null and withdrawn_at is null
+                 and fill_task_id in (select id from task)
+                 and (select count(*) from application
+                      where status <> 'not_submitted'
+                        and created_at > now() - interval '24 hours') < $3
+               returning id, job_snapshot_id
+             ),
+             applied as (
+               insert into application (job_id, job_snapshot_id, submit_approval_id, status)
+               select task.job_id, used.job_snapshot_id, used.id, 'to_verify' from task, used
+               returning id
+             ),
+             moved as (
+               update fill_task set status = 'submitting', message = $4, updated_at = now()
+               where id in (select id from task) and exists (select 1 from applied)
+               returning id
+             )
+             insert into fill_check (fill_task_id, filled_now, blocker, fields, screenshot)
+             select id, $5, $6, $7, $8 from moved`,
+            [task.id, approval!.id, dailyCap, progressMessages.other, ...lookValues],
+          );
+          if (rowCount) return reply.send(await stateOf(request, task.id));
+        } catch (err) {
+          // The job has an application that went in or may have (application_job_open).
+          if ((err as { code?: string }).code !== '23505') throw err;
+        }
+      }
+      // Not this time: the fill goes back to the user, with the look that stopped it.
+      const why =
+        problem ?? 'The approval could not be used (the fill or the 24-hour count changed).';
+      const { rowCount: voided } = await pool.query(
+        `with moved as (
+           update fill_task set status = $3, message = $4, updated_at = now()
+           where id = $1 and status = $2 returning id
+         ),
+         withdrawn as (
+           update submit_approval set withdrawn_at = now()
+           where fill_task_id in (select id from moved) and used_at is null and withdrawn_at is null
+         )
+         insert into fill_check (fill_task_id, filled_now, blocker, fields, screenshot)
+         select id, $5, $6, $7, $8 from moved`,
+        [
+          task.id,
+          task.status,
+          blocker ? 'paused' : 'filled',
+          `The runner did not press Submit. ${why}`,
+          ...lookValues,
+        ],
+      );
+      // Only a 200 with `submitting` lets the runner press Submit: a look that neither moved the
+      // fill on nor back (another one did) is a 409, whatever the status is now.
+      return reply.code(voided ? 200 : 409).send(await stateOf(request, task.id));
+    },
+  );
+
+  // While the runner waits for the result of Submit: what the page shows, for the job page.
+  app.post(
+    '/runner/tasks/:id/progress',
+    {
+      schema: {
+        params: IdParamsSchema,
+        body: SubmitProgressRequestSchema,
+        response: stateResponse,
+      },
+    },
+    async (request, reply) => {
+      const task = await taskOf(request, request.params.id);
+      if (!canHappen(task.status, 'progress')) {
+        return reply.code(409).send({ status: task.status, message: task.message });
+      }
+      await pool.query(
+        `update fill_task set message = $2, updated_at = now() where id = $1 and status = 'submitting'`,
+        [task.id, progressMessages[request.body.shows]],
+      );
+      return reply.send(await stateOf(request, task.id));
+    },
+  );
+
+  // What the runner saw in the end after pressing Submit. Only Greenhouse's confirmation page for
+  // this job's form counts as the application having gone in; anything else is to verify.
+  app.post(
+    '/runner/tasks/:id/result',
+    {
+      bodyLimit: screenshotBodyLimit,
+      schema: { params: IdParamsSchema, body: SubmitResultRequestSchema, response: stateResponse },
+    },
+    async (request, reply) => {
+      const { confirmation, pageUrl, pageText, note, screenshot } = request.body;
+      const image = screenshot === null ? null : pngOf(screenshot);
+      const task = await taskOf(request, request.params.id);
+      if (!canHappen(task.status, 'result')) {
+        return reply.code(409).send({ status: task.status, message: task.message });
+      }
+      const confirmed = confirmation && isConfirmationPage(pageUrl, task.url);
+      const message = confirmed
+        ? 'Greenhouse showed its confirmation page: the application went in.'
+        : `Submit was pressed, but the runner did not see Greenhouse’s confirmation page. ${
+            note.trim() ? `${note.trim().replace(/[^.]$/, '$&.')} ` : ''
+          }${lostMessages.verify}`;
+      const { rowCount } = await pool.query(
+        `with moved as (
+           update fill_task set status = $2, message = $3, updated_at = now()
+           where id = $1 and status = 'submitting' returning id
+         ),
+         applied as (
+           select a.id from application a join submit_approval s on s.id = a.submit_approval_id
+           where s.fill_task_id in (select id from moved) and a.status = 'to_verify'
+         ),
+         settled as (
+           update application set status = 'submitted', submitted_at = created_at
+           where id in (select id from applied) and $4
+         )
+         insert into submit_receipt (application_id, confirmed, page_url, page_text, note, screenshot)
+         select id, $4, $5, $6, $7, $8 from applied`,
+        [
+          task.id,
+          confirmed ? 'submitted' : 'to_verify',
+          message,
+          confirmed,
+          pageUrl,
+          pageText,
+          note,
+          image,
+        ],
+      );
+      return reply.code(rowCount ? 200 : 409).send(await stateOf(request, task.id));
     },
   );
 };

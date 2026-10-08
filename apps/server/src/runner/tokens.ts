@@ -57,17 +57,29 @@ export async function runnerTokenId(
   return rows[0]?.id;
 }
 
+const verify =
+  'Check your email or the company’s site, then say below whether the application went through. The app never presses Submit again by itself.';
+
+/** What the job page says when the result of Submit is unknown (T18). */
+export const lostMessages = {
+  verify,
+  submitting: `The runner stopped after it pressed Submit, before it saw the result. ${verify}`,
+};
+
 /**
- * Ends the fills a runner has open, whose windows it no longer has: a filled form is closed, one
- * still being filled has failed.
+ * Ends the fills a runner has open, whose windows it no longer has: a filled (or approved) form is
+ * closed, one still being filled has failed, and one whose Submit was pressed is to verify.
  */
 export async function endRunnerFills(pool: Pool, tokenId: string, why: string) {
   await pool.query(
     `update fill_task
-     set status = case when status = 'filled' then 'closed' else 'failed' end,
-       message = $2, updated_at = now()
-     where runner_token_id = $1 and status in ('filling', 'paused', 'filled')`,
-    [tokenId, why],
+     set status = case status when 'submitting' then 'to_verify'
+         when 'filled' then 'closed' when 'approved' then 'closed' else 'failed' end,
+       message = case status when 'submitting' then $3 else $2 end,
+       updated_at = now()
+     where runner_token_id = $1
+       and status in ('filling', 'paused', 'filled', 'approved', 'submitting')`,
+    [tokenId, why, lostMessages.submitting],
   );
 }
 

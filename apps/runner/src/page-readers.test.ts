@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { isGreenhouseForm, keyOf, pageFields, pageId } from './greenhouse.ts';
-import { type RawField, findBlocker, formIsLive, readGreenhouseForm } from './page-readers.ts';
-import { greenhouseFormHtml, page } from './testing/page.ts';
+import {
+  type RawField,
+  findBlocker,
+  formIsLive,
+  readAfterSubmit,
+  readGreenhouseForm,
+} from './page-readers.ts';
+import { greenhouseConfirmationHtml, greenhouseFormHtml, page } from './testing/page.ts';
 
 const brief = (fields: RawField[] | null) =>
   fields?.map((f) => [f.id, f.label, f.required, f.kind, f.value, f.demographic]);
@@ -144,6 +150,47 @@ describe('what only the user may deal with', () => {
     );
     assert.equal(page('<form><input type="password"></form>').run(findBlocker), 'login');
     assert.equal(page('<form hidden><input type="password"></form>').run(findBlocker), null);
+  });
+});
+
+describe('after Submit', () => {
+  const confirmationUrl =
+    'https://job-boards.greenhouse.io/embed/job_app/confirmation?for=example&token=7';
+
+  test('Greenhouse’s confirmation page, with its words', () => {
+    assert.deepEqual(page(greenhouseConfirmationHtml, confirmationUrl).run(readAfterSubmit), {
+      confirmation: true,
+      securityCode: false,
+      formErrors: false,
+      text: 'Thank you for applying to Example Oy! View more jobs at Example Oy',
+    });
+  });
+
+  test('not a confirmation: another address, or the form still there', () => {
+    const elsewhere = page(greenhouseConfirmationHtml).run(readAfterSubmit);
+    assert.equal(elsewhere.confirmation, false);
+    const form = page(
+      `${greenhouseConfirmationHtml}<form id="application-form"></form>`,
+      confirmationUrl,
+    );
+    assert.equal(form.run(readAfterSubmit).confirmation, false);
+  });
+
+  test('a security code asked for, or fields the form did not accept', () => {
+    const asked = page(
+      greenhouseFormHtml.replace(
+        '<div class="application--submit">',
+        '<input id="security-input-0" type="text"><div class="application--submit">',
+      ),
+    ).run(readAfterSubmit);
+    assert.deepEqual(
+      [asked.confirmation, asked.securityCode, asked.formErrors],
+      [false, true, false],
+    );
+    const invalid = page(
+      greenhouseFormHtml.replace('id="first_name"', 'id="first_name" aria-invalid="true"'),
+    ).run(readAfterSubmit);
+    assert.deepEqual([invalid.securityCode, invalid.formErrors], [false, true]);
   });
 });
 

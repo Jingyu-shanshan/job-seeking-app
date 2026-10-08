@@ -85,10 +85,6 @@ insert into document_pdf (artifact_id, body, file_name, pages, text)
     E'Sample Person\nMaintained the invoice export.')
   returning id as pdf_id \gset
 insert into document_pdf_statement values (:'pdf_id', :'artifact_id', :'claim_id', :'edit_id');
-insert into application (job_snapshot_id, status, submitted_at) values (:'snapshot_id', 'submitted', now())
-  returning id as application_id \gset
-insert into application_artifact values (:'application_id', :'artifact_id');
-insert into application_fact_version values (:'application_id', :'fact_version_id');
 insert into "user" (id, name, email, "emailVerified") values ('drill-user', 'Drill', 'drill@example.test', false);
 insert into account (id, "accountId", "providerId", "userId", password, "updatedAt")
   values ('drill-account', 'drill-user', 'credential', 'drill-user', 'not-a-real-hash', now());
@@ -123,12 +119,26 @@ insert into fill_task (job_id, job_form_id, url, fields, status, message, runner
   values (:'job_id', :'job_form_id', 'https://job-boards.greenhouse.io/embed/job_app?for=drill&token=1',
     '[{"key": "question_1", "label": "What is your notice period?", "kind": "text", "group": "questions",
       "required": true, "answer": ["Two months"], "source": "job", "documentPdfId": null}]',
-    'filled', 'Nothing has been sent to the company.', :'runner_token_id', now())
+    'submitted', 'Greenhouse showed its confirmation page: the application went in.',
+    :'runner_token_id', now())
   returning id as fill_task_id \gset
 insert into fill_check (fill_task_id, filled_now, fields, screenshot)
   values (:'fill_task_id', true, '[{"key": "question_1", "label": "What is your notice period?",
     "required": true, "kind": "text", "value": ["Two months"]}]',
-    decode('89504e470d0a1a0a0000000d49484452', 'hex'));
+    decode('89504e470d0a1a0a0000000d49484452', 'hex'))
+  returning id as fill_check_id \gset
+insert into submit_approval (fill_task_id, fill_check_id, job_snapshot_id, used_at)
+  values (:'fill_task_id', :'fill_check_id', :'snapshot_id', now())
+  returning id as approval_id \gset
+insert into application (job_id, job_snapshot_id, submit_approval_id, status, submitted_at)
+  values (:'job_id', :'snapshot_id', :'approval_id', 'submitted', now())
+  returning id as application_id \gset
+insert into application_artifact values (:'application_id', :'artifact_id');
+insert into application_fact_version values (:'application_id', :'fact_version_id');
+insert into submit_receipt (application_id, confirmed, page_url, page_text, note, screenshot)
+  values (:'application_id', true,
+    'https://job-boards.greenhouse.io/embed/job_app/confirmation?for=drill&token=1',
+    'Thank you for applying.', '', decode('89504e470d0a1a0a0000000d49484452', 'hex'));
 SQL
 
 pg_dump --format=custom --no-owner --file "$work/backup.dump" "$source_url"
