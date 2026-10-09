@@ -143,6 +143,10 @@ describe('JobDetailPage', () => {
       task: null,
       runnerSeenAt: null,
     });
+    // And the job's applications (T09).
+    http
+      .expectOne(`/api/jobs/${jobId}/applications`)
+      .flush({ applications: [], cannotRecord: null, pdfs: [] });
     await fixture.whenStable();
   }
 

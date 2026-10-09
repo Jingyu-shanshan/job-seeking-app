@@ -12,6 +12,9 @@ import { Session } from './auth/session';
       @if (session.user(); as user) {
         <nav aria-label="Main">
           <a routerLink="/jobs" routerLinkActive="active" ariaCurrentWhenActive="page">Jobs</a>
+          <a routerLink="/applications" routerLinkActive="active" ariaCurrentWhenActive="page">
+            Applications
+          </a>
           <a routerLink="/facts" routerLinkActive="active" ariaCurrentWhenActive="page">Facts</a>
           <a routerLink="/profile" routerLinkActive="active" ariaCurrentWhenActive="page">
             Your details

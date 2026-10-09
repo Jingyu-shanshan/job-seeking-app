@@ -130,9 +130,14 @@ insert into fill_check (fill_task_id, filled_now, fields, screenshot)
 insert into submit_approval (fill_task_id, fill_check_id, job_snapshot_id, used_at)
   values (:'fill_task_id', :'fill_check_id', :'snapshot_id', now())
   returning id as approval_id \gset
-insert into application (job_id, job_snapshot_id, submit_approval_id, status, submitted_at)
-  values (:'job_id', :'snapshot_id', :'approval_id', 'submitted', now())
+insert into application (job_id, job_snapshot_id, submit_approval_id, status, submitted_at, method,
+    match_id)
+  values (:'job_id', :'snapshot_id', :'approval_id', 'submitted', now(), 'runner', :'match_id')
   returning id as application_id \gset
+insert into application_file (application_id, position, label, file_name, document_pdf_id)
+  values (:'application_id', 0, 'Resume/CV', 'Sample Person - Resume.pdf', :'pdf_id');
+insert into application_file (application_id, position, label, file_name, body)
+  values (:'application_id', 1, '', 'Sent letter.pdf', convert_to('%PDF-1.4 sent', 'UTF8'));
 insert into application_artifact values (:'application_id', :'artifact_id');
 insert into application_fact_version values (:'application_id', :'fact_version_id');
 insert into submit_receipt (application_id, confirmed, page_url, page_text, note, screenshot)

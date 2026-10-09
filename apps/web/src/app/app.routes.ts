@@ -33,6 +33,17 @@ export const routes: Routes = [
         title: 'Job',
       },
       {
+        path: 'applications',
+        loadComponent: () => import('./applications/applications').then((m) => m.Applications),
+        title: 'Applications',
+      },
+      {
+        path: 'applications/:id',
+        loadComponent: () =>
+          import('./applications/application-page').then((m) => m.ApplicationPage),
+        title: 'Application',
+      },
+      {
         path: 'drafts/:id',
         loadComponent: () => import('./drafts/draft-page').then((m) => m.DraftPage),
         title: 'Draft',

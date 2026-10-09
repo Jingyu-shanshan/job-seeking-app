@@ -3,10 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import type {
+  ApplicationRecord,
+  ApplicationsResponse,
   CreatedRunnerToken,
   Draft,
   DraftDocument,
   Fact,
+  FactsResponse,
   FormCheckRequest,
   JobDetail,
   JobFillState,
@@ -797,7 +800,8 @@ describe('the local runner', needsDatabase, () => {
          select id, 'Made up ' || id, 'paste', 'Made up', 'https://example.com/made-up'
          from jobs returning id, job_id
        )
-       insert into application (job_id, job_snapshot_id, status) select job_id, id, 'to_verify' from texts
+       insert into application (job_id, job_snapshot_id, status, method)
+       select job_id, id, 'to_verify', 'runner' from texts
        returning job_id, id`,
     );
     ({ task, state } = await filled());
@@ -982,6 +986,69 @@ describe('the local runner', needsDatabase, () => {
       [application.id],
     );
     assert.deepEqual(rows, [{ status: 'submitted', used: true }]);
+
+    // T09: the record keeps the job text, the resume PDF and the fact version it cites, and the
+    // form's values as approved; editing the fact afterwards changes none of it.
+    const record = await ok<ApplicationRecord>({
+      method: 'GET',
+      url: `/api/applications/${application.id}`,
+    });
+    assert.deepEqual(
+      [record.method, record.status, record.title, record.match, record.note],
+      ['runner', 'submitted', 'Platform Engineer', null, ''],
+    );
+    const [file] = record.files;
+    assert.equal(record.files.length, 1);
+    assert.deepEqual([file!.label, file!.draft?.kind], ['Resume/CV', 'resume']);
+    assert.match(file!.fileName, /^Test Person - Resume.*\.pdf$/);
+    const kept = await pool.query('select body_sha256 from document_pdf where id = $1', [
+      resumePdfId,
+    ]);
+    assert.equal(file!.sha256, kept.rows[0].body_sha256);
+    const download = await call({ method: 'GET', url: file!.url });
+    assert.equal(download.headers['content-type'], 'application/pdf');
+    assert.match(String(download.headers['content-disposition']), /Test Person - Resume/);
+    assert.deepEqual(
+      record.facts.map((f) => [f.text, f.version, f.stillCurrent]),
+      [[role, 1, true]],
+    );
+    assert.ok(record.form!.fields.some((f) => f.label === 'First Name' && f.value[0] === 'Test'));
+    assert.equal(record.receipt!.pageText, 'Thank you for applying to Acme!');
+    assert.match(record.job.text, /\S/);
+
+    const {
+      facts: [fact],
+    } = await ok<FactsResponse>({ method: 'GET', url: '/api/facts' });
+    await ok(
+      {
+        method: 'POST',
+        url: `/api/facts/${fact!.id}/versions`,
+        payload: { body: `${role}, team lead` },
+      },
+      201,
+    );
+    const later = await ok<ApplicationRecord>({
+      method: 'GET',
+      url: `/api/applications/${application.id}`,
+    });
+    assert.deepEqual(
+      later.facts.map((f) => [f.text, f.version, f.stillCurrent]),
+      [[role, 1, false]],
+    );
+    assert.deepEqual(later.files, record.files);
+
+    // Applied counts once in the list, and runs that did not go through are listed as such.
+    const { jobs: listed } = await ok<JobsResponse>({ method: 'GET', url: '/api/jobs' });
+    assert.equal(listed.find((j) => j.id === jobs.helsinki)!.application, 'submitted');
+    assert.equal(listed.find((j) => j.id === jobs.espoo)!.application, null);
+    const { applications } = await ok<ApplicationsResponse>({
+      method: 'GET',
+      url: '/api/applications',
+    });
+    assert.deepEqual(
+      applications.filter((a) => a.jobId === jobs.helsinki).map((a) => a.status),
+      ['submitted', 'not_submitted', 'not_submitted', 'not_submitted'],
+    );
   });
 
   test('refusals: no session, no Origin', async () => {
@@ -1052,14 +1119,14 @@ describe('the local runner', needsDatabase, () => {
     const { job_id, job_snapshot_id, submit_approval_id } = sent.rows[0]!;
     await assert.rejects(
       pool.query(
-        `insert into application (job_id, job_snapshot_id, status) values ($1, $2, 'to_verify')`,
+        `insert into application (job_id, job_snapshot_id, status, method) values ($1, $2, 'to_verify', 'runner')`,
         [job_id, job_snapshot_id],
       ),
       /application_job_open/,
     );
     await assert.rejects(
       pool.query(
-        `insert into application (job_id, job_snapshot_id, submit_approval_id, status) values ($1, $2, $3, 'not_submitted')`,
+        `insert into application (job_id, job_snapshot_id, submit_approval_id, status, method) values ($1, $2, $3, 'not_submitted', 'runner')`,
         [job_id, job_snapshot_id, submit_approval_id],
       ),
       /application_submit_approval_id_key/,

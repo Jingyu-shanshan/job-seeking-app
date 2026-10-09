@@ -560,8 +560,8 @@ describe('schema', needsDatabase, () => {
       );
 
       const application = await row(
-        `insert into application (job_id, job_snapshot_id, status)
-         select job_id, id, 'to_verify' from job_snapshot where id = $1 returning id`,
+        `insert into application (job_id, job_snapshot_id, status, method)
+         select job_id, id, 'to_verify', 'runner' from job_snapshot where id = $1 returning id`,
         [snapshot.id],
       );
       await client.query('insert into application_artifact values ($1, $2)', [
@@ -669,8 +669,8 @@ describe('schema', needsDatabase, () => {
   });
 
   test('a submitted application has a submission time, one to verify has none', async () => {
-    const insert = `insert into application (job_id, job_snapshot_id, status, submitted_at)
-       select job_id, id, $2, $3 from job_snapshot where id = $1`;
+    const insert = `insert into application (job_id, job_snapshot_id, status, submitted_at, method)
+       select job_id, id, $2, $3, 'runner' from job_snapshot where id = $1`;
     await client.query(insert, [(await newSnapshot()).id, 'submitted', new Date()]);
     await client.query(insert, [(await newSnapshot()).id, 'to_verify', null]);
     await client.query(insert, [(await newSnapshot()).id, 'not_submitted', null]);

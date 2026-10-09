@@ -19,6 +19,7 @@ const job = (fields: Partial<Job>): Job => ({
   origin: 'discovered',
   needsText: false,
   verdict: 'eligible',
+  application: null,
   criteria: [],
   ...fields,
 });
@@ -189,6 +190,19 @@ describe('Jobs', () => {
       'Pasted Engineer Company not given · Helsinki, Finland · Job page Pasted 1 Oct 2026',
     ]);
     expect(page().querySelector('a[href="/jobs/paste"]')).not.toBeNull();
+  });
+
+  it('marks a job applied to, and one whose application’s result is unknown', async () => {
+    await load([
+      job({ title: 'Applied Engineer', application: 'submitted' }),
+      job({ title: 'Pending Engineer', application: 'to_verify', publishedAt: null }),
+      job({ title: 'Other Engineer', publishedAt: null }),
+    ]);
+    expect(items('Eligible (3)').map((item) => item.split(' Acme')[0])).toEqual([
+      'Applied Engineer Applied',
+      'Pending Engineer Application result unknown',
+      'Other Engineer',
+    ]);
   });
 
   it('marks a saved job, and one that still needs its text', async () => {

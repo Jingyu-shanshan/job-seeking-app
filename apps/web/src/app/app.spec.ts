@@ -78,7 +78,7 @@ describe('App', () => {
     expect(heading(harness)).toBe('Jobs');
   });
 
-  it('links the jobs, facts, details, form answers, criteria and sources pages from the header once signed in', () => {
+  it('links the jobs, applications, facts, details, form answers, criteria and sources pages from the header once signed in', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const links = () =>
@@ -91,6 +91,7 @@ describe('App', () => {
     fixture.detectChanges();
     expect(links()).toEqual([
       '/jobs',
+      '/applications',
       '/facts',
       '/profile',
       '/answers',

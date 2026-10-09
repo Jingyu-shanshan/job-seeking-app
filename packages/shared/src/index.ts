@@ -206,6 +206,7 @@ export {
   type UseSavedAnswerRequest,
 } from './forms.ts';
 export {
+  ApplicationMethodSchema,
   ApplicationStatusSchema,
   ApprovalFileSchema,
   ApproveFillRequestSchema,
@@ -234,6 +235,7 @@ export {
   SubmitReceiptSchema,
   SubmitResultRequestSchema,
   maxScreenshotBytes,
+  type ApplicationMethod,
   type ApplicationStatus,
   type ApprovalFile,
   type ApproveFillRequest,
@@ -262,4 +264,24 @@ export {
   type SubmitReceipt,
   type SubmitResultRequest,
 } from './runner.ts';
-export { maxAlertEmailLength, maxPdfBytes } from './limits.ts';
+export {
+  ApplicationFileSchema,
+  ApplicationRecordSchema,
+  ApplicationSummarySchema,
+  ApplicationsResponseSchema,
+  FrozenFactSchema,
+  FrozenMatchSchema,
+  JobApplicationsSchema,
+  KeptPdfSchema,
+  RecordApplicationRequestSchema,
+  type ApplicationFile,
+  type ApplicationRecord,
+  type ApplicationSummary,
+  type ApplicationsResponse,
+  type FrozenFact,
+  type FrozenMatch,
+  type JobApplications,
+  type KeptPdf,
+  type RecordApplicationRequest,
+} from './applications.ts';
+export { maxAlertEmailLength, maxManualFiles, maxPdfBytes } from './limits.ts';

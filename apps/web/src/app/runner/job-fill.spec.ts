@@ -87,6 +87,7 @@ const applicationId = '00000000-0000-4000-8000-000000000004';
 const application = (a: Partial<JobApplication> = {}): JobApplication => ({
   id: applicationId,
   status: 'to_verify',
+  method: 'runner',
   createdAt: '2026-10-07T09:05:00.000Z',
   submittedAt: null,
   receipt: null,
@@ -403,5 +404,44 @@ describe('JobFill', () => {
     await fixture.whenStable();
     expect(text()).toContain('Application: Did not go through');
     expect(button('Fill in the form with the runner')).toBeDefined();
+  });
+
+  it('an application sent outside the app: the user’s record, and a link to what it kept', async () => {
+    await load(
+      state({
+        cannotStart: 'This job’s application went in already.',
+        application: application({
+          status: 'submitted',
+          method: 'manual',
+          createdAt: '2026-10-09T10:00:00.000Z',
+          submittedAt: '2026-10-08T15:30:00.000Z',
+        }),
+      }),
+    );
+    const section = page().querySelector('section.application')!;
+    expect(text(section)).toContain('You recorded that you sent it outside the app on 8 Oct 2026');
+    expect(text(section)).not.toContain('The runner pressed Submit');
+    expect(section.querySelector('a')!.getAttribute('href')).toBe(`/applications/${applicationId}`);
+  });
+
+  it('tells the page when its application changes', async () => {
+    let changed = 0;
+    fixture.componentInstance.applicationChanged.subscribe(() => changed++);
+    await load(
+      state({
+        task: task({ status: 'to_verify', message: 'Submit was pressed.' }),
+        application: application(),
+      }),
+    );
+    expect(changed).toBe(0);
+    await click(
+      'It went through',
+      `/api/applications/${applicationId}/settle`,
+      state({
+        task: task({ status: 'to_verify', message: 'Submit was pressed.' }),
+        application: application({ status: 'submitted', submittedAt: '2026-10-07T09:05:00.000Z' }),
+      }),
+    );
+    expect(changed).toBe(1);
   });
 });

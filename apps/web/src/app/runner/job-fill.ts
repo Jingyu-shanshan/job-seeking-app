@@ -1,6 +1,6 @@
 import { httpResource } from '@angular/common/http';
 import { DatePipe, SlicePipe } from '@angular/common';
-import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type {
   ApplicationStatus,
@@ -211,11 +211,17 @@ const pollMs = 2000;
           @switch (application.status) {
             @case ('submitted') {
               <p>
-                The runner pressed Submit on {{ application.createdAt | date: 'd MMM y, HH:mm' }}
-                @if (application.receipt?.confirmed) {
-                  and Greenhouse showed its confirmation page.
+                @if (application.method === 'manual') {
+                  You recorded that you sent it outside the app on
+                  {{ application.submittedAt | date: 'd MMM y, HH:mm' }}.
                 } @else {
-                  and you said it went through.
+                  The runner pressed Submit on
+                  {{ application.createdAt | date: 'd MMM y, HH:mm' }}
+                  @if (application.receipt?.confirmed) {
+                    and Greenhouse showed its confirmation page.
+                  } @else {
+                    and you said it went through.
+                  }
                 }
               </p>
             }
@@ -243,6 +249,9 @@ const pollMs = 2000;
               </p>
             }
           }
+          <p>
+            <a [routerLink]="['/applications', application.id]">What the application kept</a>
+          </p>
           @if (application.receipt; as receipt) {
             <p class="hint">
               What the runner saw at {{ receipt.checkedAt | date: 'HH:mm:ss' }}:
@@ -332,6 +341,8 @@ export class JobFill {
   private readonly api = inject(RunnerApi);
 
   readonly jobId = input.required<string>();
+  /** The job's latest fill or application changed status, or a new one began. */
+  readonly applicationChanged = output<void>();
 
   protected readonly state = httpResource<JobFillState>(() => `/api/jobs/${this.jobId()}/fill`);
   protected readonly loadError = computed(() => errorMessage(this.state.error()));
@@ -359,7 +370,21 @@ export class JobFill {
     return seen && Date.now() - Date.parse(seen) >= quietMs ? seen : null;
   });
 
+  /** What the job's applications depend on here: the latest fill and application, by status. */
+  private readonly applicationKey = computed(() => {
+    const s = this.state.value();
+    if (!s) return undefined;
+    return [s.task?.id, s.task?.status, s.application?.id, s.application?.status].join('|');
+  });
+
   constructor() {
+    let lastKey: string | undefined;
+    effect(() => {
+      const key = this.applicationKey();
+      if (key === undefined) return;
+      if (lastKey !== undefined && key !== lastKey) this.applicationChanged.emit();
+      lastKey = key;
+    });
     // While a fill is open the runner moves it on its own, so the page asks again now and then.
     effect((onCleanup) => {
       if (!this.following()) return;
