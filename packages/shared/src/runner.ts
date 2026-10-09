@@ -234,8 +234,9 @@ export const FillApprovalSchema = Type.Object({
 export type FillApproval = Static<typeof FillApprovalSchema>;
 
 /**
- * An application the runner submitted: the confirmation page showed (`submitted`), the result is
- * unknown (`to_verify`), or the user found it did not go through (`not_submitted`).
+ * An application: it went in (`submitted`: the confirmation page showed, the user said so, or
+ * the user recorded one sent outside the app), the runner's result is unknown (`to_verify`), or
+ * the user found it did not go through (`not_submitted`). Only `submitted` counts as applied.
  */
 export const ApplicationStatusSchema = Type.Union([
   Type.Literal('to_verify'),
@@ -244,6 +245,11 @@ export const ApplicationStatusSchema = Type.Union([
 ]);
 
 export type ApplicationStatus = Static<typeof ApplicationStatusSchema>;
+
+/** The runner submitted it after the user's approval, or the user applied outside the app. */
+export const ApplicationMethodSchema = Type.Union([Type.Literal('runner'), Type.Literal('manual')]);
+
+export type ApplicationMethod = Static<typeof ApplicationMethodSchema>;
 
 /** What the runner saw after it pressed Submit. */
 export const SubmitReceiptSchema = Type.Object({
@@ -260,7 +266,8 @@ export type SubmitReceipt = Static<typeof SubmitReceiptSchema>;
 export const JobApplicationSchema = Type.Object({
   id: Type.String({ format: 'uuid' }),
   status: ApplicationStatusSchema,
-  /** When the runner was let press Submit. */
+  method: ApplicationMethodSchema,
+  /** When the runner was let press Submit, or when the user recorded it. */
   createdAt: date,
   submittedAt: nullable(date),
   receipt: nullable(SubmitReceiptSchema),

@@ -68,6 +68,11 @@ export const JobSchema = Type.Object({
    */
   needsText: Type.Boolean(),
   verdict: JobVerdictSchema,
+  /**
+   * The job's application that went in (`submitted`) or whose result is unknown (`to_verify`);
+   * null when there is none. Only `submitted` counts as applied.
+   */
+  application: Type.Union([Type.Literal('submitted'), Type.Literal('to_verify'), Type.Null()]),
   /** The user's criteria that are not off, checked against this job. */
   criteria: Type.Array(CriterionResultSchema),
 });

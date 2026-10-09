@@ -68,10 +68,11 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
     // One entry per job, however many sources list it, described by the first posting found. The
     // verdict and criteria are filled in at the end.
     const jobs = new Map<string, Job>();
-    const unchecked = (): Pick<Job, 'verdict' | 'criteria' | 'alerts'> => ({
+    const unchecked = (): Pick<Job, 'verdict' | 'criteria' | 'alerts' | 'application'> => ({
       verdict: 'eligible',
       criteria: [],
       alerts: [],
+      application: null,
     });
     for (const row of rows) {
       if (!findCatalogEntry(row.catalog_id)) continue;
@@ -207,6 +208,15 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
     for (const row of listings.rows) {
       const name = findCatalogEntry(row.catalog_id)?.name;
       if (name) jobs.get(row.job_id)?.alerts.push(name);
+    }
+
+    // Applications that went in or may have (at most one per job).
+    const applications = await pool.query<{ job_id: string; status: 'submitted' | 'to_verify' }>(
+      `select job_id, status from application where status in ('submitted', 'to_verify')`,
+    );
+    for (const row of applications.rows) {
+      const job = jobs.get(row.job_id);
+      if (job) job.application = row.status;
     }
 
     const checks = await checkJobs(pool, [...jobs.values()], criteria);

@@ -13,6 +13,11 @@ import { describeResult, listedResults } from './criteria-text';
       @for (job of jobs(); track job.id) {
         <li>
           <a class="title" [routerLink]="['/jobs', job.id]">{{ job.title }}</a>
+          @if (job.application === 'submitted') {
+            &ngsp;<span class="applied">Applied</span>
+          } @else if (job.application === 'to_verify') {
+            &ngsp;<span class="applied">Application result unknown</span>
+          }
           <span class="meta">
             {{ job.company ?? job.sources[0]?.param ?? 'Company not given' }} ·
             {{ job.location || 'No location given' }}
@@ -52,6 +57,13 @@ import { describeResult, listedResults } from './criteria-text';
     }
     .title {
       font-weight: 600;
+    }
+    .applied {
+      margin-left: 0.5rem;
+      padding: 0 0.35rem;
+      font-size: 0.85rem;
+      border: 1px solid currentColor;
+      border-radius: 0.25rem;
     }
     .meta,
     .reason {

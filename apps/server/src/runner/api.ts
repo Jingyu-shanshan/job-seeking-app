@@ -13,6 +13,7 @@ import {
 import type { FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
 import Type from 'typebox';
+import { freezeFiles, latestMatch } from '../applications/freeze.ts';
 import { httpError } from '../http-error.ts';
 import { loadJobDetail } from '../jd/routes.ts';
 import { canHappen, checkOutcome, lostStatus, previewFields } from '../rules/fill.ts';
@@ -265,22 +266,38 @@ export const runnerApiRoutes: FastifyPluginAsyncTypebox<{ pool: Pool }> = async 
         try {
           const { rowCount } = await pool.query(
             `with task as (
-               select id, job_id from fill_task where id = $1 and status = 'approved' for update
+               select id, job_id, fields from fill_task
+               where id = $1 and status = 'approved' for update
              ),
              used as (
                update submit_approval set used_at = now()
                where id = $2 and used_at is null and withdrawn_at is null
                  and fill_task_id in (select id from task)
                  and (select count(*) from application
-                      where status <> 'not_submitted'
+                      where method = 'runner' and status <> 'not_submitted'
                         and created_at > now() - interval '24 hours') < $3
                returning id, job_snapshot_id
              ),
              applied as (
-               insert into application (job_id, job_snapshot_id, submit_approval_id, status)
-               select task.job_id, used.job_snapshot_id, used.id, 'to_verify' from task, used
+               insert into application
+                 (job_id, job_snapshot_id, submit_approval_id, status, method, match_id)
+               select task.job_id, used.job_snapshot_id, used.id, 'to_verify', 'runner',
+                 ${latestMatch('used.job_snapshot_id')}
+               from task, used
                returning id
              ),
+             -- The PDFs the runner attaches, in the form's order, each kept PDF once.
+             sent as (
+               select applied.id as application_id,
+                 (row_number() over (order by min(f.n)) - 1)::int as position,
+                 min(f.e ->> 'label') as label, min(f.e -> 'answer' ->> 0) as file_name,
+                 (f.e ->> 'documentPdfId')::uuid as document_pdf_id, null::bytea as body
+               from applied, task, jsonb_array_elements(task.fields) with ordinality as f (e, n)
+               where f.e ->> 'documentPdfId' is not null
+                 and jsonb_array_length(f.e -> 'answer') > 0
+               group by applied.id, f.e ->> 'documentPdfId'
+             ),
+             ${freezeFiles},
              moved as (
                update fill_task set status = 'submitting', message = $4, updated_at = now()
                where id in (select id from task) and exists (select 1 from applied)

@@ -199,6 +199,7 @@ describe('/api/discovery-runs and /api/jobs', needsDatabase, () => {
         origin: 'discovered',
         needsText: false,
         verdict: 'eligible',
+        application: null,
         criteria: [
           {
             criterion: 'location',

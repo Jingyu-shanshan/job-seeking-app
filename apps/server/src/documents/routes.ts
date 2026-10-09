@@ -91,7 +91,7 @@ export async function currentPdf(pool: Pool, draftId: string) {
 }
 
 /** A Content-Disposition header that keeps the name's accents for browsers that read them. */
-function attachment(fileName: string): string {
+export function attachment(fileName: string): string {
   const plain = fileName
     .normalize('NFKD')
     .replace(/[^\x20-\x7e]/g, '')

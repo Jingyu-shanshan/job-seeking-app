@@ -6,6 +6,7 @@ import { HealthResponseSchema, ReadyResponseSchema } from '@jsa/shared';
 import { fromNodeHeaders } from 'better-auth/node';
 import Fastify from 'fastify';
 import { alertRoutes } from './alerts/routes.ts';
+import { applicationRoutes } from './applications/routes.ts';
 import { type Auth, createAuth } from './auth.ts';
 import type { Config } from './config.ts';
 import { checkDatabase, createPool } from './db/pool.ts';
@@ -156,6 +157,7 @@ export function buildApp({
     app.register(runnerTokenRoutes, { prefix: '/api', pool });
     app.register(fillRoutes, { prefix: '/api', pool });
     app.register(runnerApiRoutes, { prefix: '/api', pool });
+    app.register(applicationRoutes, { prefix: '/api', pool });
   }
 
   // Without a web build (API-only dev, tests) the server still runs; `ng serve` proxies to it.

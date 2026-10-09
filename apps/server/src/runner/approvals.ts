@@ -5,6 +5,7 @@ import type {
   JobApplication,
   PageBlocker,
   PageField,
+  SubmitReceipt,
 } from '@jsa/shared';
 import type { Pool } from 'pg';
 import { previewFields } from '../rules/fill.ts';
@@ -58,20 +59,20 @@ export async function liveApproval(pool: Pool, taskId: string): Promise<Approval
   return rows[0];
 }
 
-/** Applications that went in or may have in the last 24 hours. */
+/**
+ * Applications the runner submitted (or may have) in the last 24 hours. Those the user sent
+ * outside the app and recorded do not count (user decision).
+ */
 export async function submittedLastDay(pool: Pool): Promise<number> {
   const { rows } = await pool.query<{ n: number }>(
     `select count(*)::int as n from application
-     where status <> 'not_submitted' and created_at > now() - interval '24 hours'`,
+     where method = 'runner' and status <> 'not_submitted'
+       and created_at > now() - interval '24 hours'`,
   );
   return rows[0]!.n;
 }
 
-interface ApplicationRow {
-  id: string;
-  status: JobApplication['status'];
-  created_at: Date;
-  submitted_at: Date | null;
+export interface ReceiptRow {
   receipt_id: string | null;
   confirmed: boolean | null;
   page_url: string | null;
@@ -81,12 +82,38 @@ interface ApplicationRow {
   receipt_at: Date | null;
 }
 
+/** The columns of `submit_receipt r` that `toReceipt` reads. */
+export const receiptColumns = `r.id as receipt_id, r.confirmed, r.page_url, r.page_text, r.note,
+  r.screenshot is not null as has_screenshot, r.created_at as receipt_at`;
+
+/** What the runner saw after it pressed Submit, if it said. */
+export function toReceipt(row: ReceiptRow): SubmitReceipt | null {
+  return row.receipt_id
+    ? {
+        confirmed: row.confirmed!,
+        pageUrl: row.page_url,
+        pageText: row.page_text!,
+        note: row.note!,
+        checkedAt: row.receipt_at!.toISOString(),
+        screenshotUrl: row.has_screenshot
+          ? `/api/submit-receipts/${row.receipt_id}/screenshot`
+          : null,
+      }
+    : null;
+}
+
+interface ApplicationRow extends ReceiptRow {
+  id: string;
+  status: JobApplication['status'];
+  method: JobApplication['method'];
+  created_at: Date;
+  submitted_at: Date | null;
+}
+
 /** The job's latest application, with what the runner saw after Submit. */
 export async function jobApplication(pool: Pool, jobId: string): Promise<JobApplication | null> {
   const { rows } = await pool.query<ApplicationRow>(
-    `select a.id, a.status, a.created_at, a.submitted_at, r.id as receipt_id, r.confirmed,
-       r.page_url, r.page_text, r.note, r.screenshot is not null as has_screenshot,
-       r.created_at as receipt_at
+    `select a.id, a.status, a.method, a.created_at, a.submitted_at, ${receiptColumns}
      from application a left join submit_receipt r on r.application_id = a.id
      where a.job_id = $1 order by a.created_at desc, a.id limit 1`,
     [jobId],
@@ -96,20 +123,10 @@ export async function jobApplication(pool: Pool, jobId: string): Promise<JobAppl
   return {
     id: row.id,
     status: row.status,
+    method: row.method,
     createdAt: row.created_at.toISOString(),
     submittedAt: row.submitted_at?.toISOString() ?? null,
-    receipt: row.receipt_id
-      ? {
-          confirmed: row.confirmed!,
-          pageUrl: row.page_url,
-          pageText: row.page_text!,
-          note: row.note!,
-          checkedAt: row.receipt_at!.toISOString(),
-          screenshotUrl: row.has_screenshot
-            ? `/api/submit-receipts/${row.receipt_id}/screenshot`
-            : null,
-        }
-      : null,
+    receipt: toReceipt(row),
   };
 }
 
