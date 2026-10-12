@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Minimal backup -> isolated restore drill on sample data (T02). The full drill, with real data
-# and a copy stored outside Neon, is T10.
+# Manual pg_dump -> isolated restore drill on sample data (T02, also checked in T10).
 #
 #   TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/postgres npm run db:restore-drill
 #
@@ -147,7 +146,7 @@ insert into submit_receipt (application_id, confirmed, page_url, page_text, note
 SQL
 
 pg_dump --format=custom --no-owner --file "$work/backup.dump" "$source_url"
-pg_restore --no-owner --exit-on-error --dbname "$restore_url" "$work/backup.dump"
+pg_restore --no-owner --exit-on-error --single-transaction --dbname "$restore_url" "$work/backup.dump"
 
 # "<table> <rows> <md5 of all rows>" for every table, the migrations table included.
 checksums() {

@@ -79,6 +79,11 @@ export const routes: Routes = [
         title: 'Sources',
       },
       {
+        path: 'export',
+        loadComponent: () => import('./export/export').then((m) => m.ExportPage),
+        title: 'Export your data',
+      },
+      {
         path: 'runner',
         loadComponent: () => import('./runner/runner').then((m) => m.RunnerPage),
         title: 'Runner',
