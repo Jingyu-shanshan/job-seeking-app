@@ -147,6 +147,44 @@ describe('what changed', () => {
     );
     assert.match(submitProblem(look, look, 'login')!, /only you can do just before Submit/);
   });
+
+  test('a question changing meaning voids the approval even when its answer stays the same', () => {
+    const approved = page({
+      key: 'question_1',
+      label: 'Are you authorized to work in Finland?',
+      kind: 'select',
+      value: ['Yes'],
+    });
+    const changed = { ...approved, label: 'Do you require visa sponsorship?' };
+    assert.deepEqual(changedFields([approved], [changed]), [approved.label]);
+    assert.equal(
+      submitProblem([approved], [changed], null),
+      'The form changed after you approved it: “Are you authorized to work in Finland?”. Look at it again and approve it again if it is right.',
+    );
+  });
+
+  test('a question changing its kind or requirement voids the approval', () => {
+    const approved = page({ key: 'question_1', value: [] });
+    for (const changed of [
+      { ...approved, kind: 'textarea' as const },
+      { ...approved, required: false },
+    ]) {
+      assert.deepEqual(changedFields([approved], [changed]), [approved.label]);
+      assert.match(submitProblem([approved], [changed], null)!, /^The form changed after/);
+    }
+    assert.deepEqual(changedFields([approved], []), [approved.label]);
+    assert.deepEqual(changedFields([], [approved]), [approved.label]);
+  });
+
+  test('unchanged questions allow whitespace and a different order of chosen values', () => {
+    const same = look.map((f) => ({
+      ...f,
+      label: ` ${f.label.replaceAll(' ', '  ')} `,
+      value: f.value.map((v) => ` ${v} `).reverse(),
+    }));
+    assert.deepEqual(changedFields(look, same), []);
+    assert.equal(submitProblem(look, same, null), null);
+  });
 });
 
 test('Greenhouse’s confirmation page of the same form', () => {

@@ -254,6 +254,7 @@ describe(
           ['gender', []],
           ['demographic_4001', ['Yes']],
           ['gdpr_processing_consent_given', ['checked']],
+          ['gdpr_demographic_data_consent_given', []],
         ],
       );
       assert.equal(
@@ -266,6 +267,54 @@ describe(
         'The fill was closed in the app; its window closes.',
       ]);
       assert.ok(app.page().isClosed());
+    });
+
+    test('a suffixed consent checkbox is filled only when the app has its answer', async () => {
+      const key = 'gdpr_demographic_data_consent_given';
+      for (const answer of [['Consent given'], [], null]) {
+        const consent = field({
+          key,
+          label: 'Demographic consent',
+          kind: 'consent',
+          answer: answer ?? [],
+        });
+        const app = fakeApp({ afterChecks: ['filled'], polls: ['closed'] });
+        await runTask(task({ fields: answer === null ? fields : [...fields, consent] }), {
+          ...quiet,
+          api: app.api,
+          open: app.open(),
+        });
+        assert.deepEqual(app.seen.failures, []);
+        assert.deepEqual(valueOf(app.seen.checks[0]!, key), answer?.length ? ['checked'] : []);
+        assert.deepEqual(valueOf(app.seen.checks[0]!, 'gdpr_processing_consent_given'), [
+          'checked',
+        ]);
+        assert.equal(app.seen.posts, 0);
+      }
+    });
+
+    test('ambiguous consent checkboxes are left for the user without picking either', async () => {
+      const key = 'gdpr_demographic_data_consent_given';
+      const html = greenhouseFormHtml.replace(
+        `id="${key}_1"`,
+        `id="${key}" /><input type="checkbox" id="${key}_1"`,
+      );
+      const app = fakeApp({ afterChecks: ['paused'], polls: ['closed'] });
+      const lines: string[] = [];
+      await runTask(
+        task({
+          fields: [
+            ...fields,
+            field({ key, label: 'Demographic consent', kind: 'consent', answer: ['yes'] }),
+          ],
+        }),
+        { ...quiet, api: app.api, open: app.open(html), log: (line) => lines.push(line) },
+      );
+      assert.match(lines[0]!, /more than one checkbox for this consent/);
+      assert.ok(
+        app.seen.checks[0]!.fields.filter((f) => f.key === key).every((f) => !f.value.length),
+      );
+      assert.equal(app.seen.posts, 0);
     });
 
     test('an answer the form does not take is left for the user to see', async () => {

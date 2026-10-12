@@ -29,6 +29,8 @@ const phoneCandidates = /\+?\(?\d[\d\s().-]{6,}\d/g;
 // Year-month dates and ranges of them, such as 2021-03 - 2024-06, are not phone numbers.
 const isoDates =
   /^\d{4}[-./]\d{1,2}(?:[-./]\d{1,2})?(?:\s*-\s*\d{4}[-./]\d{1,2}(?:[-./]\d{1,2})?)?$/;
+const formOnlyData =
+  /\b(?:(?:work|residence) permits?|visas?|citizen(?:ship)?s?|sponsorship|salary|salaries|pay expectations?|work authori[sz]ation|right to work)\b/i;
 
 export function sensitiveData(text: string): string[] {
   const found: string[] = [];
@@ -39,6 +41,7 @@ export function sensitiveData(text: string): string[] {
     return candidate.startsWith('+') ? digits >= 8 : digits >= 9;
   });
   if (phone) found.push('a phone number');
+  if (formOnlyData.test(text)) found.push('work permit, visa, citizenship or salary information');
   return found;
 }
 

@@ -50,7 +50,7 @@ export function changedAnswers(fill: readonly FillField[], now: readonly FillFie
   return changed;
 }
 
-/** The fields whose value differs between two looks at the form, by label. */
+/** The fields whose question or value differs between two looks at the form, by label. */
 export function changedFields(approved: readonly PageField[], now: readonly PageField[]): string[] {
   const before = new Map(approved.map((f) => [f.key, f]));
   const after = new Map(now.map((f) => [f.key, f]));
@@ -58,7 +58,14 @@ export function changedFields(approved: readonly PageField[], now: readonly Page
   for (const key of new Set([...before.keys(), ...after.keys()])) {
     const a = before.get(key);
     const b = after.get(key);
-    if (!sameValues(a?.value ?? [], b?.value ?? [])) changed.push(tidy((a ?? b)!.label) || key);
+    if (
+      tidy(a?.label ?? '') !== tidy(b?.label ?? '') ||
+      a?.kind !== b?.kind ||
+      a?.required !== b?.required ||
+      !sameValues(a?.value ?? [], b?.value ?? [])
+    ) {
+      changed.push(tidy((a ?? b)!.label) || key);
+    }
   }
   return changed;
 }
@@ -115,7 +122,7 @@ export function approvalProblem(facts: ApprovalFacts): string | null {
 
 /**
  * Why the runner may not press Submit after its last look before it, or null: a blocker, or a
- * field whose value is not the approved one.
+ * field whose question or value is not the approved one.
  */
 export function submitProblem(
   approved: readonly PageField[],

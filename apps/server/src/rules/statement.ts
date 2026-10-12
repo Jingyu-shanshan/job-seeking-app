@@ -331,9 +331,6 @@ function statusProblems(text: string, facts: readonly { body: string }[]): Probl
   }));
 }
 
-const sensitiveWords =
-  /\b(?:(?:work|residence) permits?|visas?|citizen(?:ship)?s?|sponsorship|salary|salaries|pay expectations?|work authori[sz]ation|right to work)\b/i;
-
 const placeholder = /\[[^\]]*\]|\{\{|\}\}|\bTODO\b|\bTBD\b|lorem ipsum/i;
 // The refs of the request, such as F3, which the user never sees.
 const ref = /(?<![\p{L}\p{N}])F\d{1,3}(?![\p{L}\p{N}])/u;
@@ -341,18 +338,11 @@ const ref = /(?<![\p{L}\p{N}])F\d{1,3}(?![\p{L}\p{N}])/u;
 function textProblems(text: string): Problem[] {
   const problems: Problem[] = [];
   // On the text as written: tidying turns dashes into hyphens, which phone numbers also have.
-  if (sensitiveData(text).length) {
+  const sensitive = sensitiveData(text);
+  if (sensitive.length) {
     problems.push({
       code: 'sensitive',
-      message:
-        'It contains an email address or a phone number; the app adds contact details itself.',
-    });
-  }
-  if (sensitiveWords.test(text)) {
-    problems.push({
-      code: 'sensitive',
-      message:
-        'Work permits, visas, citizenship and salary go only into application forms that ask for them.',
+      message: `It contains ${sensitive.join(' and ')}; use Your details or application forms for these details.`,
     });
   }
   if (placeholder.test(text) || ref.test(text)) {

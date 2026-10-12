@@ -54,6 +54,14 @@ describe('reading Greenhouse’s form', () => {
         [],
         false,
       ],
+      [
+        'gdpr_demographic_data_consent_given_1',
+        'I agree that Example Oy processes my demographic data.',
+        false,
+        'checkbox',
+        [],
+        false,
+      ],
     ]);
   });
 
@@ -199,10 +207,29 @@ describe('the app’s keys and the page’s ids', () => {
     assert.equal(pageId('question_102'), 'question_102');
     assert.equal(pageId('location'), 'candidate-location');
     assert.equal(pageId('demographic_4001'), '4001');
-    assert.equal(keyOf({ id: 'candidate-location', demographic: false }), 'location');
-    assert.equal(keyOf({ id: '4001', demographic: true }), 'demographic_4001');
-    assert.equal(keyOf({ id: '4001', demographic: false }), '4001');
-    assert.equal(keyOf({ id: 'gender', demographic: true }), 'gender');
+    assert.equal(
+      keyOf({ id: 'candidate-location', demographic: false, kind: 'select' }),
+      'location',
+    );
+    assert.equal(keyOf({ id: '4001', demographic: true, kind: 'select' }), 'demographic_4001');
+    assert.equal(keyOf({ id: '4001', demographic: false, kind: 'select' }), '4001');
+    assert.equal(keyOf({ id: 'gender', demographic: true, kind: 'select' }), 'gender');
+  });
+
+  test('maps only the known consent checkbox suffix to the API key', () => {
+    for (const key of [
+      'gdpr_consent_given',
+      'gdpr_processing_consent_given',
+      'gdpr_retention_consent_given',
+      'gdpr_demographic_data_consent_given',
+    ]) {
+      assert.equal(keyOf({ id: `${key}_1`, demographic: false, kind: 'checkbox' }), key);
+      assert.equal(keyOf({ id: `${key}_1`, demographic: false, kind: 'text' }), `${key}_1`);
+    }
+    const id = 'unrelated_consent_given_1';
+    assert.equal(keyOf({ id, demographic: false, kind: 'checkbox' }), id);
+    const form = pageFields(page(greenhouseFormHtml).run(readGreenhouseForm)!);
+    assert.deepEqual(form.find((f) => f.key === 'gdpr_demographic_data_consent_given')?.value, []);
   });
 
   test('fields go to the app by its keys, within its limits', () => {
