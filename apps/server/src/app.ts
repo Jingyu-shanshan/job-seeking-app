@@ -13,6 +13,7 @@ import { checkDatabase, createPool } from './db/pool.ts';
 import { discoveryRoutes } from './discovery/routes.ts';
 import { RateLimiter } from './discovery/run.ts';
 import { documentRoutes } from './documents/routes.ts';
+import { exportRoutes } from './export/routes.ts';
 import { draftRoutes } from './drafts/routes.ts';
 import { factRoutes } from './facts/routes.ts';
 import { answerRoutes } from './forms/answers.ts';
@@ -158,6 +159,7 @@ export function buildApp({
     app.register(fillRoutes, { prefix: '/api', pool });
     app.register(runnerApiRoutes, { prefix: '/api', pool });
     app.register(applicationRoutes, { prefix: '/api', pool });
+    app.register(exportRoutes, { prefix: '/api', pool });
   }
 
   // Without a web build (API-only dev, tests) the server still runs; `ng serve` proxies to it.

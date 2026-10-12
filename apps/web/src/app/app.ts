@@ -31,6 +31,9 @@ import { Session } from './auth/session';
           <a routerLink="/runner" routerLinkActive="active" ariaCurrentWhenActive="page">
             Runner
           </a>
+          <a routerLink="/export" routerLinkActive="active" ariaCurrentWhenActive="page">
+            Export
+          </a>
         </nav>
         <span class="account">
           {{ user.email }}

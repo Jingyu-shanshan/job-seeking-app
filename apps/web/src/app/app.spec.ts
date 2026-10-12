@@ -98,6 +98,7 @@ describe('App', () => {
       '/criteria',
       '/sources',
       '/runner',
+      '/export',
     ]);
   });
 

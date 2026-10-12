@@ -32,8 +32,15 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+      # The restore drill needs pg_dump/pg_restore no older than the server.
+      - name: Install the PostgreSQL 18 client programs
+        run: |
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-18
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
+      - run: npm run db:restore-drill

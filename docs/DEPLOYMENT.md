@@ -1,6 +1,6 @@
 # Railway + Neon 部署计划
 
-更新：2026-10-01。**这是未来发布步骤，尚无 Railway 项目或 Neon 数据库；`npm ci`、`npm run build`、`npm start` 已在 T01 实现，迁移命令 `npm run db:migrate` 已在 T02 实现，账户创建命令 `npm run auth:create-account` 已在 T03 实现。** 源码在 GitHub `Jingyu-shanshan/job-seeking-app`（公开仓库），当前不发布。骨架（T01–T03）完成后先做一次不含个人数据的预部署演练（T03a），更早暴露 Railway、Neon、Better Auth 和 pre-deploy 迁移的问题；正式发布仍是 T12。
+更新：2026-10-11（T10 范围调整：数据导出与手动隔离恢复演练）。**这是未来发布步骤，尚无 Railway 项目或 Neon 数据库；`npm ci`、`npm run build`、`npm start` 已在 T01 实现，迁移命令 `npm run db:migrate` 已在 T02 实现，账户创建命令 `npm run auth:create-account` 已在 T03 实现。** 源码在 GitHub `Jingyu-shanshan/job-seeking-app`（公开仓库），当前不发布。骨架（T01–T03）完成后先做一次不含个人数据的预部署演练（T03a），更早暴露 Railway、Neon、Better Auth 和 pre-deploy 迁移的问题；正式发布仍是 T12。
 
 ## 拓扑
 
@@ -31,7 +31,21 @@ V0.1 单用户、单服务先用 direct URL，避免多余连接配置。若连�
 
 - **区域**：Neon 项目和 Railway 服务在创建时选择区域，两者应彼此靠近，并按数据合规选择。若在欧盟求职，个人经历数据宜留在欧盟区域，并把 GDPR 与模型供应商所在地一并考虑。事后更换区域可能要迁移数据，因此在 T03a 创建演练环境时就确定。
 - **PostgreSQL 版本**：Neon 支持 14–18（2026-10-01 核对）。本地容器和 CI 用 18，创建 Neon 项目时选 18；若选其他主版本，同步修改 `.github/workflows/ci.yml` 和 `CLAUDE.md` 中的容器镜像。
-- **备份**：Neon 的时间点恢复窗口（2026-10-01 核对 [Neon 套餐说明](https://neon.com/docs/introduction/plans)）：Free 为 6 小时且不可调；Launch 默认 1 天、最长 7 天；Scale 默认 1 天、最长 30 天。付费套餐按变更历史另计 $0.20/GB-月，且只有根分支能做时间点恢复。Free 套餐的计算节点闲置 5 分钟后休眠且不能关闭（Launch 可关闭，Scale 可配置），所以 `/health/ready` 和连接超时要容纳唤醒。不论哪种套餐，都定期用 direct URL 执行 `pg_dump`，存到用户控制、且与 Neon 不同提供方的存储，并验证能恢复到隔离库；T10 以此为验收。T02 的 `npm run db:restore-drill` 已在本地对样例数据演练过 `pg_dump` → 隔离库 `pg_restore` → 逐表比对，T10 在此基础上做真实数据和定期备份。
+- **恢复窗口**：实际 Neon 项目和套餐尚未创建或选择，T03a/T12 发布前核对所选套餐与控制台中的时间点恢复窗口，并记录可用的恢复方式。按 2026-10-11 用户决定，T10 不提供用户备份功能、日常自动备份或云端备份存储；手动 PostgreSQL 导出与隔离恢复作为维护操作保留。
+
+## 数据导出与手动隔离恢复（T10）
+
+登录后的 `/export` 页下载一个 ZIP：`facts.md` 可在 Facts 页重新导入为待确认事实；`applications.md` 列出申请状态与投递文件；`data.json` 保存全部业务表，附件列指向 `files/` 中的原始 PDF/截图；`manifest.json` 记录格式版本、迁移版本和各文件的大小与 SHA-256。登录凭据、会话及执行器令牌不进入导出。ZIP 含个人资料，应私下保管；它是可读副本，完整数据库恢复使用 PostgreSQL 工具。当前 ZIP 在内存中生成，大量附件接近服务的内存上限时需要改为流式导出。
+
+2026-10-11 用户决定保留数据导出，取消面向用户的数据库备份、日常自动备份和云端备份存储。T02 的手动隔离恢复演练继续作为维护工具保留；维护者需要 `pg_dump`、`pg_restore` 和 `psql`，客户端版本不得早于数据库版本（本地与 CI 是 PostgreSQL 18）。
+
+```bash
+# TEST_DATABASE_URL 指向允许创建一次性数据库的本地测试服务器。
+# 只写入编造数据，手动执行 pg_dump → 隔离库 pg_restore。
+npm run db:restore-drill
+```
+
+演练脚本创建源库与恢复库，迁移并写入各表的样例数据，以 `pg_dump --format=custom --no-owner` 导出，再用 `pg_restore --no-owner --exit-on-error` 恢复到隔离库。随后逐表比对行数与校验值，并核对实际投递文件哈希、不可变规则和迁移状态；结束后清理临时文件和两个一次性库，不写主库。正式维护中的恢复也应先使用新的空库，确认登录和历史记录可用后，再由维护者切换 `DATABASE_URL`。
 
 ## 发布顺序（T12 才执行）
 
