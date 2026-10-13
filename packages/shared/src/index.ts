@@ -170,6 +170,18 @@ export {
 } from './drafts.ts';
 export { ProfileSchema, type Profile } from './profile.ts';
 export {
+  InterviewAnswerSchema,
+  InterviewStateSchema,
+  InterviewPreparationSchema,
+  GenerateInterviewRequestSchema,
+  InterviewNotesRequestSchema,
+  type InterviewAnswer,
+  type InterviewState,
+  type InterviewSource,
+  type InterviewPreparation,
+  type GenerateInterviewRequest,
+} from './interviews.ts';
+export {
   DocumentBlockSchema,
   DocumentPdfSchema,
   DraftDocumentSchema,

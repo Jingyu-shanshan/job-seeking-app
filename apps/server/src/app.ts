@@ -19,6 +19,7 @@ import { factRoutes } from './facts/routes.ts';
 import { answerRoutes } from './forms/answers.ts';
 import { jobFormRoutes } from './forms/job-form.ts';
 import { jdRoutes } from './jd/routes.ts';
+import { interviewRoutes } from './interviews/routes.ts';
 import { savedRoutes } from './jd/saved.ts';
 import { criteriaRoutes } from './matching/criteria.ts';
 import { profileRoutes } from './profile/routes.ts';
@@ -159,6 +160,7 @@ export function buildApp({
     app.register(fillRoutes, { prefix: '/api', pool });
     app.register(runnerApiRoutes, { prefix: '/api', pool });
     app.register(applicationRoutes, { prefix: '/api', pool });
+    app.register(interviewRoutes, { prefix: '/api', pool, fetch, deepseekApiKey });
     app.register(exportRoutes, { prefix: '/api', pool });
   }
 

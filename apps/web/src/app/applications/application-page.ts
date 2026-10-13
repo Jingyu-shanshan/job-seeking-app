@@ -51,6 +51,9 @@ const verdictLabels: Record<FrozenMatch['verdict'], string> = {
       @if (a.note) {
         <p class="note">{{ a.note }}</p>
       }
+      @if (a.status === 'submitted') {
+        <p><a [routerLink]="['/applications', a.id, 'interview']">Prepare for an interview</a></p>
+      }
 
       <section aria-labelledby="files-heading">
         <h2 id="files-heading">Files that went out</h2>
