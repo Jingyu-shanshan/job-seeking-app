@@ -189,11 +189,13 @@ describe('the local runner', needsDatabase, () => {
     const [listed] = await ok<RunnerToken[]>({ method: 'GET', url: '/api/runner-tokens' });
     assert.notEqual(listed!.lastUsedAt, null);
 
+    const wrongToken = created.token.slice(0, -1) + (created.token.endsWith('A') ? 'B' : 'A');
+    assert.notEqual(wrongToken, created.token);
     for (const authorization of [
       undefined,
       'Bearer jsa_runner_short',
       `Basic ${created.token}`,
-      `Bearer ${created.token.slice(0, -1)}A`,
+      `Bearer ${wrongToken}`,
     ]) {
       const res = await app.inject({
         method: 'POST',
