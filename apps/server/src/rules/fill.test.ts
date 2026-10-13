@@ -182,6 +182,24 @@ describe('what the form holds', () => {
       ['empty', 'as_filled', 'changed', 'empty'],
     );
   });
+
+  test('phone formatting keeps the number; changed digits or country prefixes still pause', () => {
+    const phone = field({ key: 'phone', label: 'Phone', answer: ['+358401234567'] });
+    for (const value of ['+358 40 1234567', '+358 (40) 123-4567']) {
+      const [preview] = previewFields([phone], [onPage({ key: 'phone', value: [value] })]);
+      assert.equal(preview!.state, 'as_filled');
+      assert.deepEqual(preview!.value, [value]);
+    }
+    for (const value of ['+358401234568', '+1401234567', '358401234567', '']) {
+      const [preview] = previewFields([phone], [onPage({ key: 'phone', value: [value] })]);
+      assert.equal(preview!.state, value ? 'changed' : 'empty', value);
+    }
+    const [text] = previewFields(
+      [field({ key: 'question_1', label: 'Answer', answer: ['1234567'] })],
+      [onPage({ key: 'question_1', value: ['123-4567'] })],
+    );
+    assert.equal(text!.state, 'changed');
+  });
 });
 
 describe('where a look at the form leaves the fill', () => {

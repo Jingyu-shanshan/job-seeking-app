@@ -4,7 +4,7 @@ import { type RawField, findBlocker, readGreenhouseForm } from './page-readers.t
 
 // Greenhouse's hosted application form (T17), the first form the runner fills. The app's keys for
 // its questions are Greenhouse's field names (T16), which are the page's ids, except for the
-// location search and the demographic questions. The runner types, picks options, ticks boxes and
+// location search, demographic questions and suffixed consent checkboxes. The runner types, picks options, ticks boxes and
 // attaches files; it never presses Enter or clicks Submit while filling, so the form is not sent.
 // Only submit.ts presses Submit, once, for a form the user approved (T18).
 
@@ -25,8 +25,13 @@ export function pageId(key: string): string {
 }
 
 /** The app's key for a field of the page. */
-export function keyOf(field: Pick<RawField, 'id' | 'demographic'>): string {
+export function keyOf(field: Pick<RawField, 'id' | 'demographic' | 'kind'>): string {
   if (field.id === 'candidate-location') return 'location';
+  // shortcut: only the verified _1 consent suffix is mapped; extend after checking another form.
+  const consent = /^(gdpr_(?:processing_|retention_|demographic_data_)?consent_given)_1$/.exec(
+    field.id,
+  );
+  if (field.kind === 'checkbox' && consent) return consent[1]!;
   return field.demographic && /^\d+$/.test(field.id) ? `demographic_${field.id}` : field.id;
 }
 
@@ -107,6 +112,18 @@ async function tick(page: Page, box: Locator) {
  */
 async function fillField(page: Page, field: FillField, file: Buffer | undefined) {
   const id = pageId(field.key);
+  if (field.kind === 'consent') {
+    const boxes = page
+      .locator('form#application-form')
+      .locator(
+        `input[type="checkbox"][id=${quoted(id)}], input[type="checkbox"][id=${quoted(`${id}_1`)}]`,
+      );
+    const count = await boxes.count();
+    if (!count) return;
+    if (count !== 1) throw new Error('The page shows more than one checkbox for this consent.');
+    await tick(page, boxes);
+    return;
+  }
   const control = byId(page, id).first();
   if (!(await control.count())) return;
   const how = await control.evaluate((el) => ({

@@ -61,7 +61,9 @@ const expected = (field: FillField) => (field.kind === 'consent' ? ['checked'] :
 function stateOf(field: FillField | undefined, value: readonly string[]): PreviewFieldState {
   const empty = value.every((v) => tidy(v) === '');
   if (field?.answer.length) {
-    if (sameValues(value, expected(field))) return 'as_filled';
+    // Greenhouse formats phone numbers after typing; every digit and the country prefix must stay.
+    const compare = field.key === 'phone' ? (v: string) => v.replace(/[\s().-]/g, '') : tidy;
+    if (sameValues(value.map(compare), expected(field).map(compare))) return 'as_filled';
     return empty ? 'empty' : 'changed';
   }
   return empty ? 'left_empty' : 'from_window';

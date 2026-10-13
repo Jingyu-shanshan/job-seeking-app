@@ -44,6 +44,21 @@ test('a fact with contact details never goes to the model', () => {
   assert.equal(mayUse([version({ body: 'Reach me at me@example.com.' })], 'materials'), true);
 });
 
+test('work permits, visas, citizenship and salary never go to the model, even when allowed', () => {
+  for (const body of [
+    'Holds a residence permit for Finland.',
+    'Needs no visa sponsorship.',
+    'Finnish citizenship.',
+    'Has work authorization in Finland.',
+    'Has the right to work in Finland.',
+    'Expects a salary of 5000 euros.',
+  ]) {
+    assert.equal(mayUse([version({ body })], 'model'), false, body);
+    assert.deepEqual(sensitiveData(body), ['work permit, visa, citizenship or salary information']);
+  }
+  assert.equal(mayUse([version({ body: 'Built a payroll service in Java.' })], 'model'), true);
+});
+
 test('finds email addresses and phone numbers, not years or amounts', () => {
   assert.deepEqual(sensitiveData('Mail: maija.meikäläinen@example.fi'), ['an email address']);
   for (const text of ['+358 40 123 4567', 'Call 040-123 4567', '(555) 123-4567 ext']) {

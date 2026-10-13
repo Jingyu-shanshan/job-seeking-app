@@ -162,6 +162,18 @@ describe('/api/facts', needsDatabase, () => {
     assert.deepEqual([materials.usableInMaterials, materials.sendableToModel], [true, false]);
   });
 
+  test('work permit and salary facts cannot be enabled for the model', async () => {
+    for (const body of [
+      'Holds a residence permit for Finland.',
+      'Expects a salary of 5000 euros.',
+    ]) {
+      const fact = await add('other', body);
+      const res = await patch(fact.current.id, { status: 'confirmed', maySendToModel: true });
+      assert.equal(res.statusCode, 400);
+      assert.match(res.json().message, /never goes to the model provider/);
+    }
+  });
+
   test('imports Markdown as proposed facts, once', async () => {
     const markdown =
       '## Work experience\n- Acme Oy, backend developer, 2021–2024\n\n## Skills\n- PostgreSQL\n- TypeScript\n';
