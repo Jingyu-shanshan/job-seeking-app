@@ -91,6 +91,69 @@ describe('authentication', needsDatabase, () => {
     assert.equal(unknown.statusCode, 404);
   });
 
+  test('https uses a secure session, the Railway client IP and only its origin for writes', async () => {
+    const origin = 'https://jobs.example.com';
+    const productionApp = buildApp({
+      webRoot: join(tmpdir(), 'jsa-web-does-not-exist'),
+      databaseUrl: db.url,
+      authSecret: secret,
+      appUrl: origin,
+      trustedOrigins: [origin],
+    });
+    productionApp.post('/api/probe', async () => ({ ok: true }));
+    try {
+      const res = await productionApp.inject({
+        method: 'POST',
+        url: '/api/auth/sign-in/email',
+        headers: {
+          origin,
+          'x-real-ip': '198.51.100.25',
+          'x-forwarded-for': '203.0.113.99',
+        },
+        payload: { email: account.email, password: account.password },
+      });
+      assert.equal(res.statusCode, 200);
+      const setCookie = [res.headers['set-cookie'] ?? []]
+        .flat()
+        .find((cookie) => cookie.startsWith('__Secure-better-auth.session_token='));
+      assert.ok(setCookie, 'no secure session cookie');
+      assert.match(setCookie, /; Secure(?:;|$)/i);
+      assert.match(setCookie, /; HttpOnly(?:;|$)/i);
+      assert.match(setCookie, /; SameSite=Lax(?:;|$)/i);
+      const cookie = setCookie.split(';', 1)[0] as string;
+
+      const session = await productionApp.inject({
+        method: 'GET',
+        url: '/api/auth/get-session',
+        headers: { cookie },
+      });
+      assert.equal(session.statusCode, 200);
+      assert.equal(session.json().session.ipAddress, '198.51.100.25');
+      const write = await productionApp.inject({
+        method: 'POST',
+        url: '/api/probe',
+        headers: { cookie, origin },
+        payload: {},
+      });
+      assert.equal(write.statusCode, 200);
+      for (const headers of [
+        { cookie, origin: 'https://evil.example' },
+        { cookie, origin: 'http://localhost:4200' },
+        { cookie },
+      ]) {
+        const refused = await productionApp.inject({
+          method: 'POST',
+          url: '/api/probe',
+          headers,
+          payload: {},
+        });
+        assert.equal(refused.statusCode, 403);
+      }
+    } finally {
+      await productionApp.close();
+    }
+  });
+
   test('without a session the API refuses reads and writes', async () => {
     assert.equal((await app.inject({ method: 'GET', url: '/api/probe' })).statusCode, 401);
     const write = await app.inject({

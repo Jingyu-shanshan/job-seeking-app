@@ -16,6 +16,7 @@ export function migrate(databaseUrl: string, log: (message: string) => void = co
     direction: 'up',
     migrationsTable: 'pgmigrations',
     checkOrder: true,
+    singleTransaction: true,
     log,
   });
 }

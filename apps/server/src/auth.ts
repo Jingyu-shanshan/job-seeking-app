@@ -25,6 +25,8 @@ export function createAuth(
     secret,
     baseURL: appUrl,
     trustedOrigins,
+    // Railway supplies the client IP in X-Real-IP.
+    advanced: { ipAddress: { ipAddressHeaders: ['x-real-ip'] } },
     emailAndPassword: {
       enabled: true,
       disableSignUp: !allowSignUp,
