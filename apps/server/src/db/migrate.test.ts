@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
+import { Pool } from 'pg';
 import { createTestDatabase, needsDatabase, type TestDatabase } from '../testing/database.ts';
 import { migrate, migrationsDir } from './migrate.ts';
 
@@ -29,5 +30,28 @@ describe('migrations', needsDatabase, () => {
     );
 
     assert.deepEqual(await migrate(db.url, quiet), []);
+  });
+
+  test('a later migration failure rolls back earlier files and keeps existing data', async () => {
+    const failedDb = await createTestDatabase({ migrated: false });
+    const pool = new Pool({ connectionString: failedDb.url });
+    try {
+      // The auth migration fails after the initial schema has run.
+      await pool.query('create table "user" (id text primary key)');
+      await pool.query('insert into "user" values ($1)', ['existing-test-data']);
+
+      await assert.rejects(migrate(failedDb.url, quiet), /relation "user" already exists/);
+      assert.deepEqual((await pool.query('select id from "user"')).rows, [
+        { id: 'existing-test-data' },
+      ]);
+      assert.equal(
+        (await pool.query("select to_regclass('public.fact') as fact")).rows[0].fact,
+        null,
+      );
+      assert.equal((await pool.query('select name from pgmigrations')).rowCount, 0);
+    } finally {
+      await pool.end();
+      await failedDb.drop();
+    }
   });
 });
