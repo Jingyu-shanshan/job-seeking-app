@@ -21,6 +21,10 @@ const areaLabels: Record<SearchScope['area'], string> = {
   template: `
     <h1>Jobs</h1>
     <p>
+      <a routerLink="/runs">Runs</a> saves presets and prepares jobs in the background with a
+      budget.
+    </p>
+    <p>
       Open jobs on the job boards you use, and jobs you pasted, saved or imported from alert emails,
       sorted by when they were posted and grouped by your hard
       <a routerLink="/criteria">criteria</a>. Choose the boards on the

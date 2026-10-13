@@ -1,6 +1,7 @@
+import { withModelLock } from '../model/lock.ts';
 import type { DraftKind } from '@jsa/shared';
 import type { FastifyBaseLogger } from 'fastify';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { httpError } from '../http-error.ts';
 import { recordFailedCall } from '../jd/summarise.ts';
 import { loadFactState } from '../matching/check.ts';
@@ -116,14 +117,20 @@ export interface WriteOptions {
 }
 
 /** Writes a draft of `kind` for a job text and returns its id. */
-export async function writeDraft({
+export function writeDraft(options: WriteOptions): Promise<string> {
+  return withModelLock(options.pool, options.snapshotId + '/' + options.kind, (client) =>
+    writeDraftUnlocked({ ...options, pool: client }),
+  );
+}
+
+async function writeDraftUnlocked({
   pool,
   fetch,
   apiKey,
   log,
   snapshotId,
   kind,
-}: WriteOptions): Promise<string> {
+}: Omit<WriteOptions, 'pool'> & { pool: PoolClient }): Promise<string> {
   const { rows } = await pool.query<{ body: string; title: string; company: string | null }>(
     'select body, title, company from job_snapshot where id = $1',
     [snapshotId],

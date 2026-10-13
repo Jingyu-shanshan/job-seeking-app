@@ -310,12 +310,13 @@ export const runnerApiRoutes: FastifyPluginAsyncTypebox<{ pool: Pool }> = async 
           if (rowCount) return reply.send(await stateOf(request, task.id));
         } catch (err) {
           // The job has an application that went in or may have (application_job_open).
-          if ((err as { code?: string }).code !== '23505') throw err;
+          if (!['23505', 'P0001'].includes((err as { code?: string }).code ?? '')) throw err;
         }
       }
       // Not this time: the fill goes back to the user, with the look that stopped it.
       const why =
-        problem ?? 'The approval could not be used (the fill or the 24-hour count changed).';
+        problem ??
+        'The approval could not be used (the fill, run budget or 24-hour count changed).';
       const { rowCount: voided } = await pool.query(
         `with moved as (
            update fill_task set status = $3, message = $4, updated_at = now()

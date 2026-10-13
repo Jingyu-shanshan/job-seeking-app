@@ -14,7 +14,7 @@ import {
   type FactStatus,
   type FactVersion,
 } from '@jsa/shared';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import Type from 'typebox';
 import { httpError } from '../http-error.ts';
 import { currentVersion, mayUse, sensitiveData, statusChangeAllowed } from '../rules/facts.ts';
@@ -45,7 +45,7 @@ interface VersionRow {
 const sameText = (a: string, b: string) =>
   a.replace(/\s+/g, ' ').trim() === b.replace(/\s+/g, ' ').trim();
 
-export async function loadFacts(pool: Pool, factId?: string): Promise<Fact[]> {
+export async function loadFacts(pool: Pool | PoolClient, factId?: string): Promise<Fact[]> {
   const { rows } = await pool.query<VersionRow>(
     `select f.id as fact_id, f.kind, f.created_at as fact_created_at, v.id, v.version, v.body,
        v.source, v.status, v.may_send_to_model, v.may_use_in_materials, v.created_at

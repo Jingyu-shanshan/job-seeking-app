@@ -1,6 +1,7 @@
+import { withModelLock } from '../model/lock.ts';
 import type { RequirementKind } from '@jsa/shared';
 import type { FastifyBaseLogger } from 'fastify';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { httpError } from '../http-error.ts';
 import { recordFailedCall } from '../jd/summarise.ts';
 import { ModelError, chatJson, deepseek, type CallUsage } from '../model/deepseek.ts';
@@ -51,13 +52,19 @@ export interface MatchOptions {
   snapshotId: string;
 }
 
-export async function matchSnapshot({
+export function matchSnapshot(options: MatchOptions): Promise<void> {
+  return withModelLock(options.pool, options.snapshotId + '/match', (client) =>
+    matchSnapshotUnlocked({ ...options, pool: client }),
+  );
+}
+
+async function matchSnapshotUnlocked({
   pool,
   fetch,
   apiKey,
   log,
   snapshotId,
-}: MatchOptions): Promise<void> {
+}: Omit<MatchOptions, 'pool'> & { pool: PoolClient }): Promise<void> {
   const exists = await pool.query('select 1 from job_snapshot where id = $1', [snapshotId]);
   if (!exists.rowCount) throw httpError(404, 'There is no such job text.');
 

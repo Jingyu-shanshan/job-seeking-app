@@ -306,7 +306,7 @@ async function loadSnapshot(pool: Pool, row: SnapshotRow, facts: FactState): Pro
   };
 }
 
-async function saveSnapshot(pool: Pool, jobId: string, catalogId: string, job: JobText) {
+export async function saveSnapshot(pool: Pool, jobId: string, catalogId: string, job: JobText) {
   await pool.query(
     `insert into job_snapshot (job_id, body, catalog_id, title, company, location, source_url)
      values ($1, $2, $3, $4, $5, $6, $7)
@@ -331,7 +331,7 @@ async function detailAfterChange(pool: Pool, jobId: string): Promise<JobDetail> 
   return detail;
 }
 
-async function readFromSource(
+export async function readFromSource(
   postings: PostingRow[],
   {
     fetch,

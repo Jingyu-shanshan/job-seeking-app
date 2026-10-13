@@ -6,7 +6,7 @@ export const deepseek = {
   url: 'https://api.deepseek.com/chat/completions',
   model: 'deepseek-flash',
   pricePerMillion: { cachedInput: 0.006, input: 0.3, output: 1.2 },
-  pricesChecked: { on: '2026-10-02', url: 'https://api-docs.deepseek.com/quick_start/pricing/' },
+  pricesChecked: { on: '2026-10-13', url: 'https://api-docs.deepseek.com/quick_start/pricing/' },
 } as const;
 
 export interface CallUsage {

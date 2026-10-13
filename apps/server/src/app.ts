@@ -26,6 +26,7 @@ import { profileRoutes } from './profile/routes.ts';
 import { runnerApiRoutes } from './runner/api.ts';
 import { fillRoutes } from './runner/fills.ts';
 import { runnerTokenId, runnerTokenRoutes } from './runner/tokens.ts';
+import { runRoutes } from './runs/routes.ts';
 import { sourceRoutes } from './sources/routes.ts';
 
 export type AppOptions = Pick<Config, 'webRoot' | 'appUrl' | 'trustedOrigins'> &
@@ -144,6 +145,7 @@ export function buildApp({
   // Data routes. Without a database nobody can sign in, so the hook above refuses them anyway.
   if (pool) {
     const limiter = new RateLimiter();
+    app.register(runRoutes, { prefix: '/api', pool, fetch, limiter, deepseekApiKey });
     app.register(sourceRoutes, { prefix: '/api', pool });
     app.register(factRoutes, { prefix: '/api', pool });
     app.register(criteriaRoutes, { prefix: '/api', pool });

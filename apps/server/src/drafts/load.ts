@@ -7,7 +7,7 @@ import type {
   DraftSection,
   DraftSummary,
 } from '@jsa/shared';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type { FactState } from '../matching/check.ts';
 import { draftOutdated } from '../rules/draft.ts';
 import { isVerbatim, statementProblems, vocabularyOf } from '../rules/statement.ts';
@@ -50,7 +50,7 @@ export interface StoredDraft {
   statements: StoredStatement[];
 }
 
-async function loadStored(pool: Pool, ids: readonly string[]): Promise<StoredDraft[]> {
+async function loadStored(pool: Pool | PoolClient, ids: readonly string[]): Promise<StoredDraft[]> {
   if (ids.length === 0) return [];
   const { rows } = await pool.query<{
     id: string;
@@ -151,7 +151,10 @@ async function loadStored(pool: Pool, ids: readonly string[]): Promise<StoredDra
 }
 
 /** The latest draft of each kind for a job text, resume first. */
-export async function latestDrafts(pool: Pool, snapshotId: string): Promise<StoredDraft[]> {
+export async function latestDrafts(
+  pool: Pool | PoolClient,
+  snapshotId: string,
+): Promise<StoredDraft[]> {
   const { rows } = await pool.query<{ id: string }>(
     `select distinct on (kind) id from artifact where job_snapshot_id = $1
      order by kind, created_at desc, id`,
@@ -164,7 +167,7 @@ export async function latestDrafts(pool: Pool, snapshotId: string): Promise<Stor
 }
 
 export async function loadDraft(
-  pool: Pool,
+  pool: Pool | PoolClient,
   id: string,
   facts: FactState,
 ): Promise<Draft | undefined> {
@@ -173,7 +176,7 @@ export async function loadDraft(
 
 /** A draft as stored, and checked against the facts as they are now. */
 export async function loadDraftState(
-  pool: Pool,
+  pool: Pool | PoolClient,
   id: string,
   facts: FactState,
 ): Promise<{ stored: StoredDraft; draft: Draft } | undefined> {

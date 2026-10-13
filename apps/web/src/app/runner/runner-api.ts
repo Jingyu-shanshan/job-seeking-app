@@ -17,8 +17,10 @@ export class RunnerApi {
   }
 
   /** Starts a fill of the job's form, which the runner takes when it asks for work next. */
-  startFill(jobId: string): Promise<JobFillState> {
-    return firstValueFrom(this.http.post<JobFillState>(`/api/jobs/${jobId}/fill`, {}));
+  startFill(jobId: string, runId?: string): Promise<JobFillState> {
+    return firstValueFrom(
+      this.http.post<JobFillState>(`/api/jobs/${jobId}/fill`, runId ? { runId } : {}),
+    );
   }
 
   /** After the user acted in the window: the runner looks at the form again. */
