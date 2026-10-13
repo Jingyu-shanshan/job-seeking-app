@@ -38,6 +38,11 @@ export const routes: Routes = [
         title: 'Applications',
       },
       {
+        path: 'applications/:id/interview',
+        loadComponent: () => import('./interviews/interview-page').then((m) => m.InterviewPage),
+        title: 'Interview preparation',
+      },
+      {
         path: 'applications/:id',
         loadComponent: () =>
           import('./applications/application-page').then((m) => m.ApplicationPage),

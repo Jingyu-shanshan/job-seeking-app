@@ -134,11 +134,29 @@ insert into application (job_id, job_snapshot_id, submit_approval_id, status, su
   values (:'job_id', :'snapshot_id', :'approval_id', 'submitted', now(), 'runner', :'match_id')
   returning id as application_id \gset
 insert into application_file (application_id, position, label, file_name, document_pdf_id)
-  values (:'application_id', 0, 'Resume/CV', 'Sample Person - Resume.pdf', :'pdf_id');
+  values (:'application_id', 0, 'Resume/CV', 'Sample Person - Resume.pdf', :'pdf_id') returning id as sent_resume_id \gset
 insert into application_file (application_id, position, label, file_name, body)
   values (:'application_id', 1, '', 'Sent letter.pdf', convert_to('%PDF-1.4 sent', 'UTF8'));
 insert into application_artifact values (:'application_id', :'artifact_id');
 insert into application_fact_version values (:'application_id', :'fact_version_id');
+insert into model_call (purpose, job_snapshot_id, model, started_at, duration_ms,
+    input_tokens, cached_input_tokens, output_tokens, cost_usd)
+  values ('interview', :'snapshot_id', 'sample-model', now(), 500, 800, 0, 200, 0.00048)
+  returning id as interview_call_id \gset
+insert into interview_preparation (application_id, model_call_id, sources, answer)
+  values (:'application_id', :'interview_call_id',
+    jsonb_build_array(
+      jsonb_build_object('ref', 'J1', 'kind', 'job', 'text', 'You keep invoices correct.',
+        'fileId', null, 'sha256', null, 'factVersionIds', '[]'::jsonb),
+      jsonb_build_object('ref', 'M1', 'kind', 'material', 'text', 'Maintained the invoice export service.',
+        'fileId', :'sent_resume_id', 'sha256', (select body_sha256 from document_pdf where id = :'pdf_id'),
+        'factVersionIds', jsonb_build_array(:'fact_version_id'))),
+    '{"technical":[{"text":"How do you keep invoices correct?","sources":["J1"]}],
+      "projects":[{"text":"What tradeoffs did you make?","sources":["M1"]}],
+      "stories":[{"title":"Invoice export","situation":null,"task":null,"action":null,"result":null,"missing":["What was your role?"],"sources":["M1"]}],
+      "interviewer":[{"text":"What are the team priorities?","sources":["J1"]}]}')
+  returning id as preparation_id \gset
+insert into interview_notes values (:'preparation_id', 'Private practice notes, still to confirm.');
 insert into submit_receipt (application_id, confirmed, page_url, page_text, note, screenshot)
   values (:'application_id', true,
     'https://job-boards.greenhouse.io/embed/job_app/confirmation?for=drill&token=1',
