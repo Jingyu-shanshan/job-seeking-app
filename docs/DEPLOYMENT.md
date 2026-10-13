@@ -1,6 +1,6 @@
 # Railway + Neon 部署计划
 
-更新：2026-10-13。**T12 发布进行中：T03a 演练已通过，独立生产环境已创建，现有数据库已迁入；生产应用与登录验收尚未完成。** 用户已选择让 Railway 连接现有 GitHub 公开仓库的 `main` 分支自动发布，并迁移现有本地资料和投递记录。T03a 的不含个人数据预部署演练仍须先完成，再迁入真实数据并完成正式发布验收。`npm ci`、`npm run build`、`npm start`、`npm run db:migrate` 和 `npm run auth:create-account` 已实现。
+更新：2026-10-13。**生产服务已运行，数据库迁移、原账户登录/退出、历史投递/PDF 下载、导出、时间点隔离恢复、重部署、兼容构建回滚及恢复、本机执行器连接与令牌吊销均通过。T12 尚待 GitHub `main` 自动发布连接验收。** 用户已批准 Railway App 只新增本仓库访问，`main` 触发器已建立并启用等待 CI；实际推送自动发布正在验收。用户已选择自动发布并迁移现有本地资料和投递记录。T03a 的不含个人数据独立欧盟演练已先完成，演练服务现已停止。`npm ci`、`npm run build`、`npm start`、`npm run db:migrate` 和 `npm run auth:create-account` 已实现。
 
 ## 拓扑
 
@@ -69,15 +69,15 @@ npm run db:restore-drill
 
 3. **目标库不先运行迁移或 seed。** dump 已含 schema 和迁移状态，先完整恢复；单事务恢复失败时停止，核对错误后再对确认为空的目标重试，不使用 `--clean` 覆盖已有库。所有表在源库与目标库用相同时区、稳定排序计算行数和内容摘要，包括认证表、执行器表与 `pgmigrations`；有序列时也核对其状态。仅在私有目录保存摘要，不打印真实行。对 `document_pdf`、`application_file` 以及填写/提交截图逐个重新计算原始 bytes 的 SHA-256，与源库对应 bytes 的哈希核对；PDF 和申请文件还须与存储哈希一致，引用 PDF 的申请文件按其对应 PDF 核对。申请状态、批准、事实版本引用和冻结来源均须一致。
 4. 核对完成后用发布版本执行 `npm run db:migrate`，已有迁移应不再执行；若有待执行项，先确认恢复点并记录变更，再迁移。生产第一次启动前完成上述比较，避免登录或执行器活动改变会话与联系时间，使摘要失去同一快照的意义。恢复已有认证账户时使用原账户登录，不再运行账户创建命令。
-5. 再从 Neon 数据库做完整私有 dump，在生产项目内另建独立空数据库，使用其单独 URL 按相同命令做隔离恢复，核对逐表摘要、迁移状态、申请状态和原始附件哈希。隔离服务验证已有账户登录、历史申请读取、PDF 下载和导出；不可变规则的验证只在隔离库进行，不在生产库试写。恢复验证不调用模型、不提交申请，不把真实资料复制到编造数据的演练项目。验证后清理隔离库和不再需要的临时副本，保留必要的私有迁移记录；生产保持原库。
+5. 隔离恢复可以从 Neon root 分支的记录时间点建立新分支，也可以将生产库的完整私有 dump 恢复到另一个新空库，核对逐表摘要、迁移状态、申请状态和原始附件哈希。本次使用时间点隔离恢复，42 张表及 PDF/截图哈希全部一致；临时验证分支设置 24 小时到期，不保留为日常备份。隔离服务可验证已有账户登录、历史申请读取、PDF 下载和导出；不可变规则的试写只在隔离库进行，不在生产库试写。恢复验证不调用模型、不提交申请，不把真实资料复制到编造数据的演练项目。验证后清理不再需要的临时副本，保留必要的私有迁移记录；生产保持原库。
 6. 完成验收才切换桌面应用和本地执行器的 `JSA_APP_URL` 为生产 HTTPS 来源，核对生产签发的令牌及吊销行为；本地旧库保持只读，避免出现两个继续写入的主库。迁移或验收失败时维持原切换点，不让两个环境重复执行投递。完整恢复始终先到新空库，确认登录和历史记录可用后再切换连接。
 
-PostgreSQL 18 的本机工具连接 Neon 时同样保持 `sslmode=verify-full`。本机没有 `~/.postgresql/root.crt` 时，使用 `PGSSLROOTCERT=system` 指定系统可信根证书；不要为恢复操作关闭证书校验。[PostgreSQL TLS 与根证书](https://www.postgresql.org/docs/18/libpq-ssl.html)
+PostgreSQL 18 的本机工具连接 Neon 时同样保持 `sslmode=verify-full`。本机没有 `~/.postgresql/root.crt` 时，使用 `PGSSLROOTCERT=system` 指定系统可信根证书；不要为恢复操作关闭证书校验。[PostgreSQL sslrootcert 参数](https://www.postgresql.org/docs/18/libpq-connect.html#LIBPQ-CONNECT-SSLROOTCERT)、[PGSSLROOTCERT 环境变量](https://www.postgresql.org/docs/18/libpq-envars.html)
 
 ## 发布顺序与验收（T12）
 
 1. 创建上述独立演练环境，在编造数据上验证业务与认证表迁移、首次登录、健康检查和隔离恢复。公开注册始终关闭；只有空库需要用 `railway run npm run auth:create-account -- <email>` 创建演练账户，密码在本机终端输入。Better Auth 生产默认限流，计数在单进程内存中；Railway 部署使用 `advanced.ipAddress.ipAddressHeaders: ['x-real-ip']`，不信任客户可传的 XFF。官方列出的客户端 IP 头是 `X-Real-IP`，演练还须发送伪造的 X-Real-IP/XFF，确认会话记录的是代理确定的实际 IP。现有固定 `BETTER_AUTH_URL` 足够，不启用泛用 `trustProxy: true` 或动态来源推断。[Railway 请求头](https://docs.railway.com/networking/public-networking/specs-and-limits)、[Better Auth IP 设置](https://better-auth.com/docs/reference/security#ip-address-headers)
-2. Railway 连接现有 GitHub 仓库的 `main` 分支自动发布，先启用 Wait for CI，CI 通过才发布；T12 代码通过审核并合入 `main` 后再开启生产首次部署，避免空库在恢复前自动运行迁移。以仓库根目录为构建上下文，Builder 用 Railpack，Build Command 为 `npm run build`，Start Command 为 `npm start`。`.nvmrc` 固定 Node 24；`RAILPACK_NODE_NPM_INSTALL=npm ci --include=dev` 明确保留构建依赖。Railpack 自身已有 `NPM_CONFIG_PRODUCTION=false`，不能仅凭 `NODE_ENV=production` 断言它会省略 devDependencies。桌面应用和执行器只在用户电脑运行，不构建或部署，不下载 Electron/Chromium。[GitHub 自动发布](https://docs.railway.com/deployments/github-autodeploys)、[Railpack Node](https://railpack.com/languages/node/)
+2. Railway 连接现有 GitHub 仓库的 `main` 分支自动发布；仓库 source 不等于已建立发布触发器，须核对 `deploymentTriggers` 的仓库、分支和 `checkSuites=true`，再用一次实际 push 验证。先启用 Wait for CI，CI 通过才发布；T12 代码通过审核并合入 `main` 后再开启生产首次部署，避免空库在恢复前自动运行迁移。以仓库根目录为构建上下文，Builder 用 Railpack，Build Command 为 `npm run build`，Start Command 为 `npm start`。`.nvmrc` 固定 Node 24；`RAILPACK_NODE_NPM_INSTALL=npm ci --include=dev` 明确保留构建依赖。Railpack 自身已有 `NPM_CONFIG_PRODUCTION=false`，不能仅凭 `NODE_ENV=production` 断言它会省略 devDependencies。桌面应用和执行器只在用户电脑运行，不构建或部署，不下载 Electron/Chromium。[GitHub 自动发布](https://docs.railway.com/deployments/github-autodeploys)、[Railpack Node](https://railpack.com/languages/node/)
 3. 创建生产环境并按上节迁入现有本地数据库；配置服务端变量并确认恢复点可用。Pre-Deploy Command 为 `npm run db:migrate`，**Pre-deploy Timeout 设为 300 秒**；默认没有超时，失败不重试且停止发布。迁移在应用镜像的独立容器中执行，迁移依赖必须存在于该镜像；不依赖其文件写入持久化。业务与认证迁移在单事务内执行，失败不留半套 schema。生产不运行 reset、`db push`、开发迁移或示例 seed。[Pre-deploy](https://docs.railway.com/deployments/pre-deploy-command)
 4. 服务提供 `/health`（进程）与 `/health/ready`（5 秒内完成数据库查询，失败返回 503）；`pg.Pool` 处理 idle 连接错误及 Neon 休眠唤醒后的重连。Railway Healthcheck Path 为 `/health/ready`，**Healthcheck Timeout 为 300 秒**，给数据库唤醒留余量。该检查只覆盖部署切流，日常可用性需另行监测。Railway HTTP 无数据传输 5 分钟关闭，持续传输最长 15 分钟，上传体须在 5 分钟内完成；应用自己的超时和文件上限仍适用。[健康检查](https://docs.railway.com/deployments/healthchecks)、[公共网络限制](https://docs.railway.com/networking/public-networking/specs-and-limits)
 5. 验收 HTTPS、登录/退出、未授权访问、资料和历史投递记录、实际 PDF 下载、导出、隔离恢复及重新部署后的数据完整性；检查最终前端 bundle 不含服务端密钥。模型调用和真实申请提交不属于部署烟测，仍需逐次明确批准。演练环境用编造任务验证执行器；生产只验证本地执行器能以令牌连接 API，以及吊销后被拒，不在生产创建示例任务或按真实申请的 Submit。
