@@ -173,6 +173,19 @@ export async function approvalFacts(
   };
 }
 
+/** A fill opened from a run keeps that run's budget even if a newer run is created. */
+export async function runSubmissionProblem(pool: Pool, taskId: string): Promise<string | null> {
+  const { rows } = await pool.query<{ status: string; submissions: number; limit: number }>(
+    `select r.status,r.submissions,
+    (r.config->>'submissionLimit')::int as limit from fill_task f join search_run r on r.id=f.run_id where f.id=$1`,
+    [taskId],
+  );
+  const run = rows[0];
+  return run && (!['running', 'ready'].includes(run.status) || run.submissions >= run.limit)
+    ? 'This run is stopped or has reached its submission limit.'
+    : null;
+}
+
 /** The PDFs the fill attaches, with the hashes an approval binds. */
 async function attachedFiles(pool: Pool, fields: readonly FillField[]): Promise<ApprovalFile[]> {
   const attached = fields.filter((f) => f.documentPdfId && f.answer.length);
@@ -203,7 +216,9 @@ export async function fillApproval(
     currentSnapshot(pool, task.job_id),
   ]);
   return {
-    problem: look ? approvalProblem(facts) : 'The runner has not read the form yet.',
+    problem:
+      (await runSubmissionProblem(pool, task.id)) ??
+      (look ? approvalProblem(facts) : 'The runner has not read the form yet.'),
     snapshot: snapshot ? { id: snapshot.id, capturedAt: snapshot.captured_at.toISOString() } : null,
     files,
     submittedLastDay: facts.submittedLastDay,

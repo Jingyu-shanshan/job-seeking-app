@@ -90,6 +90,7 @@ describe('App', () => {
     user.set({ email: 'owner@example.com' });
     fixture.detectChanges();
     expect(links()).toEqual([
+      '/runs',
       '/jobs',
       '/applications',
       '/facts',

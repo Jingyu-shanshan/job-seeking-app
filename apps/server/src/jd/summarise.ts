@@ -1,6 +1,7 @@
+import { withModelLock } from '../model/lock.ts';
 import type { SummaryFieldKey } from '@jsa/shared';
 import type { FastifyBaseLogger } from 'fastify';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { httpError } from '../http-error.ts';
 import { ModelError, chatJson, deepseek, type CallUsage } from '../model/deepseek.ts';
 import { checkSummaryAnswer, summaryFieldKeys } from '../rules/job-summary.ts';
@@ -61,13 +62,19 @@ export interface SummariseOptions {
   snapshotId: string;
 }
 
-export async function summariseSnapshot({
+export function summariseSnapshot(options: SummariseOptions): Promise<void> {
+  return withModelLock(options.pool, options.snapshotId + '/summary', (client) =>
+    summariseSnapshotUnlocked({ ...options, pool: client }),
+  );
+}
+
+async function summariseSnapshotUnlocked({
   pool,
   fetch,
   apiKey,
   log,
   snapshotId,
-}: SummariseOptions): Promise<void> {
+}: Omit<SummariseOptions, 'pool'> & { pool: PoolClient }): Promise<void> {
   const { rows } = await pool.query<{ body: string; summarised: boolean }>(
     `select s.body, exists (select 1 from job_summary where job_snapshot_id = s.id) as summarised
      from job_snapshot s where s.id = $1`,
@@ -145,7 +152,7 @@ export async function summariseSnapshot({
 
 /** Records a call that failed, with what it cost when the provider answered at all. */
 export async function recordFailedCall(
-  pool: Pool,
+  pool: Pool | PoolClient,
   {
     purpose,
     snapshotId,

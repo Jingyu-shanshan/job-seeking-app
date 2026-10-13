@@ -1,3 +1,5 @@
+import { ActivatedRoute } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { httpResource } from '@angular/common/http';
 import { DatePipe, SlicePipe } from '@angular/common';
 import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
@@ -63,6 +65,13 @@ const pollMs = 2000;
   selector: 'app-job-fill',
   imports: [DatePipe, RouterLink, SlicePipe],
   template: `
+    @if (runId()) {
+      <p>
+        This fill uses the submission budget of <a routerLink="/runs">the run you opened</a>.
+        Stopping that run withdraws unused approvals. Each submission still needs your approval.
+      </p>
+    }
+
     <h3>Fill it in with the runner</h3>
     <p class="hint">
       The <a routerLink="/runner">runner</a> on your computer opens this form in a Chrome window you
@@ -338,6 +347,11 @@ const pollMs = 2000;
   `,
 })
 export class JobFill {
+  private readonly route = inject(ActivatedRoute);
+  private readonly queryParams = toSignal(this.route.queryParamMap, {
+    initialValue: this.route.snapshot.queryParamMap,
+  });
+  protected readonly runId = computed(() => this.queryParams().get('run'));
   private readonly api = inject(RunnerApi);
 
   readonly jobId = input.required<string>();
@@ -417,7 +431,9 @@ export class JobFill {
   }
 
   protected start() {
-    return this.run(() => this.api.startFill(this.jobId()));
+    return this.run(() =>
+      this.api.startFill(this.jobId(), this.route.snapshot.queryParamMap.get('run') ?? undefined),
+    );
   }
 
   protected continueFill(taskId: string) {

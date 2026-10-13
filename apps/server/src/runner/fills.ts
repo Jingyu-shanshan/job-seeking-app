@@ -1,6 +1,7 @@
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import {
   ApproveFillRequestSchema,
+  StartFillRequestSchema,
   JobFillStateSchema,
   SettleApplicationRequestSchema,
   type FillField,
@@ -22,6 +23,7 @@ import {
   fillApproval,
   jobApplication,
   latestLook,
+  runSubmissionProblem,
 } from './approvals.ts';
 
 // Filling a job's form with the local runner (T17), as the user sees and steers it from the job
@@ -221,23 +223,47 @@ export const fillRoutes: FastifyPluginAsyncTypebox<{ pool: Pool }> = async (app,
   // The user starts a fill of this one job. The runner takes it when it asks for work next.
   app.post(
     '/jobs/:id/fill',
-    { schema: { params: IdParamsSchema, response: { 201: JobFillStateSchema } } },
+    {
+      preValidation: async (request) => {
+        request.body ??= {};
+      },
+      schema: {
+        body: StartFillRequestSchema,
+        params: IdParamsSchema,
+        response: { 201: JobFillStateSchema },
+      },
+    },
     async (request, reply) => {
       const jobId = request.params.id;
       await refuseUnknownJob(pool, jobId);
       const refusal = applied(await jobApplication(pool, jobId));
       if (refusal) throw httpError(409, refusal);
+      const runId = request.body?.runId ?? null;
+      if (runId) {
+        const linked = await pool.query(
+          `select 1 from run_job j join search_run r on r.id=j.run_id
+          where j.run_id=$1 and j.job_id=$2 and r.status in ('running','ready')
+          and r.submissions < (r.config->>'submissionLimit')::int`,
+          [runId, jobId],
+        );
+        if (!linked.rowCount)
+          throw httpError(
+            409,
+            'This job is outside this run or its submission budget is stopped or exhausted.',
+          );
+      }
       const fill = await newFill(pool, jobId);
       if ('reason' in fill) throw httpError(409, fill.reason);
       try {
         await pool.query(
-          `insert into fill_task (job_id, job_form_id, url, fields, message) values ($1, $2, $3, $4, $5)`,
+          `insert into fill_task (job_id, job_form_id, url, fields, message, run_id) values ($1, $2, $3, $4, $5, $6)`,
           [
             jobId,
             fill.formId,
             fill.url,
             JSON.stringify(fill.fields),
             'Waiting for the runner on your computer to take it.',
+            runId,
           ],
         );
       } catch (err) {
@@ -303,7 +329,7 @@ export const fillRoutes: FastifyPluginAsyncTypebox<{ pool: Pool }> = async (app,
         throw httpError(409, 'The runner read the form again since. Look at it as it is now.');
       }
       const facts = await approvalFacts(pool, task, look, await currentFields(pool, task.job_id));
-      const problem = approvalProblem(facts);
+      const problem = (await runSubmissionProblem(pool, task.id)) ?? approvalProblem(facts);
       if (problem) throw httpError(409, problem);
       const snapshot = await currentSnapshot(pool, task.job_id);
       // Only while the fill is filled and the look is still its latest.

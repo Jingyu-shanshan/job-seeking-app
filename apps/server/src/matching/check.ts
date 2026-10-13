@@ -7,7 +7,7 @@ import type {
   RequirementKind,
   SummaryFields,
 } from '@jsa/shared';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { loadFacts } from '../facts/routes.ts';
 import { checkJob } from '../rules/criteria.ts';
 import { mustHavesOutcome } from '../rules/match.ts';
@@ -29,7 +29,7 @@ export interface FactState {
   versions: Map<string, { factId: string; kind: FactKind; version: number; body: string }>;
 }
 
-export async function loadFactState(pool: Pool): Promise<FactState> {
+export async function loadFactState(pool: Pool | PoolClient): Promise<FactState> {
   const facts = await loadFacts(pool);
   const versions: FactState['versions'] = new Map();
   for (const fact of facts) {
@@ -68,7 +68,7 @@ export interface LatestMatch {
 
 /** The latest match of each snapshot that has one. */
 export async function latestMatches(
-  pool: Pool,
+  pool: Pool | PoolClient,
   snapshotIds: readonly string[],
 ): Promise<Map<string, LatestMatch>> {
   const matches = new Map<string, LatestMatch>();
@@ -138,7 +138,7 @@ interface CurrentText {
 }
 
 /** Each job's current text: the snapshot read last, its summary fields and its requirements. */
-async function currentTexts(pool: Pool, jobIds: readonly string[]) {
+async function currentTexts(pool: Pool | PoolClient, jobIds: readonly string[]) {
   const texts = new Map<string, CurrentText>();
   const { rows } = await pool.query<{ job_id: string; id: string; fields: SummaryFields | null }>(
     `select distinct on (s.job_id) s.job_id, s.id, j.fields
@@ -185,7 +185,7 @@ export interface JobCheck {
 
 /** Checks jobs, described as the job list describes them, against the user's criteria. */
 export async function checkJobs(
-  pool: Pool,
+  pool: Pool | PoolClient,
   jobs: readonly { id: string; title: string; location: string }[],
   given?: Criteria,
 ): Promise<Map<string, JobCheck>> {

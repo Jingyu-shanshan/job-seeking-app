@@ -146,7 +146,7 @@ export async function runDiscovery({
  * catalog entry, or a job that only an alert email or a desktop save lists, with the same company
  * and title (rules/same-job.ts) as this posting alone among those the source lists.
  */
-async function savePostings(
+export async function savePostings(
   pool: Pool,
   source: { id: string; param: string },
   catalogId: string,

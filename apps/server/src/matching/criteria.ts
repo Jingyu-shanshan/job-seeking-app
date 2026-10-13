@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import { CriteriaSchema, type Criteria } from '@jsa/shared';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { httpError } from '../http-error.ts';
 import { languageOf } from '../rules/criteria.ts';
 
@@ -26,7 +26,7 @@ interface CriteriaRow {
   must_have_if_unknown: Criteria['mustHaves']['ifUnknown'];
 }
 
-export async function loadCriteria(pool: Pool): Promise<Criteria> {
+export async function loadCriteria(pool: Pool | PoolClient): Promise<Criteria> {
   const { rows } = await pool.query<CriteriaRow>('select * from job_criteria');
   const row = rows[0];
   // The migrations insert the only row; nothing deletes it.

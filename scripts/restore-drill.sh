@@ -111,15 +111,27 @@ insert into job_form (job_id, catalog_id, questions)
   returning id as job_form_id \gset
 insert into job_form_answer (job_id, question_key, label, answer)
   values (:'job_id', 'question_1', 'What is your notice period?', '{Two months}');
+insert into run_preset(config) values
+  ('{"name":"Sample run","discoveryLimit":2,"materialLimit":2,"submissionLimit":1,"requestLimit":20,"timeLimitSeconds":600,"costLimitUsd":1,"intervalHours":0}')
+  returning id as preset_id \gset
+insert into search_run(preset_id,config,criteria,sources,status,requests,materials,cost_usd,elapsed_ms)
+  select id,config,
+    '{"location":{"strength":"hard","ifUnknown":"to_confirm","area":"helsinki","includeRemote":false},"title":{"strength":"off","words":[]},"avoidInTitle":{"strength":"off","words":[]},"languages":{"strength":"off","ifUnknown":"to_confirm","languages":[]},"employmentType":{"strength":"off","ifUnknown":"to_confirm","types":[]},"mustHaves":{"strength":"off","ifUnknown":"to_confirm"}}',
+    jsonb_build_array(jsonb_build_object('id',:'source_id','catalogId','greenhouse_board','param','drill','enabled',true)),
+    'ready',1,1,0.00048,500 from run_preset where id=:'preset_id'
+  returning id as run_id \gset
+insert into run_job values(:'run_id',:'job_id','Sample job',:'snapshot_id');
+insert into run_step values(:'run_id',:'job_id' || '/4-resume',true,true,'');
+insert into run_request(run_id,reserved_usd,cost_usd) values(:'run_id',0.01,0.00048);
 insert into runner_token (name, token_sha256, last_used_at)
   values ('Drill runner', sha256('drill'::bytea), now())
   returning id as runner_token_id \gset
-insert into fill_task (job_id, job_form_id, url, fields, status, message, runner_token_id, runner_seen_at)
+insert into fill_task (job_id, job_form_id, url, fields, status, message, runner_token_id, runner_seen_at, run_id)
   values (:'job_id', :'job_form_id', 'https://job-boards.greenhouse.io/embed/job_app?for=drill&token=1',
     '[{"key": "question_1", "label": "What is your notice period?", "kind": "text", "group": "questions",
       "required": true, "answer": ["Two months"], "source": "job", "documentPdfId": null}]',
     'submitted', 'Greenhouse showed its confirmation page: the application went in.',
-    :'runner_token_id', now())
+    :'runner_token_id', now(), :'run_id')
   returning id as fill_task_id \gset
 insert into fill_check (fill_task_id, filled_now, fields, screenshot)
   values (:'fill_task_id', true, '[{"key": "question_1", "label": "What is your notice period?",

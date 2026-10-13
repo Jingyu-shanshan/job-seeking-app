@@ -11,6 +11,7 @@ import { Session } from './auth/session';
       <a routerLink="/">Job Search Workbench</a>
       @if (session.user(); as user) {
         <nav aria-label="Main">
+          <a routerLink="/runs" routerLinkActive="active" ariaCurrentWhenActive="page">Runs</a>
           <a routerLink="/jobs" routerLinkActive="active" ariaCurrentWhenActive="page">Jobs</a>
           <a routerLink="/applications" routerLinkActive="active" ariaCurrentWhenActive="page">
             Applications
