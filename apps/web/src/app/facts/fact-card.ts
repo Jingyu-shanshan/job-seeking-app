@@ -13,14 +13,12 @@ const statusLabels: Record<Fact['current']['status'], string> = {
 @Component({
   selector: 'app-fact-card',
   imports: [DatePipe],
+  host: { '[class.withdrawn]': "fact().current.status === 'retired'" },
   template: `
     @let f = fact();
     <p class="status">
       <span class="tag" [class.todo]="f.current.status === 'proposed'">{{ status() }}</span>
-      Version {{ f.current.version }}
-      @if (f.current.source === 'markdown') {
-        · imported from Markdown
-      }
+      Version {{ f.current.version }} · Source: {{ sourceLabel(f.current.source) }}
     </p>
 
     @if (editing()) {
@@ -28,42 +26,58 @@ const statusLabels: Record<Fact['current']['status'], string> = {
         Text
         <textarea rows="4" [value]="draft()" (input)="draft.set(area.value)" #area></textarea>
       </label>
-      <p class="hint">Saving adds a new version that you confirm again. The old one is kept.</p>
+      <p class="hint">
+        Saving adds a new version to confirm with both permissions off. The old one is kept.
+      </p>
       <button type="button" [disabled]="busy()" (click)="saveEdit()">Save</button>
       <button type="button" [disabled]="busy()" (click)="editing.set(false)">Cancel</button>
     } @else {
       <p class="body">{{ f.current.body }}</p>
     }
 
-    <div class="flags">
-      <label>
-        <input
-          #model
-          type="checkbox"
-          [checked]="f.current.maySendToModel"
-          [disabled]="busy() || f.sensitive.length > 0"
-          (change)="update({ maySendToModel: model.checked }, model)"
-        />
-        May be sent to DeepSeek
-      </label>
-      <label>
-        <input
-          #materials
-          type="checkbox"
-          [checked]="f.current.mayUseInMaterials"
-          [disabled]="busy()"
-          (change)="update({ mayUseInMaterials: materials.checked }, materials)"
-        />
-        May appear in resumes and cover letters
-      </label>
-    </div>
+    @if (f.current.status === 'retired') {
+      <p class="hint">
+        Retained permissions — DeepSeek:
+        {{ f.current.maySendToModel ? 'allowed' : 'not allowed' }} · Materials:
+        {{ f.current.mayUseInMaterials ? 'allowed' : 'not allowed' }}. Confirming again keeps these
+        choices and re-enables the allowed uses.
+      </p>
+    } @else {
+      <p class="hint">
+        Usable in materials: {{ f.usableInMaterials ? 'yes' : 'no' }} · Allowed for DeepSeek:
+        {{ f.sendableToModel ? 'yes' : 'no' }}
+      </p>
+      <details>
+        <summary>Permissions</summary>
+        <p class="hint">
+          These are independent permissions, not records of past use. They take effect only while
+          this version is confirmed.
+        </p>
+        <label>
+          <input
+            #model
+            type="checkbox"
+            [checked]="f.current.maySendToModel"
+            [disabled]="busy() || f.sensitive.length > 0"
+            (change)="update({ maySendToModel: model.checked }, model)"
+          />
+          Allow sending to DeepSeek
+        </label>
+        <label>
+          <input
+            #materials
+            type="checkbox"
+            [checked]="f.current.mayUseInMaterials"
+            [disabled]="busy()"
+            (change)="update({ mayUseInMaterials: materials.checked }, materials)"
+          />
+          Allow use in materials
+        </label>
+      </details>
+    }
     @if (f.sensitive.length) {
       <p class="hint">It contains {{ f.sensitive.join(' and ') }}, so it never goes to DeepSeek.</p>
     }
-    <p class="hint">
-      Used in materials: {{ f.usableInMaterials ? 'yes' : 'no' }} · Sent to DeepSeek:
-      {{ f.sendableToModel ? 'yes' : 'no' }}
-    </p>
 
     <div class="actions">
       @if (f.current.status !== 'confirmed') {
@@ -92,7 +106,7 @@ const statusLabels: Record<Fact['current']['status'], string> = {
           @for (v of f.earlier; track v.id) {
             <li>
               Version {{ v.version }}, {{ v.createdAt | date: 'd MMM y' }}, {{ statusLabel(v) }}:
-              {{ v.body }}
+              {{ v.body }} · Source: {{ sourceLabel(v.source) }}
             </li>
           }
         </ul>
@@ -106,6 +120,9 @@ const statusLabels: Record<Fact['current']['status'], string> = {
       border-radius: 0.5rem;
       padding: 0.5rem 1rem;
       margin-bottom: 0.75rem;
+    }
+    :host.withdrawn {
+      border-style: dashed;
     }
     .status {
       margin: 0;
@@ -135,6 +152,15 @@ const statusLabels: Record<Fact['current']['status'], string> = {
     button {
       margin-right: 0.5rem;
     }
+    button,
+    summary,
+    details label {
+      min-height: 2.75rem;
+      align-content: center;
+    }
+    summary {
+      cursor: pointer;
+    }
     .hint {
       font-size: 0.9rem;
       margin: 0.25rem 0;
@@ -158,6 +184,14 @@ export class FactCard {
 
   protected statusLabel(version: Fact['current']) {
     return statusLabels[version.status].toLowerCase();
+  }
+
+  protected sourceLabel(source: string) {
+    return source === 'markdown'
+      ? 'Markdown import'
+      : source === 'manual'
+        ? 'Manual entry'
+        : source;
   }
 
   protected update(change: UpdateFactVersionRequest, box?: HTMLInputElement) {
