@@ -1,16 +1,25 @@
 import { httpResource } from '@angular/common/http';
-import { Component, computed, inject, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  Injector,
+  afterNextRender,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormField, FormRoot, form, maxLength, required } from '@angular/forms/signals';
-import type { Fact, FactKind, FactsResponse } from '@jsa/shared';
+import type { Fact, FactKind, FactsResponse, SaveFactCandidatesResponse } from '@jsa/shared';
 import { errorMessage } from '../sources/sources-api';
 import { FactCard } from './fact-card';
+import { FactImport } from './fact-import';
 import { FactsApi, kindLabels } from './facts-api';
 
 const kinds = Object.keys(kindLabels) as FactKind[];
 
 @Component({
   selector: 'app-facts',
-  imports: [FactCard, FormField, FormRoot],
+  imports: [FactCard, FactImport, FormField, FormRoot],
   template: `
     <h1>Facts about you</h1>
     <p>
@@ -45,38 +54,12 @@ const kinds = Object.keys(kindLabels) as FactKind[];
       </form>
     </details>
 
-    <details>
-      <summary><h2>Import Markdown</h2></summary>
-      <p>
-        Each list item or paragraph becomes one fact to confirm; the heading above it decides its
-        kind (for example “Work experience”, “Skills”, “Languages”). Facts you already have are
-        skipped.
-      </p>
-      <label>
-        Markdown file
-        <input
-          type="file"
-          accept=".md,.markdown,.txt,text/markdown,text/plain"
-          (change)="readFile(file)"
-          #file
-        />
-      </label>
-      <label>
-        Or paste it
-        <textarea rows="8" [value]="markdown()" (input)="markdown.set(area.value)" #area></textarea>
-      </label>
-      <button
-        type="button"
-        [disabled]="importing() || !markdown().trim()"
-        (click)="importMarkdown()"
-      >
-        Import
-      </button>
-      <p role="status">{{ importResult() }}</p>
-      @if (importError()) {
-        <p class="error" role="alert">{{ importError() }}</p>
-      }
-    </details>
+    <p role="status" tabindex="-1" #feedback>{{ operationResult() }}</p>
+    <app-fact-import
+      [facts]="data.value()?.facts ?? []"
+      (saved)="imported($event, feedback)"
+      (viewFact)="showFact($event)"
+    />
 
     @if (data.hasValue()) {
       <div class="filters" aria-label="Filter active facts">
@@ -103,14 +86,18 @@ const kinds = Object.keys(kindLabels) as FactKind[];
         Usable in materials means this current version is confirmed and its materials permission is
         on. The DeepSeek permission is separate. Withdrawn facts are excluded.
       </p>
-      <p role="status" tabindex="-1" #feedback>{{ operationResult() }}</p>
       @for (section of groups(); track section.status) {
         <section [attr.aria-labelledby]="section.status + '-heading'">
           <h2 [id]="section.status + '-heading'">{{ section.label }} ({{ section.count }})</h2>
           @for (group of section.kinds; track group.kind) {
             <h3>{{ group.label }} ({{ group.facts.length }})</h3>
             @for (fact of group.facts; track fact.id) {
-              <app-fact-card [fact]="fact" (changed)="replace($event, feedback)" />
+              <app-fact-card
+                [id]="'fact-' + fact.id"
+                tabindex="-1"
+                [fact]="fact"
+                (changed)="replace($event, feedback)"
+              />
             }
           }
         </section>
@@ -134,7 +121,12 @@ const kinds = Object.keys(kindLabels) as FactKind[];
           Kept for their original text and history. Future matches and materials do not use them.
         </p>
         @for (fact of withdrawn(); track fact.id) {
-          <app-fact-card [fact]="fact" (changed)="replace($event, feedback)" />
+          <app-fact-card
+            [id]="'fact-' + fact.id"
+            tabindex="-1"
+            [fact]="fact"
+            (changed)="replace($event, feedback)"
+          />
         } @empty {
           <p>No withdrawn facts.</p>
         }
@@ -199,6 +191,8 @@ const kinds = Object.keys(kindLabels) as FactKind[];
 })
 export class Facts {
   private readonly api = inject(FactsApi);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
 
   protected readonly kinds = kinds;
   protected readonly kindLabels = kindLabels;
@@ -285,11 +279,6 @@ export class Facts {
     },
   );
 
-  protected readonly markdown = signal('');
-  protected readonly importing = signal(false);
-  protected readonly importResult = signal('');
-  protected readonly importError = signal('');
-
   protected replace(fact: Fact, feedback: HTMLElement) {
     const previous = this.data.value()?.facts.find((f) => f.id === fact.id);
     let message = '';
@@ -316,27 +305,25 @@ export class Facts {
     this.kindFilter.set('all');
   }
 
-  protected async readFile(input: HTMLInputElement) {
-    const file = input.files?.[0];
-    if (file) this.markdown.set(await file.text());
+  protected imported(result: SaveFactCandidatesResponse, feedback: HTMLElement) {
+    this.data.set({ facts: result.facts });
+    if (result.added) this.showToConfirm();
+    this.operationResult.set(
+      `Added ${result.added} facts to confirm; skipped ${result.skipped} duplicates; left out ${result.cancelled}. Confirm each new fact and choose its two permissions separately.`,
+    );
+    feedback.focus();
   }
 
-  protected async importMarkdown() {
-    this.importing.set(true);
-    this.importResult.set('');
-    this.importError.set('');
-    try {
-      const result = await this.api.import(this.markdown());
-      this.data.set({ facts: result.facts });
-      if (result.added) this.showToConfirm();
-      this.importResult.set(
-        `Added ${result.added} facts to confirm; skipped ${result.skipped} you already had.`,
-      );
-      this.markdown.set('');
-    } catch (error) {
-      this.importError.set(errorMessage(error));
-    } finally {
-      this.importing.set(false);
-    }
+  protected showFact(id: string) {
+    this.statusFilter.set('all');
+    this.kindFilter.set('all');
+    afterNextRender(
+      () => {
+        const card = this.host.nativeElement.querySelector<HTMLElement>(`#fact-${id}`);
+        card?.closest('details.withdrawn')?.setAttribute('open', '');
+        card?.focus();
+      },
+      { injector: this.injector },
+    );
   }
 }

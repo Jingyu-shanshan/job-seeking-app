@@ -8,6 +8,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./fact-import": {
+      "types": "./dist/fact-import.d.ts",
+      "default": "./dist/fact-import.js"
+    },
     "./limits": {
       "types": "./dist/limits.d.ts",
       "default": "./dist/limits.js"

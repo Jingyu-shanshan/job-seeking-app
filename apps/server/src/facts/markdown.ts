@@ -16,7 +16,7 @@ const headingKinds: [RegExp, FactKind][] = [
   [/summary|profile|statement|about|introduction|表述|简介|自我介绍/i, 'statement'],
 ];
 
-function kindOf(heading: string): FactKind {
+export function kindOf(heading: string): FactKind {
   return headingKinds.find(([pattern]) => pattern.test(heading))?.[1] ?? 'other';
 }
 

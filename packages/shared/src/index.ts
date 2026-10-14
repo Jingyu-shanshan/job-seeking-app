@@ -114,6 +114,13 @@ export {
   FactsResponseSchema,
   ImportFactsRequestSchema,
   ImportFactsResponseSchema,
+  FactImportSourceSchema,
+  FactCandidateSchema,
+  FactDuplicateSchema,
+  PreviewFactsMarkdownRequestSchema,
+  PreviewFactsResponseSchema,
+  SaveFactCandidatesRequestSchema,
+  SaveFactCandidatesResponseSchema,
   UpdateFactVersionRequestSchema,
   maxFactLength,
   type AddFactRequest,
@@ -126,6 +133,11 @@ export {
   type FactsResponse,
   type ImportFactsRequest,
   type ImportFactsResponse,
+  type FactImportSource,
+  type FactCandidate,
+  type FactDuplicate,
+  type PreviewFactsResponse,
+  type SaveFactCandidatesResponse,
   type UpdateFactVersionRequest,
 } from './facts.ts';
 export {
@@ -296,5 +308,11 @@ export {
   type KeptPdf,
   type RecordApplicationRequest,
 } from './applications.ts';
-export { maxAlertEmailLength, maxManualFiles, maxPdfBytes } from './limits.ts';
+export {
+  maxAlertEmailLength,
+  maxManualFiles,
+  maxPdfBytes,
+  maxFactImportTextLength,
+  maxFactImportCandidates,
+} from './limits.ts';
 export * from './runs.ts';

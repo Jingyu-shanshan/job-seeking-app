@@ -1,6 +1,13 @@
 import { HttpClient } from '@angular/common/http';
 import { Service, inject } from '@angular/core';
-import type { Fact, FactKind, ImportFactsResponse, UpdateFactVersionRequest } from '@jsa/shared';
+import type {
+  Fact,
+  FactKind,
+  FactCandidate,
+  PreviewFactsResponse,
+  SaveFactCandidatesResponse,
+  UpdateFactVersionRequest,
+} from '@jsa/shared';
 import { firstValueFrom } from 'rxjs';
 
 @Service()
@@ -19,8 +26,29 @@ export class FactsApi {
     return firstValueFrom(this.http.patch<Fact>(`/api/fact-versions/${versionId}`, change));
   }
 
-  import(markdown: string): Promise<ImportFactsResponse> {
-    return firstValueFrom(this.http.post<ImportFactsResponse>('/api/facts/import', { markdown }));
+  previewMarkdown(markdown: string, fileName = ''): Promise<PreviewFactsResponse> {
+    return firstValueFrom(
+      this.http.post<PreviewFactsResponse>('/api/facts/import/preview/markdown', {
+        markdown,
+        fileName,
+      }),
+    );
+  }
+
+  previewPdf(file: File): Promise<PreviewFactsResponse> {
+    return firstValueFrom(
+      this.http.post<PreviewFactsResponse>(
+        `/api/facts/import/preview/pdf?fileName=${encodeURIComponent(file.name)}`,
+        file,
+        { headers: { 'Content-Type': 'application/pdf' } },
+      ),
+    );
+  }
+
+  saveCandidates(candidates: FactCandidate[]): Promise<SaveFactCandidatesResponse> {
+    return firstValueFrom(
+      this.http.post<SaveFactCandidatesResponse>('/api/facts/import/candidates', { candidates }),
+    );
   }
 }
 
