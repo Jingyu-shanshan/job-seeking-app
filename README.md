@@ -18,7 +18,7 @@ V0.1 的流程：发现与筛选 → JD 总结 → 确认个人事实 → 解释
 | `docs/OPEN_SOURCE_REUSE.md` | 已核对的开源复用候选及采用时机 |
 | `docs/DEPLOYMENT.md` | Railway + Neon 的计划部署流程 |
 
-2026-10-13 新增后续改善任务 T22–T32：Facts 撤回分区、PDF 导入、全站 UIUX、首次使用教程与 Railway 单 project 整理，均待实施；[任务清单](docs/TASKS.md) 与 [设计说明](docs/UIUX_DESIGN.md) 已提供，未改变当前业务或线上环境。
+2026-10-14 完成 T22 的 Facts 局部状态修复：待确认/已确认按类别稳定排列，支持筛选与用途计数；撤回项移至末尾默认折叠区，恢复前显示保留许可，编辑后回到待确认。T23–T32 的 PDF 导入、全站 UIUX、首次使用教程与 Railway 单 project 整理仍待实施；详见 [任务清单](docs/TASKS.md) 与 [设计说明](docs/UIUX_DESIGN.md)。本次未部署或修改线上环境。
 
 本地运行：`npm ci && npm run build && npm start`，然后打开 <http://127.0.0.1:3000>；开发时分别运行 `npm run dev:server` 和 `npm run dev:web`。桌面应用：先 `npm start`，再 `npm run desktop`（加载 `JSA_APP_URL`，默认 <http://127.0.0.1:3000>；第一次运行会下载 Electron）。执行器：在应用的 Runner 页签发令牌，写进 `.env` 的 `JSA_RUNNER_TOKEN`，再 `npm run runner`（需要已安装 Google Chrome）。数据库用本地 PostgreSQL 容器，启动命令见 `CLAUDE.md`，`npm run db:migrate` 执行迁移，`npm run auth:create-account -- <邮箱>` 创建唯一的账户（公开注册已关闭）。检查：`npm run lint`、`npm run typecheck`、`npm test`（数据库测试需要 `TEST_DATABASE_URL`）。数据库地址、会话密钥和模型密钥放在根目录 `.env`（见 `.env.example`），不入库。登录后在 `/export` 下载包含 Markdown/JSON/PDF 的 ZIP。数据库的手动隔离恢复演练沿用 T02 的 `npm run db:restore-drill`，说明见 [部署文档](docs/DEPLOYMENT.md#数据导出与手动隔离恢复t10)。
 

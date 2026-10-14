@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { Fact, FactsResponse, ImportFactsResponse } from '@jsa/shared';
 import { Facts } from './facts';
+import { kindLabels } from './facts-api';
 
 let nextId = 1;
 const id = () => `00000000-0000-4000-8000-${String(nextId++).padStart(12, '0')}`;
@@ -43,6 +44,17 @@ describe('Facts', () => {
   const button = (label: string, within: Element = page()) =>
     [...within.querySelectorAll('button')].find((b) => text(b) === label);
   const headings = () => [...page().querySelectorAll('section h2')].map((h) => text(h));
+  const activeCards = () => [...page().querySelectorAll('section app-fact-card')];
+  const withdrawn = () => page().querySelector<HTMLDetailsElement>('details.withdrawn')!;
+
+  async function filter(label: string, value: string) {
+    const select = [...page().querySelectorAll<HTMLSelectElement>('.filters select')].find((s) =>
+      text(s.parentElement).startsWith(label),
+    )!;
+    select.value = value;
+    select.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+  }
 
   async function load(facts: Fact[]) {
     http.expectOne('/api/facts').flush({ facts } satisfies FactsResponse);
@@ -61,7 +73,7 @@ describe('Facts', () => {
 
   afterEach(() => http.verify());
 
-  it('groups facts by kind and says which ones can be used', async () => {
+  it('groups by current status before kind and explains eligibility and sensitive content', async () => {
     const confirmed = fact(
       { kind: 'experience', usableInMaterials: true },
       { body: 'Acme Oy, backend developer', status: 'confirmed', mayUseInMaterials: true },
@@ -72,14 +84,24 @@ describe('Facts', () => {
     );
     await load([confirmed, fact(), contact]);
 
-    expect(headings()).toEqual(['Work experience (1)', 'Skills (1)', 'Other (1)']);
-    expect(text()).toContain('3 facts: 2 to confirm, 1 usable in materials.');
+    expect(headings()).toEqual(['To confirm (2)', 'Confirmed (1)']);
+    expect([...page().querySelectorAll('section h3')].map((h) => text(h))).toEqual([
+      'Skills (1)',
+      'Other (1)',
+      'Work experience (1)',
+    ]);
+    expect(text()).toContain(
+      'Showing 3 of 3 active facts: 2 to confirm, 1 usable in materials. 0 withdrawn.',
+    );
     const cards = page().querySelectorAll('app-fact-card');
-    expect(text(cards[0]!)).toContain('Used in materials: yes · Sent to DeepSeek: no');
-    expect(text(cards[2]!)).toContain(
+    expect(text(cards[2]!)).toContain('Usable in materials: yes · Allowed for DeepSeek: no');
+    expect(text(cards[1]!)).toContain(
       'It contains an email address, so it never goes to DeepSeek.',
     );
-    expect(cards[2]!.querySelector<HTMLInputElement>('input[type=checkbox]')!.disabled).toBe(true);
+    expect(cards[1]!.querySelector<HTMLInputElement>('input[type=checkbox]')!.disabled).toBe(true);
+    expect(text()).toContain('confirmed and its materials permission is on');
+    expect(text()).not.toContain('Sent to DeepSeek:');
+    expect(text()).not.toContain('Used in materials:');
   });
 
   it('confirms a fact and shows the new state', async () => {
@@ -136,6 +158,257 @@ describe('Facts', () => {
     } satisfies ImportFactsResponse);
     await settle();
     expect(text()).toContain('Added 1 facts to confirm; skipped 0 you already had.');
-    expect(headings()).toEqual(['Skills (1)']);
+    expect(headings()).toEqual(['To confirm (1)']);
+  });
+
+  it('keeps withdrawn current versions of every kind only in the last, initially closed section', async () => {
+    const retired = Object.keys(kindLabels).map((kind) =>
+      fact({ kind: kind as Fact['kind'] }, { status: 'retired', body: `Old ${kind}` }),
+    );
+    const earlier = fact({}, { status: 'retired' }).current;
+    const current = fact({ earlier: [earlier] }, { body: 'Current skill', status: 'confirmed' });
+    await load([...retired, current]);
+    expect(withdrawn().open).toBe(false);
+    expect(withdrawn().querySelectorAll('app-fact-card')).toHaveLength(8);
+    expect(activeCards()).toHaveLength(1);
+    expect(text(activeCards()[0]!)).toContain('Current skill');
+    expect(text(withdrawn().querySelector('summary'))).toBe('Withdrawn (8)');
+    expect(withdrawn()).toBe(page().lastElementChild);
+    expect(text()).toContain(
+      'Showing 1 of 1 active facts: 0 to confirm, 0 usable in materials. 8 withdrawn.',
+    );
+  });
+
+  it('sorts within each status and kind by fact creation time, then ID, including after reload', async () => {
+    const first = fact({}, { body: 'First skill' });
+    const second = fact({}, { body: 'Second skill' });
+    const newer = fact({ createdAt: '2026-10-03T08:00:00.000Z' }, { body: 'Newer skill' });
+    const experience = fact({ kind: 'experience' }, { body: 'Experience' });
+    const confirmed = fact({}, { body: 'Confirmed skill', status: 'confirmed' });
+    const facts = [confirmed, newer, second, experience, first];
+    await load(facts);
+    const bodies = () => activeCards().map((c) => text(c.querySelector('.body')));
+    expect(bodies()).toEqual([
+      'Experience',
+      'First skill',
+      'Second skill',
+      'Newer skill',
+      'Confirmed skill',
+    ]);
+    fixture.destroy();
+    fixture = TestBed.createComponent(Facts);
+    TestBed.tick();
+    await load([...facts].reverse());
+    expect(bodies()).toEqual([
+      'Experience',
+      'First skill',
+      'Second skill',
+      'Newer skill',
+      'Confirmed skill',
+    ]);
+  });
+
+  it('filters active status and kind, updates counts, and leaves withdrawn independent', async () => {
+    await load([
+      fact(),
+      fact({ kind: 'experience' }),
+      fact({ usableInMaterials: true }, { status: 'confirmed', mayUseInMaterials: true }),
+      fact({}, { status: 'confirmed' }),
+      fact({ kind: 'experience' }, { status: 'retired' }),
+    ]);
+    await filter('Kind', 'skill');
+    expect(text()).toContain(
+      'Showing 3 of 4 active facts: 1 to confirm, 1 usable in materials. 1 withdrawn.',
+    );
+    await filter('Status', 'confirmed');
+    expect(headings()).toEqual(['Confirmed (2)']);
+    expect(text()).toContain('Showing 2 of 4 active facts: 0 to confirm, 1 usable in materials.');
+    await filter('Status', 'proposed');
+    expect(headings()).toEqual(['To confirm (1)']);
+    await filter('Kind', 'education');
+    expect(activeCards()).toHaveLength(0);
+    expect(text()).toContain('No active facts match these filters.');
+    expect(withdrawn().querySelectorAll('app-fact-card')).toHaveLength(1);
+    button('Clear filters')!.click();
+    await fixture.whenStable();
+    expect(activeCards()).toHaveLength(4);
+  });
+
+  it.each(['empty', 'withdrawn', 'proposed'] as const)(
+    'handles an entirely %s list',
+    async (state) => {
+      await load(
+        state === 'empty'
+          ? []
+          : [fact({}, { status: state === 'withdrawn' ? 'retired' : 'proposed' })],
+      );
+      if (state === 'empty') expect(text()).toContain('No facts yet.');
+      if (state === 'withdrawn') {
+        expect(text()).toContain('No active facts. Your withdrawn facts are kept below.');
+        expect(activeCards()).toHaveLength(0);
+      }
+      if (state === 'proposed') expect(headings()).toEqual(['To confirm (1)']);
+      expect(withdrawn().open).toBe(false);
+    },
+  );
+
+  it('moves a withdrawn fact immediately and focuses the announced result', async () => {
+    const original = fact({ kind: 'experience' }, { status: 'confirmed' });
+    await load([original, fact()]);
+    const withdraw = button('Withdraw', activeCards()[1]!)!;
+    withdraw.focus();
+    withdraw.click();
+    http.expectOne(`/api/fact-versions/${original.current.id}`).flush({
+      ...original,
+      current: { ...original.current, status: 'retired' },
+    } satisfies Fact);
+    await settle();
+    expect(activeCards()).toHaveLength(1);
+    expect(withdrawn().querySelectorAll('app-fact-card')).toHaveLength(1);
+    expect(withdrawn().open).toBe(false);
+    const feedback = page().querySelector('[role=status][tabindex="-1"]')!;
+    expect(text(feedback)).toBe(
+      'Withdrawn. Future matches and materials will no longer use this fact.',
+    );
+    expect(document.activeElement).toBe(feedback);
+  });
+
+  it('keeps a failed withdrawal in place with a retryable error', async () => {
+    const original = fact();
+    await load([original]);
+    button('Withdraw')!.click();
+    http
+      .expectOne(`/api/fact-versions/${original.current.id}`)
+      .flush({ message: 'Try again.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    expect(activeCards()).toHaveLength(1);
+    expect(text(withdrawn().querySelector('summary'))).toBe('Withdrawn (0)');
+    expect(text(page().querySelector('[role=alert]'))).toBe('Try again.');
+    expect(button('Withdraw')!.disabled).toBe(false);
+    button('Withdraw')!.click();
+    http.expectOne(`/api/fact-versions/${original.current.id}`).flush({
+      ...original,
+      current: { ...original.current, status: 'retired' },
+    } satisfies Fact);
+    await settle();
+    expect(activeCards()).toHaveLength(0);
+  });
+
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ])(
+    'shows retained permissions before restoring (DeepSeek %s, materials %s)',
+    async (maySendToModel, mayUseInMaterials) => {
+      const original = fact(
+        { kind: 'education' },
+        { status: 'retired', maySendToModel, mayUseInMaterials },
+      );
+      await load([original, fact()]);
+      withdrawn().open = true;
+      const card = withdrawn().querySelector('app-fact-card')!;
+      expect(text(card)).toContain(`DeepSeek: ${maySendToModel ? 'allowed' : 'not allowed'}`);
+      expect(text(card)).toContain(`Materials: ${mayUseInMaterials ? 'allowed' : 'not allowed'}`);
+      expect(text(card)).toContain(
+        'Confirming again keeps these choices and re-enables the allowed uses.',
+      );
+      expect(card.querySelectorAll('input[type=checkbox]')).toHaveLength(0);
+      button('Confirm again', card)!.click();
+      const request = http.expectOne(`/api/fact-versions/${original.current.id}`);
+      expect(request.request.body).toEqual({ status: 'confirmed' });
+      request.flush({
+        ...original,
+        current: { ...original.current, status: 'confirmed' },
+        usableInMaterials: mayUseInMaterials,
+        sendableToModel: maySendToModel,
+      } satisfies Fact);
+      await settle();
+      expect(withdrawn().querySelectorAll('app-fact-card')).toHaveLength(0);
+      expect(headings()).toEqual(['To confirm (1)', 'Confirmed (1)']);
+      const restored = activeCards()[1]!;
+      const permissions = restored.querySelectorAll<HTMLInputElement>('input[type=checkbox]');
+      expect([...permissions].map((p) => p.checked)).toEqual([maySendToModel, mayUseInMaterials]);
+    },
+  );
+
+  it('keeps failed restoration withdrawn and keeps the retained permissions visible', async () => {
+    const original = fact({}, { status: 'retired', mayUseInMaterials: true });
+    await load([original]);
+    withdrawn().open = true;
+    button('Confirm again')!.click();
+    http
+      .expectOne(`/api/fact-versions/${original.current.id}`)
+      .flush({ message: 'Try again.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    expect(activeCards()).toHaveLength(0);
+    expect(text(withdrawn())).toContain('Materials: allowed');
+    expect(text(withdrawn().querySelector('[role=alert]'))).toBe('Try again.');
+    expect(button('Confirm again')!.disabled).toBe(false);
+  });
+
+  it('edits a withdrawn fact into the pending section with permissions off and history intact', async () => {
+    const original = fact(
+      {},
+      { status: 'retired', maySendToModel: true, mayUseInMaterials: true, source: 'markdown' },
+    );
+    await load([original]);
+    await filter('Status', 'confirmed');
+    await filter('Kind', 'education');
+    withdrawn().open = true;
+    button('Edit', withdrawn())!.click();
+    await fixture.whenStable();
+    const area = withdrawn().querySelector<HTMLTextAreaElement>('textarea')!;
+    area.value = 'TypeScript and Node.js';
+    area.dispatchEvent(new Event('input'));
+    button('Save', withdrawn())!.click();
+    http
+      .expectOne(`/api/facts/${original.id}/versions`)
+      .flush(
+        fact({ id: original.id, earlier: [original.current] }, { version: 2, body: area.value }),
+      );
+    await settle();
+    expect(headings()).toEqual(['To confirm (1)']);
+    expect(withdrawn().querySelectorAll('app-fact-card')).toHaveLength(0);
+    const card = activeCards()[0]!;
+    expect(
+      [...card.querySelectorAll<HTMLInputElement>('input[type=checkbox]')].every((b) => !b.checked),
+    ).toBe(true);
+    expect(text(card)).toContain(
+      'Version 1, 2 Oct 2026, withdrawn: TypeScript · Source: Markdown import',
+    );
+    expect(text(card)).toContain('Source: Manual entry');
+    expect(text(card)).toContain('Usable in materials: no · Allowed for DeepSeek: no');
+    expect(text(page().querySelector('[role=status][tabindex="-1"]'))).toContain(
+      'Saved a new version to confirm. Both permissions are off',
+    );
+  });
+
+  it('updates independent permissions and restores a failed checkbox change', async () => {
+    const original = fact({}, { status: 'confirmed' });
+    await load([original]);
+    const card = activeCards()[0]!;
+    card.querySelector('details')!.open = true;
+    const [model, materials] = card.querySelectorAll<HTMLInputElement>('input[type=checkbox]');
+    materials!.click();
+    const request = http.expectOne(`/api/fact-versions/${original.current.id}`);
+    expect(request.request.body).toEqual({ mayUseInMaterials: true });
+    request.flush({
+      ...original,
+      current: { ...original.current, mayUseInMaterials: true },
+      usableInMaterials: true,
+    } satisfies Fact);
+    await settle();
+    expect(model!.checked).toBe(false);
+    expect(text(card)).toContain('Usable in materials: yes · Allowed for DeepSeek: no');
+    model!.click();
+    http
+      .expectOne(`/api/fact-versions/${original.current.id}`)
+      .flush({ message: 'Try again.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    expect(model!.checked).toBe(false);
+    expect(materials!.checked).toBe(true);
+    expect(text(card.querySelector('[role=alert]'))).toBe('Try again.');
   });
 });
