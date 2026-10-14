@@ -13,7 +13,7 @@ export function looksLikePdf(bytes: Uint8Array): boolean {
   return Buffer.from(bytes.subarray(0, 1024)).includes('%PDF-');
 }
 
-export async function readPdf(bytes: Uint8Array): Promise<PdfRead> {
+export async function readPdf(bytes: Uint8Array, maxTextLength = Infinity): Promise<PdfRead> {
   let pdf;
   try {
     // PDF.js takes the buffer over, so it gets a copy.
@@ -38,10 +38,17 @@ export async function readPdf(bytes: Uint8Array): Promise<PdfRead> {
       return { ok: false, reason: `The PDF has more than ${maxPdfPages} pages.` };
     }
     const pages: PdfPage[] = [];
+    let textLength = 0;
     for (let n = 1; n <= pdf.numPages; n++) {
       const page = await pdf.getPage(n);
       const [left = 0, bottom = 0, right = 0, top = 0] = page.view;
       const content = await page.getTextContent();
+      for (const item of content.items) {
+        if ('str' in item) textLength += item.str.length;
+      }
+      if (textLength > maxTextLength) {
+        return { ok: false, reason: `The PDF text exceeds ${maxTextLength} characters.` };
+      }
       pages.push({
         width: right - left,
         height: top - bottom,

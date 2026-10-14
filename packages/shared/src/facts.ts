@@ -1,6 +1,7 @@
 import Type, { type Static } from 'typebox';
+import { maxFactImportCandidates, maxFactImportTextLength, maxFactLength } from './limits.ts';
 
-export const maxFactLength = 5000;
+export { maxFactLength } from './limits.ts';
 
 export const FactKindSchema = Type.Union([
   Type.Literal('experience'),
@@ -80,7 +81,7 @@ export const UpdateFactVersionRequestSchema = Type.Object(
 export type UpdateFactVersionRequest = Static<typeof UpdateFactVersionRequestSchema>;
 
 export const ImportFactsRequestSchema = Type.Object({
-  markdown: Type.String({ pattern: '\\S', maxLength: 200_000 }),
+  markdown: Type.String({ pattern: '\\S', maxLength: maxFactImportTextLength }),
 });
 
 export type ImportFactsRequest = Static<typeof ImportFactsRequestSchema>;
@@ -92,6 +93,79 @@ export const ImportFactsResponseSchema = Type.Object({
 });
 
 export type ImportFactsResponse = Static<typeof ImportFactsResponseSchema>;
+
+const fileName = Type.String({ maxLength: 255, pattern: '^[^\\u0000-\\u001f]*$' });
+const sha256 = Type.String({ pattern: '^[a-f0-9]{64}$' });
+export const FactImportSourceSchema = Type.Union([
+  Type.Object(
+    {
+      type: Type.Literal('pdf'),
+      fileName: Type.String({ minLength: 1, maxLength: 255, pattern: '^[^\\u0000-\\u001f]+$' }),
+      sha256,
+      pages: Type.Array(Type.Integer({ minimum: 1, maximum: 20 }), {
+        minItems: 1,
+        maxItems: 20,
+        uniqueItems: true,
+      }),
+      edited: Type.Boolean(),
+    },
+    { additionalProperties: false },
+  ),
+  Type.Object(
+    { type: Type.Literal('markdown'), fileName, sha256, edited: Type.Boolean() },
+    { additionalProperties: false },
+  ),
+]);
+export type FactImportSource = Static<typeof FactImportSourceSchema>;
+
+export const FactCandidateSchema = Type.Object({
+  kind: FactKindSchema,
+  body: Type.String({ maxLength: maxFactImportTextLength }),
+  source: FactImportSourceSchema,
+  selected: Type.Boolean(),
+});
+export type FactCandidate = Static<typeof FactCandidateSchema>;
+
+export const FactDuplicateSchema = Type.Object({
+  status: Type.Union([Type.Literal('active'), Type.Literal('retired'), Type.Literal('batch')]),
+  factId: Type.Union([Type.String({ format: 'uuid' }), Type.Null()]),
+});
+export type FactDuplicate = Static<typeof FactDuplicateSchema>;
+
+export const PreviewFactsMarkdownRequestSchema = Type.Object({
+  markdown: ImportFactsRequestSchema.properties.markdown,
+  fileName: Type.Optional(fileName),
+});
+export const PreviewFactsResponseSchema = Type.Object({
+  pages: Type.Array(
+    Type.Object({
+      page: Type.Integer({ minimum: 1, maximum: 20 }),
+      text: Type.String({ maxLength: maxFactImportTextLength }),
+    }),
+    { maxItems: 20 },
+  ),
+  candidates: Type.Array(
+    Type.Object({
+      ...FactCandidateSchema.properties,
+      duplicate: Type.Union([FactDuplicateSchema, Type.Null()]),
+    }),
+    { maxItems: maxFactImportCandidates },
+  ),
+});
+export type PreviewFactsResponse = Static<typeof PreviewFactsResponseSchema>;
+
+export const SaveFactCandidatesRequestSchema = Type.Object({
+  candidates: Type.Array(FactCandidateSchema, { maxItems: maxFactImportCandidates }),
+});
+export const SaveFactCandidatesResponseSchema = Type.Object({
+  ...ImportFactsResponseSchema.properties,
+  cancelled: Type.Integer({ minimum: 0 }),
+  duplicates: Type.Array(
+    Type.Object({ index: Type.Integer({ minimum: 0 }), ...FactDuplicateSchema.properties }),
+    { maxItems: maxFactImportCandidates },
+  ),
+});
+export type SaveFactCandidatesResponse = Static<typeof SaveFactCandidatesResponseSchema>;
 
 /** A fact version a match or a draft cites, with its text as it was. */
 export const CitedFactSchema = Type.Object({
