@@ -2,9 +2,11 @@
 
 更新：2026-10-13。**生产服务已运行，数据库迁移、原账户登录/退出、历史投递/PDF 下载、导出、时间点隔离恢复、重部署、兼容构建回滚及恢复、本机执行器连接与令牌吊销均通过。T12 已完成 GitHub `main` 自动发布验收。** 用户已批准 Railway App 只新增本仓库访问，`main` 触发器已建立并启用等待 CI；实际推送已先等待 GitHub 检查，CI 通过后自动构建、执行迁移并发布成功。用户已选择自动发布并迁移现有本地资料和投递记录。T03a 的不含个人数据独立欧盟演练已先完成，演练服务现已停止。`npm ci`、`npm run build`、`npm start`、`npm run db:migrate` 和 `npm run auth:create-account` 已实现。
 
+2026-10-13 后续决定（**T32 待执行**）：只保留现有 `job-seeking-app-production` project；旧 `job-seeking-app-staging` project 清点依赖后删除。需要云端演练时，仅在保留项目中创建 `staging` environment，不需要就不建。本轮只读核实 production 正常、旧 staging 无运行部署但 project 仍存在；历史认证迁移错误为 `relation "user" already exists`，与 T03a 故障演练吻合，仍需核对当时数据库指向，不能把它当作当前生产故障。[整理任务](TASKS.md)、[Railway 环境](https://docs.railway.com/environments)。
+
 ## 拓扑
 
-一个 Railway 服务运行 Node 24 + Fastify，同时提供 Angular 静态页面和同源 `/api`；生产 PostgreSQL 在 Neon。这样不需要第二个 Web 服务、跨源 Cookie 或前端数据库变量。Railway 的 [`PORT` 与 `0.0.0.0` 要求](https://docs.railway.com/networking/troubleshooting/application-failed-to-respond)在 T01 实现，本地开发默认只监听 loopback。Railway 从仓库根目录依次构建共享包、服务和 Angular；应用启动前执行数据库迁移。
+保留一个 Railway project；每个实际需要的 environment 中，一个 web 服务运行 Node 24 + Fastify，同时提供 Angular 静态页面和同源 `/api`；生产 PostgreSQL 在 Neon。这样不需要第二个 Web 服务、跨源 Cookie 或前端数据库变量。Railway 的 [`PORT` 与 `0.0.0.0` 要求](https://docs.railway.com/networking/troubleshooting/application-failed-to-respond)在 T01 实现，本地开发默认只监听 loopback。Railway 从仓库根目录依次构建共享包、服务和 Angular；应用启动前执行数据库迁移。
 
 个人事实、JD 快照、申请状态及有大小上限的实际投递文件都以 Neon 为主数据。Railway 容器目录仅可用于临时构建/处理；若以后附件规模不适合 PostgreSQL，再评估 [Railway Storage Bucket](https://docs.railway.com/storage-buckets)。不为 V0.1 先添 Volume 或对象存储。
 
@@ -33,7 +35,7 @@ V0.1 单用户、单服务先用 direct URL，避免多余连接配置。若连�
 ## 区域与恢复窗口
 
 - **区域**：默认 Neon AWS Frankfurt（`aws-eu-central-1`）和 Railway EU West Metal / Amsterdam（`europe-west4-drams3a`）。Neon 项目区域创建后固定，换区域须新建项目迁移；Railway 无 Volume 的服务可更换区域。数据库位于欧盟不改变 DeepSeek 调用会把选定内容发给模型供应商的事实。[Neon 区域](https://github.com/neondatabase/website/blob/main/content/docs/introduction/regions.md)、[Railway 区域](https://docs.railway.com/deployments/regions)
-- **环境隔离**：演练和生产分别创建独立的 Neon 项目与 Railway 项目，使用各自的密钥、账户和 URL；演练项目只放编造数据，不从生产分支复制。生产数据库放在项目的 root branch（初始 `main`），避免把 child branch 当作可直接做时间点恢复的生产库。
+- **环境隔离**：T03a/T12 历史演练曾使用独立的 Neon 与 Railway projects；2026-10-13 的新决定改为仅保留现有 production Railway project，按需在其中建 staging environment。数据库、密钥、账户和 HTTPS URL 仍须分别隔离；staging 只放编造数据，不从生产复制个人资料。优先新建 Empty environment；复制 production 会复制变量和配置，首次部署前必须换掉数据库连接、会话密钥和认证 URL，并核对变量引用不跨环境。两个云端环境的 `NODE_ENV` 都为 `production`，不能为了区分环境绕过当前 HTTPS、Cookie、Origin 与 TLS 保护。不随 Railway 清理自动删除独立 Neon 资源。生产数据库继续放在 Neon root branch（初始 `main`）。[Railway 环境与复制](https://docs.railway.com/environments)
 - **PostgreSQL 版本**：Neon 自 2026-06-05 起默认创建 PostgreSQL 18 项目，仍支持 14–17。本地容器和 CI 用 18，新建演练与生产项目都选 18。[Neon 官方更新](https://github.com/neondatabase/website/blob/main/content/changelog/2026-06-05.md)
 - **恢复窗口**：本次演练与生产均为 Free，实际项目配置已确认 `history_retention_seconds=21600`；演练已按记录时间点创建隔离恢复分支并核对资料。每次生产迁移前仍须实核历史窗口、最早可恢复时间及恢复方式，并私下登记。2026-10-13 官方套餐说明为 Free 最长 6 小时且最多 1 GB 变更历史、Launch 最长 7 天、Scale 最长 30 天；时间点恢复只支持 root branches。这些套餐上限不等于本项目已经有可用恢复点。每次生产迁移前重新确认可恢复状态。[Neon 套餐](https://github.com/neondatabase/website/blob/main/content/docs/introduction/plans.md)
 
@@ -75,6 +77,8 @@ npm run db:restore-drill
 PostgreSQL 18 的本机工具连接 Neon 时同样保持 `sslmode=verify-full`。本机没有 `~/.postgresql/root.crt` 时，使用 `PGSSLROOTCERT=system` 指定系统可信根证书；不要为恢复操作关闭证书校验。[PostgreSQL sslrootcert 参数](https://www.postgresql.org/docs/18/libpq-connect.html#LIBPQ-CONNECT-SSLROOTCERT)、[PGSSLROOTCERT 环境变量](https://www.postgresql.org/docs/18/libpq-envars.html)
 
 ## 发布顺序与验收（T12）
+
+下列保留 T12 已完成的原始发布与迁移记录。**后续演练遵循 T32 的单 project 拓扑**，需要时在现有 production project 中建隔离 staging environment；不重建生产 project，不重新迁入原本地库。已有 production 的数据库、域名、GitHub `main` 来源和 Wait for CI 保留；无测试需要不创建 staging。
 
 1. 创建上述独立演练环境，在编造数据上验证业务与认证表迁移、首次登录、健康检查和隔离恢复。公开注册始终关闭；只有空库需要用 `railway run npm run auth:create-account -- <email>` 创建演练账户，密码在本机终端输入。Better Auth 生产默认限流，计数在单进程内存中；Railway 部署使用 `advanced.ipAddress.ipAddressHeaders: ['x-real-ip']`，不信任客户可传的 XFF。官方列出的客户端 IP 头是 `X-Real-IP`，演练还须发送伪造的 X-Real-IP/XFF，确认会话记录的是代理确定的实际 IP。现有固定 `BETTER_AUTH_URL` 足够，不启用泛用 `trustProxy: true` 或动态来源推断。[Railway 请求头](https://docs.railway.com/networking/public-networking/specs-and-limits)、[Better Auth IP 设置](https://better-auth.com/docs/reference/security#ip-address-headers)
 2. Railway 连接现有 GitHub 仓库的 `main` 分支自动发布；仓库 source 不等于已建立发布触发器，须核对 `deploymentTriggers` 的仓库、分支和 `checkSuites=true`，再用一次实际 push 验证。先启用 Wait for CI，CI 通过才发布；T12 代码通过审核并合入 `main` 后再开启生产首次部署，避免空库在恢复前自动运行迁移。以仓库根目录为构建上下文，Builder 用 Railpack，Build Command 为 `npm run build`，Start Command 为 `npm start`。`.nvmrc` 固定 Node 24；`RAILPACK_NODE_NPM_INSTALL=npm ci --include=dev` 明确保留构建依赖。Railpack 自身已有 `NPM_CONFIG_PRODUCTION=false`，不能仅凭 `NODE_ENV=production` 断言它会省略 devDependencies。桌面应用和执行器只在用户电脑运行，不构建或部署，不下载 Electron/Chromium。[GitHub 自动发布](https://docs.railway.com/deployments/github-autodeploys)、[Railpack Node](https://railpack.com/languages/node/)
