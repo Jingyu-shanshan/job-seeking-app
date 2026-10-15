@@ -15,6 +15,7 @@ V0.1 的流程：发现与筛选 → JD 总结 → 确认个人事实 → 解释
 | `docs/DEVELOPMENT.md` | 本轮技术决策、边界与开发约定 |
 | `docs/TASKS.md` | 按阶段排列的开发任务与验收条件 |
 | `docs/UIUX_DESIGN.md` | 2026-10-13 后续 UIUX 提案：20 个可编辑 Figma 画板、静态预览与路由/任务对应 |
+| `docs/T24_DESIGN_HANDOFF.md` | T24 完整设计补稿：规范、全路由与操作状态对应；离线稿待用户审定 |
 | `docs/OPEN_SOURCE_REUSE.md` | 已核对的开源复用候选及采用时机 |
 | `docs/DEPLOYMENT.md` | Railway + Neon 的计划部署流程 |
 
