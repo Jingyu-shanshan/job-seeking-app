@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import {
   AddFactRequestSchema,
@@ -7,18 +8,29 @@ import {
   FactsResponseSchema,
   ImportFactsRequestSchema,
   ImportFactsResponseSchema,
+  PreviewFactsMarkdownRequestSchema,
+  PreviewFactsResponseSchema,
+  SaveFactCandidatesRequestSchema,
+  SaveFactCandidatesResponseSchema,
   UpdateFactVersionRequestSchema,
   maxFactLength,
+  maxFactImportCandidates,
+  maxFactImportTextLength,
+  maxPdfBytes,
+  type FactCandidate,
+  type SaveFactCandidatesResponse,
   type Fact,
   type FactKind,
   type FactStatus,
   type FactVersion,
 } from '@jsa/shared';
+import { factDuplicates } from '@jsa/shared/fact-import';
 import type { Pool, PoolClient } from 'pg';
 import Type from 'typebox';
 import { httpError } from '../http-error.ts';
 import { currentVersion, mayUse, sensitiveData, statusChangeAllowed } from '../rules/facts.ts';
 import { parseFactsMarkdown } from './markdown.ts';
+import { previewPdf } from './pdf.ts';
 
 export interface FactRoutesOptions {
   pool: Pool;
@@ -96,7 +108,107 @@ async function loadFact(pool: Pool, factId: string): Promise<Fact> {
   return fact;
 }
 
+function checkCandidates(candidates: readonly FactCandidate[]) {
+  if (candidates.length > maxFactImportCandidates)
+    throw httpError(400, `An import can have at most ${maxFactImportCandidates} candidates.`);
+  if (candidates.reduce((sum, f) => sum + f.body.length, 0) > maxFactImportTextLength)
+    throw httpError(400, `An import can have at most ${maxFactImportTextLength} text characters.`);
+  for (const f of candidates) {
+    if (!f.selected) continue;
+    if (!f.body.trim()) throw httpError(400, 'A selected fact cannot be blank.');
+    if (f.body.length > maxFactLength)
+      throw httpError(
+        400,
+        `A selected fact is longer than ${maxFactLength} characters. Split it or leave it out.`,
+      );
+  }
+}
+
+/** Both the old Markdown endpoint and reviewed candidates use one atomic, retry-safe writer. */
+async function saveCandidates(
+  pool: Pool,
+  candidates: FactCandidate[],
+  legacyMarkdown = false,
+): Promise<SaveFactCandidatesResponse> {
+  checkCandidates(candidates);
+  const client = await pool.connect();
+  const connectionLost = () => {};
+  client.on('error', connectionLost);
+  try {
+    await client.query('begin');
+    // Serialize imports with facts and edits so the current-body duplicate check cannot race a write.
+    await client.query('lock table fact, fact_version in share row exclusive mode');
+    const duplicates = factDuplicates(candidates, await loadFacts(client));
+    const fresh = candidates.filter((f, i) => f.selected && !duplicates[i]);
+    if (fresh.length) {
+      await client.query(
+        `with incoming as (
+           select kind, body, source, n, gen_random_uuid() as id
+           from jsonb_to_recordset($1::jsonb) as t(kind text, body text, source text, n int)
+         ), new_fact as (
+           insert into fact (id, kind, created_at)
+           select id, kind, now() + n * interval '1 microsecond' from incoming
+         )
+         insert into fact_version (fact_id, version, body, source)
+         select id, 1, body, source from incoming`,
+        [
+          JSON.stringify(
+            fresh.map((f, n) => ({
+              kind: f.kind,
+              body: f.body,
+              source: legacyMarkdown ? 'markdown' : JSON.stringify(f.source),
+              n,
+            })),
+          ),
+        ],
+      );
+    }
+    const facts = await loadFacts(client);
+    await client.query('commit');
+    return {
+      added: fresh.length,
+      skipped: duplicates.filter(Boolean).length,
+      cancelled: candidates.filter((f, i) => !f.selected && !duplicates[i]).length,
+      duplicates: duplicates.flatMap((d, index) => (d ? [{ index, ...d }] : [])),
+      facts,
+    };
+  } catch (error) {
+    await client.query('rollback').catch(() => {});
+    throw error;
+  } finally {
+    client.off('error', connectionLost);
+    client.release();
+  }
+}
+
+function markdownCandidates(markdown: string, fileName = ''): FactCandidate[] {
+  const source = {
+    type: 'markdown' as const,
+    fileName,
+    sha256: createHash('sha256').update(markdown).digest('hex'),
+    edited: false,
+  };
+  const candidates = parseFactsMarkdown(markdown).map((f) => ({
+    kind: f.kind,
+    body: f.body,
+    source,
+    selected: true,
+  }));
+  if (!candidates.length) throw httpError(400, 'No facts were found in the Markdown.');
+  if (candidates.length > maxFactImportCandidates || markdown.length > maxFactImportTextLength)
+    throw httpError(
+      400,
+      `Use at most ${maxFactImportTextLength} characters and ${maxFactImportCandidates} candidates.`,
+    );
+  return candidates;
+}
+
 export const factRoutes: FastifyPluginAsyncTypebox<FactRoutesOptions> = async (app, { pool }) => {
+  app.addContentTypeParser(
+    'application/pdf',
+    { parseAs: 'buffer', bodyLimit: maxPdfBytes },
+    (_request, body, done) => done(null, body),
+  );
   app.get('/facts', { schema: { response: { 200: FactsResponseSchema } } }, async () => ({
     facts: await loadFacts(pool),
   }));
@@ -181,47 +293,68 @@ export const factRoutes: FastifyPluginAsyncTypebox<FactRoutesOptions> = async (a
   );
 
   app.post(
+    '/facts/import/preview/markdown',
+    {
+      schema: {
+        body: PreviewFactsMarkdownRequestSchema,
+        response: { 200: PreviewFactsResponseSchema },
+      },
+    },
+    async (request) => {
+      const candidates = markdownCandidates(request.body.markdown, request.body.fileName);
+      const duplicates = factDuplicates(candidates, await loadFacts(pool));
+      return {
+        pages: [],
+        candidates: candidates.map((c, i) => ({
+          ...c,
+          selected: !duplicates[i],
+          duplicate: duplicates[i] ?? null,
+        })),
+      };
+    },
+  );
+  app.post(
+    '/facts/import/preview/pdf',
+    {
+      bodyLimit: maxPdfBytes,
+      schema: {
+        querystring: Type.Object({
+          fileName: Type.String({ minLength: 1, maxLength: 255, pattern: '^[^\\u0000-\\u001f]+$' }),
+        }),
+        response: { 200: PreviewFactsResponseSchema },
+      },
+    },
+    async (request) => {
+      if (!Buffer.isBuffer(request.body))
+        throw httpError(400, 'Upload PDF bytes with application/pdf.');
+      const preview = await previewPdf(request.body, request.query.fileName);
+      const duplicates = factDuplicates(preview.candidates, await loadFacts(pool));
+      return {
+        ...preview,
+        candidates: preview.candidates.map((c, i) => ({
+          ...c,
+          selected: !duplicates[i],
+          duplicate: duplicates[i] ?? null,
+        })),
+      };
+    },
+  );
+  app.post(
+    '/facts/import/candidates',
+    {
+      bodyLimit: maxPdfBytes,
+      schema: {
+        body: SaveFactCandidatesRequestSchema,
+        response: { 200: SaveFactCandidatesResponseSchema },
+      },
+    },
+    (request) => saveCandidates(pool, request.body.candidates),
+  );
+  app.post(
     '/facts/import',
     { schema: { body: ImportFactsRequestSchema, response: { 200: ImportFactsResponseSchema } } },
     async (request) => {
-      const parsed = parseFactsMarkdown(request.body.markdown);
-      if (parsed.length === 0) throw httpError(400, 'No facts were found in the Markdown.');
-      const tooLong = parsed.find((f) => f.body.length > maxFactLength);
-      if (tooLong) {
-        throw httpError(
-          400,
-          `A fact${tooLong.heading ? ` under “${tooLong.heading}”` : ''} is longer than ${maxFactLength} characters.`,
-        );
-      }
-
-      const known = (await loadFacts(pool)).map((f) => f.current.body);
-      const fresh: typeof parsed = [];
-      for (const fact of parsed) {
-        if ([...known, ...fresh.map((f) => f.body)].some((body) => sameText(body, fact.body))) {
-          continue;
-        }
-        fresh.push(fact);
-      }
-      if (fresh.length) {
-        await pool.query(
-          `with incoming as (
-             select kind, body, n, gen_random_uuid() as id
-             from jsonb_to_recordset($1::jsonb) as t(kind text, body text, n int)
-           ),
-           new_fact as (
-             insert into fact (id, kind, created_at)
-             select id, kind, now() + n * interval '1 microsecond' from incoming
-           )
-           insert into fact_version (fact_id, version, body, source)
-           select id, 1, body, 'markdown' from incoming`,
-          [JSON.stringify(fresh.map((f, n) => ({ kind: f.kind, body: f.body, n })))],
-        );
-      }
-      return {
-        added: fresh.length,
-        skipped: parsed.length - fresh.length,
-        facts: await loadFacts(pool),
-      };
+      return saveCandidates(pool, markdownCandidates(request.body.markdown), true);
     },
   );
 };

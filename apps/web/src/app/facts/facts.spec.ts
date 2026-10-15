@@ -1,7 +1,12 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import type { Fact, FactsResponse, ImportFactsResponse } from '@jsa/shared';
+import type {
+  Fact,
+  FactsResponse,
+  PreviewFactsResponse,
+  SaveFactCandidatesResponse,
+} from '@jsa/shared';
 import { Facts } from './facts';
 import { kindLabels } from './facts-api';
 
@@ -148,16 +153,33 @@ describe('Facts', () => {
     area.value = '## Skills\n- PostgreSQL';
     area.dispatchEvent(new Event('input'));
     await fixture.whenStable();
-    button('Import')!.click();
-    const request = http.expectOne('/api/facts/import');
-    expect(request.request.body).toEqual({ markdown: '## Skills\n- PostgreSQL' });
+    button('Preview Markdown')!.click();
+    const request = http.expectOne('/api/facts/import/preview/markdown');
+    expect(request.request.body).toEqual({ markdown: '## Skills\n- PostgreSQL', fileName: '' });
     request.flush({
+      pages: [],
+      candidates: [
+        {
+          kind: 'skill',
+          body: 'PostgreSQL',
+          selected: true,
+          duplicate: null,
+          source: { type: 'markdown', fileName: '', sha256: 'a'.repeat(64), edited: false },
+        },
+      ],
+    } satisfies PreviewFactsResponse);
+    await settle();
+    expect(activeCards()).toHaveLength(0);
+    button('Add selected to confirm')!.click();
+    http.expectOne('/api/facts/import/candidates').flush({
       added: 1,
       skipped: 0,
+      cancelled: 0,
+      duplicates: [],
       facts: [fact({}, { body: 'PostgreSQL', source: 'markdown' })],
-    } satisfies ImportFactsResponse);
+    } satisfies SaveFactCandidatesResponse);
     await settle();
-    expect(text()).toContain('Added 1 facts to confirm; skipped 0 you already had.');
+    expect(text()).toContain('Added 1 facts to confirm; skipped 0 duplicates; left out 0.');
     expect(headings()).toEqual(['To confirm (1)']);
   });
 

@@ -1,6 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject, input, linkedSignal, output, signal } from '@angular/core';
 import type { Fact, UpdateFactVersionRequest } from '@jsa/shared';
+import { factSourceLabel } from '@jsa/shared/fact-import';
 import { errorMessage } from '../sources/sources-api';
 import { FactsApi } from './facts-api';
 
@@ -186,13 +187,7 @@ export class FactCard {
     return statusLabels[version.status].toLowerCase();
   }
 
-  protected sourceLabel(source: string) {
-    return source === 'markdown'
-      ? 'Markdown import'
-      : source === 'manual'
-        ? 'Manual entry'
-        : source;
-  }
+  protected readonly sourceLabel = factSourceLabel;
 
   protected update(change: UpdateFactVersionRequest, box?: HTMLInputElement) {
     return this.run(() => this.api.update(this.fact().current.id, change), box);

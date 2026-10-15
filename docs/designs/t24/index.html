@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'"
+    />
+    <title>T24 · Design review</title>
+    <link rel="stylesheet" href="review.css" />
+    <script defer src="screens.js"></script>
+    <script defer src="review.js"></script>
+  </head>
+  <body>
+    <header class="review-tools" lang="zh-CN">
+      <div class="review-intro">
+        <strong>T24 设计审阅</strong><span>已获合并批准 · 编造数据 · 页面动作只切换稿件状态</span
+        ><a href="../../T24_DESIGN_HANDOFF.md">设计规范与实现对应</a>
+      </div>
+      <div class="review-selectors">
+        <label>页面 / 场景<select id="screen"></select></label>
+        <label>页面状态<select id="view"></select></label>
+        <label>关键动作<select id="action"></select></label>
+        <label
+          >动作状态<select id="state">
+            <option value="ready">正常</option>
+            <option value="busy">进行中</option>
+            <option value="error">失败 / 重试</option>
+            <option value="blocked">不可操作</option>
+            <option value="success">完成反馈</option>
+          </select></label
+        >
+        <label
+          >主题<select id="theme">
+            <option value="light">浅色</option>
+            <option value="dark">深色</option>
+          </select></label
+        >
+        <label
+          >画板宽度<select id="width">
+            <option value="auto">适合窗口</option>
+            <option value="1440">桌面 1440</option>
+            <option value="1024">桌面 1024</option>
+            <option value="768">平板 768</option>
+            <option value="605">Electron 605</option>
+            <option value="390">手机 390</option>
+            <option value="360">手机 / Pane 360</option>
+          </select></label
+        >
+      </div>
+      <p id="mapping"></p>
+    </header>
+    <div class="canvas"><div id="preview" class="preview" data-theme="light"></div></div>
+    <footer class="review-notes" lang="zh-CN">
+      <p id="notes"></p>
+      <p>
+        规范审阅稿；业务接口、真实投递、打印校验与辅助技术验收在 T25–T31
+        进行。可复制当前地址定位页面与状态。
+      </p>
+    </footer>
+  </body>
+</html>
