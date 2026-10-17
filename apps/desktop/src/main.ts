@@ -35,7 +35,7 @@ import type { ToolbarState } from './toolbar-state.ts';
 /** An isolated world for the readers. 0 is the page's own; Electron uses 999 for preloads. */
 const readerWorld = 1001;
 const readTimeoutMs = 10_000;
-const toolbarHeight = 96;
+const toolbarHeight = 160;
 
 const intro =
   'Browse a job site here yourself. On a job’s page, press Save this job. The app opens, clicks and scrolls nothing by itself.';

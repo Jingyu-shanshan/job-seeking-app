@@ -60,15 +60,11 @@ import { describeResult, listedResults } from './criteria-text';
     }
     .applied {
       margin-left: 0.5rem;
-      padding: 0 0.35rem;
-      font-size: 0.85rem;
-      border: 1px solid currentColor;
-      border-radius: 0.25rem;
     }
     .meta,
     .reason {
       display: block;
-      font-size: 0.9rem;
+      font-size: 14px;
     }
     .reason {
       font-style: italic;

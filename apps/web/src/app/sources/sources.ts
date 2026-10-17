@@ -87,11 +87,6 @@ const alertSections: { section: AlertSection; title: string }[] = [
       }
     </section>
   `,
-  styles: `
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
-    }
-  `,
 })
 export class Sources {
   protected readonly data = httpResource<SourcesResponse>(() => '/api/sources');

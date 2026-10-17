@@ -72,7 +72,7 @@ type ReviewCandidate = FactCandidate & {
           Preview Markdown
         </button>
       }
-      <p role="status" tabindex="-1" #progress>
+      <p role="status" tabindex="-1" [hidden]="!busy() && !message()" #progress>
         @if (reading()) {
           Reading candidates…
         } @else if (saving()) {
@@ -216,8 +216,8 @@ type ReviewCandidate = FactCandidate & {
     fieldset {
       min-width: 0;
       margin: 1rem 0;
-      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-      border-radius: 0.5rem;
+      border: 1px solid var(--control);
+      border-radius: 6px;
     }
     .actions {
       display: flex;
@@ -233,9 +233,6 @@ type ReviewCandidate = FactCandidate & {
     code,
     .source {
       overflow-wrap: anywhere;
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
     }
   `,
 })

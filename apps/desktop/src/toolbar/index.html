@@ -12,29 +12,33 @@
   </head>
   <body>
     <form id="address-form">
-      <button type="button" id="back" aria-label="Back" title="Back">←</button>
-      <button type="button" id="forward" aria-label="Forward" title="Forward">→</button>
-      <button type="button" id="reload" aria-label="Reload" title="Reload">↻</button>
-      <input
-        id="address"
-        type="text"
-        aria-label="Address"
-        placeholder="Type a job site’s address, e.g. linkedin.com/jobs"
-        autocomplete="off"
-        spellcheck="false"
-      />
-      <button type="button" id="save-job" class="save">Save this job</button>
-      <button
-        type="button"
-        id="save-results"
-        class="save"
-        title="Saves the job entries this LinkedIn results page shows now"
-      >
-        Save jobs on this page
-      </button>
+      <div class="toolbar-nav">
+        <button type="button" id="back" aria-label="Back" title="Back">←</button>
+        <button type="button" id="forward" aria-label="Forward" title="Forward">→</button>
+        <button type="button" id="reload" aria-label="Reload" title="Reload">↻</button>
+        <input
+          id="address"
+          type="text"
+          aria-label="Address"
+          placeholder="Type a job site’s address, e.g. linkedin.com/jobs"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </div>
+      <div class="save-actions">
+        <button type="button" id="save-job" class="save">Save this job</button>
+        <button
+          type="button"
+          id="save-results"
+          class="save"
+          title="Saves the job entries this LinkedIn results page shows now"
+        >
+          Save jobs on this page
+        </button>
+      </div>
     </form>
     <p id="status" role="status">
-      <span id="status-text"></span>
+      <span id="status-text" tabindex="0"></span>
       <button type="button" id="status-action" hidden></button>
     </p>
   </body>

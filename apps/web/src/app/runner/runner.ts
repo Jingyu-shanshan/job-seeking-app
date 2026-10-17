@@ -111,7 +111,7 @@ import { RunnerApi } from './runner-api';
       box-sizing: border-box;
     }
     .issued {
-      border-left: 3px solid color-mix(in srgb, currentColor 40%, transparent);
+      border-left: 1px solid var(--line);
       padding-left: 0.5rem;
       margin: 1rem 0;
     }
@@ -125,12 +125,6 @@ import { RunnerApi } from './runner-api';
     }
     .tokens button {
       margin-left: 0.5rem;
-    }
-    .hint {
-      font-size: 0.9rem;
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
     }
   `,
 })

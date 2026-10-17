@@ -43,6 +43,7 @@ window.desktop.onState((state: ToolbarState) => {
   reload.ariaLabel = reload.title = state.loading ? 'Stop' : 'Reload';
   reload.disabled = state.url === '';
   saveJob.disabled = state.busy || state.url === '';
+  saveJob.textContent = state.busy ? 'Saving…' : 'Save this job';
   saveResults.hidden = !state.canSaveResults;
   saveResults.disabled = state.busy;
   status.dataset['tone'] = state.status.tone;

@@ -35,7 +35,9 @@ import { Session } from '../auth/session';
         <p class="error" id="password-error">{{ loginForm.password().errors()[0]?.message }}</p>
       }
 
-      <button type="submit" [disabled]="loginForm().submitting()">Sign in</button>
+      <button type="submit" [disabled]="loginForm().submitting()">
+        {{ loginForm().submitting() ? 'Signing in…' : 'Sign in' }}
+      </button>
       <p class="error" role="alert">{{ loginForm().errors()[0]?.message }}</p>
     </form>
   `,

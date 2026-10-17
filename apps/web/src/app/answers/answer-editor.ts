@@ -89,7 +89,7 @@ function toRequest(m: Model): SaveAnswerRequest {
     form {
       display: grid;
       gap: 0.5rem;
-      max-width: 48rem;
+      max-width: 72ch;
     }
     label {
       display: grid;
@@ -100,9 +100,6 @@ function toRequest(m: Model): SaveAnswerRequest {
     }
     button {
       margin-right: 0.5rem;
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
     }
   `,
 })

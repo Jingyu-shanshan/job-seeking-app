@@ -45,7 +45,7 @@ import { JobsApi } from './jobs-api';
     form {
       display: grid;
       gap: 0.5rem;
-      max-width: 40rem;
+      max-width: 72ch;
       margin: 0.5rem 0 1rem;
     }
     label {
@@ -57,11 +57,11 @@ import { JobsApi } from './jobs-api';
     }
     .hint {
       margin: 0;
-      font-size: 0.9rem;
+      font-size: 14px;
     }
     .error {
       margin: 0;
-      color: light-dark(#a3141c, #ff9b9b);
+      color: var(--error-text);
     }
   `,
 })

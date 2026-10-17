@@ -67,7 +67,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
     }
     .hint {
       display: block;
-      font-size: 0.9rem;
+      font-size: 14px;
     }
   `,
 })

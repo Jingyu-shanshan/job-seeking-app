@@ -125,10 +125,10 @@ async function base64Of(file: File): Promise<string> {
     form {
       display: grid;
       gap: 0.5rem;
-      max-width: 48rem;
+      max-width: 72ch;
       margin-top: 1rem;
       padding: 0.5rem 0.75rem;
-      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      border: 1px solid var(--line);
     }
     h3 {
       margin: 0;
@@ -145,15 +145,12 @@ async function base64Of(file: File): Promise<string> {
       display: grid;
       gap: 0.25rem;
     }
-    .hint {
-      font-size: 0.9rem;
-    }
     .actions button {
       margin-right: 0.5rem;
     }
     .error {
       margin: 0;
-      color: light-dark(#a3141c, #ff9b9b);
+      color: var(--error-text);
     }
   `,
 })

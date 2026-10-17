@@ -99,14 +99,14 @@ const accessLabels: Record<AccessMethod, string> = {
   styles: `
     :host {
       display: block;
-      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+      border: 1px solid var(--line);
       border-radius: 0.5rem;
       padding: 0 1rem 1rem;
       margin-bottom: 1rem;
     }
     dl {
       display: grid;
-      grid-template-columns: max-content 1fr;
+      grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
       gap: 0.25rem 1rem;
     }
     dt {
@@ -130,10 +130,12 @@ const accessLabels: Record<AccessMethod, string> = {
     }
     .hint {
       margin: 0.25rem 0;
-      font-size: 0.9rem;
+      font-size: 14px;
     }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
+    @media (max-width: 600px) {
+      dl {
+        grid-template-columns: minmax(0, 1fr);
+      }
     }
   `,
 })

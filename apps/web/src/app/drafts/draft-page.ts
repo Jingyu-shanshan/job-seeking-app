@@ -119,12 +119,6 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
     .notice {
       font-weight: 600;
     }
-    .hint {
-      font-size: 0.9rem;
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
-    }
   `,
 })
 export class DraftPage {

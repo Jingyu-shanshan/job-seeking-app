@@ -1,9 +1,376 @@
 :root {
   color-scheme: light dark;
-  font-family: system-ui, sans-serif;
-  line-height: 1.5;
+  font:
+    16px/1.5 system-ui,
+    sans-serif;
+  --bg: light-dark(#f6f7f5, #17231c);
+  --surface: light-dark(#fff, #202d25);
+  --layer: light-dark(#edf1ed, #29372d);
+  --text: light-dark(#1d2924, #eff5ef);
+  --muted: light-dark(#53635a, #b4c3b6);
+  --line: light-dark(#d9dfd9, #3b4c41);
+  --control: light-dark(#829488, #7e9986);
+  --action: light-dark(#225d49, #a9d8b8);
+  --action-hover: light-dark(#194a39, #c4e8ce);
+  --on-action: light-dark(#fff, #17231c);
+  --info-bg: light-dark(#e7f0e9, #2b4032);
+  --info-text: light-dark(#225d49, #b7dfc2);
+  --warn-bg: light-dark(#f7eedf, #3e3526);
+  --warn-text: light-dark(#77501e, #f0cd8a);
+  --error-bg: light-dark(#fbe9e7, #472c2c);
+  --error-text: light-dark(#932c2c, #ffb8b0);
+  --disabled-bg: light-dark(#e5e9e5, #314237);
+  --disabled-text: var(--muted);
+  --focus: var(--action);
+  color: var(--text);
+  background: var(--bg);
+  accent-color: var(--action);
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+::selection {
+  background: var(--info-text);
+  color: var(--info-bg);
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+a {
+  color: var(--action);
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+:where(h1, h2, h3, p, li, dd, dt, span, a, code, legend) {
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-size: 32px;
+  line-height: 1.25;
+  font-weight: 650;
+  margin: 0 0 16px;
+  text-wrap: balance;
+}
+
+h2 {
+  font-size: 20px;
+  line-height: 1.4;
+  font-weight: 650;
+  margin: 32px 0 12px;
+}
+
+h3 {
+  font-size: 17px;
+  line-height: 1.5;
+  font-weight: 650;
+  margin: 24px 0 8px;
+}
+
+p {
+  margin: 0 0 16px;
+}
+
+p:not(app-document-sheet *),
+form {
+  max-width: 72ch;
+}
+
+form,
+fieldset,
+label,
+details,
+nav {
+  min-width: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  max-width: 100%;
+  min-width: 0;
+  font: inherit;
+}
+
+button,
+.button {
+  display: inline-block;
+  min-height: 44px;
+  border: 1px solid var(--control);
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: var(--text);
+  background: var(--surface);
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+button:hover,
+.button:hover {
+  background: var(--layer);
+}
+
+button.primary,
+button[type='submit'],
+.button.primary {
+  color: var(--on-action);
+  background: var(--action);
+  border-color: var(--action);
+}
+
+button.primary:hover,
+button[type='submit']:hover,
+.button.primary:hover {
+  background: var(--action-hover);
+}
+
+button.danger {
+  color: var(--error-text);
+}
+
+input:not([type='checkbox'], [type='radio']),
+select,
+textarea {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--control);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface);
+  caret-color: var(--action);
+}
+
+input:not([type='checkbox'], [type='radio']),
+textarea {
+  width: 100%;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex: none;
+}
+
+input[type='file'] {
+  overflow: hidden;
+}
+
+textarea {
+  resize: vertical;
+  line-height: 1.6;
+}
+
+label {
+  display: block;
+  max-width: 72ch;
+  margin-bottom: 12px;
+}
+
+label:has(input[type='checkbox'], input[type='radio']) {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 12px;
+}
+
+fieldset {
+  margin: 16px 0;
+  padding: 20px;
+  border: 1px solid var(--control);
+  border-radius: 6px;
+}
+
+legend {
+  padding: 0 8px;
+  font-weight: 600;
+}
+
+button:disabled,
+button.primary:disabled,
+button[type='submit']:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: var(--disabled-bg);
+  color: var(--disabled-text);
+  border-color: var(--control);
+  opacity: 1;
+  cursor: default;
+}
+
+[aria-invalid='true'] {
+  border-color: var(--error-text);
+}
+
+details {
+  margin: 16px 0;
+}
+
+summary {
+  min-height: 44px;
+  padding: 10px 0;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: 8px 12px;
+  margin: 16px 0;
+}
+
+.hint,
+.meta,
+small {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.tag,
+.badge,
+.applied {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--layer);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+
+.tag.todo,
+.badge.warning {
+  color: var(--warn-text);
+  background: var(--warn-bg);
+}
+
+.tag.confirmed,
+.applied {
+  color: var(--info-text);
+  background: var(--info-bg);
+}
+
+.error,
+.failure {
+  color: var(--error-text);
+}
+
+.warning,
+.notice {
+  color: var(--warn-text);
+}
+
+[role='status'],
+[role='alert'],
+.notice,
+.warning {
+  max-width: 72ch;
+  padding: 16px;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+[role='status'] {
+  display: block;
+  color: var(--muted);
+  background: var(--layer);
+}
+
+[role='alert'] {
+  color: var(--error-text);
+  background: var(--error-bg);
+}
+
+.notice,
+.warning {
+  background: var(--warn-bg);
+}
+
+[role='alert'] a,
+[role='status'] a,
+.warning a,
+.notice a {
+  color: inherit;
+}
+
+.error:empty,
+[role='status']:empty {
+  display: none;
+}
+
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 16px;
+  border-radius: 6px;
+  background: var(--layer);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+mark {
+  color: var(--warn-text);
+  background: var(--warn-bg);
+}
+
+@media (max-width: 600px) {
+  h1 {
+    font-size: 28px;
+  }
+
+  fieldset {
+    padding: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  :root {
+    color-scheme: light;
+    background: #fff;
+    color: #000;
+  }
 }

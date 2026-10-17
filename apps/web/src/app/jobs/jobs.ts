@@ -108,9 +108,6 @@ const areaLabels: Record<SearchScope['area'], string> = {
     summary h2 {
       display: inline;
     }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
-    }
   `,
 })
 export class Jobs {

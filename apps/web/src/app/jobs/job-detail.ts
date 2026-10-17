@@ -271,30 +271,18 @@ const verdictLines: Record<JobVerdict, string> = {
   styles: `
     .details {
       display: block;
-      font-size: 0.9rem;
+      font-size: 14px;
     }
     .jd {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
       font-family: inherit;
     }
-    .hint {
-      font-size: 0.9rem;
-    }
-    .tag {
-      font-size: 0.8rem;
-      border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
-      border-radius: 0.25rem;
-      padding: 0 0.25rem;
-    }
     .inline {
       margin-left: 0.5rem;
     }
     mark {
       scroll-margin: 4rem;
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
     }
   `,
 })

@@ -65,20 +65,14 @@ import { changedWords, wordDiff } from './word-diff';
   styles: `
     :host {
       display: block;
-      font-size: 0.9rem;
+      font-size: 14px;
       margin: 0.125rem 0 0.5rem;
       padding-left: 0.5rem;
-      border-left: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+      border-left: 1px solid var(--line);
     }
     .left-out {
       font-weight: 600;
-      color: light-dark(#a3141c, #ff9b9b);
-    }
-    .tag {
-      font-size: 0.8rem;
-      border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
-      border-radius: 0.25rem;
-      padding: 0 0.25rem;
+      color: var(--error-text);
     }
     details p,
     details ul {

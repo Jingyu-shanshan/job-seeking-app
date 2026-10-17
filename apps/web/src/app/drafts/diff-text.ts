@@ -32,16 +32,16 @@ import type { DiffPart } from './word-diff';
     }
     ins {
       text-decoration: underline 2px;
-      background: light-dark(#e6f4ea, #1e3a26);
+      background: var(--info-bg);
     }
     del {
-      background: light-dark(#fbe9e9, #44201f);
+      background: var(--error-bg);
     }
     del + ins {
       margin-left: 0.25em;
     }
     .legend {
-      font-size: 0.8rem;
+      font-size: 13px;
     }
   `,
 })
