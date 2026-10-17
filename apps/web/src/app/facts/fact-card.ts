@@ -18,7 +18,12 @@ const statusLabels: Record<Fact['current']['status'], string> = {
   template: `
     @let f = fact();
     <p class="status">
-      <span class="tag" [class.todo]="f.current.status === 'proposed'">{{ status() }}</span>
+      <span
+        class="tag"
+        [class.todo]="f.current.status === 'proposed'"
+        [class.confirmed]="f.current.status === 'confirmed'"
+        >{{ status() }}</span
+      >
       Version {{ f.current.version }} · Source: {{ sourceLabel(f.current.source) }}
     </p>
 
@@ -82,12 +87,22 @@ const statusLabels: Record<Fact['current']['status'], string> = {
 
     <div class="actions">
       @if (f.current.status !== 'confirmed') {
-        <button type="button" [disabled]="busy()" (click)="update({ status: 'confirmed' })">
+        <button
+          class="primary"
+          type="button"
+          [disabled]="busy()"
+          (click)="update({ status: 'confirmed' })"
+        >
           {{ f.current.status === 'retired' ? 'Confirm again' : 'Confirm' }}
         </button>
       }
       @if (f.current.status !== 'retired') {
-        <button type="button" [disabled]="busy()" (click)="update({ status: 'retired' })">
+        <button
+          class="danger"
+          type="button"
+          [disabled]="busy()"
+          (click)="update({ status: 'retired' })"
+        >
           Withdraw
         </button>
       }
@@ -117,22 +132,17 @@ const statusLabels: Record<Fact['current']['status'], string> = {
   styles: `
     :host {
       display: block;
-      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-      border-radius: 0.5rem;
-      padding: 0.5rem 1rem;
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 20px;
       margin-bottom: 0.75rem;
     }
     :host.withdrawn {
-      border-style: dashed;
+      border: 1px dashed var(--control);
     }
     .status {
       margin: 0;
-      font-size: 0.9rem;
-    }
-    .tag {
-      border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
-      border-radius: 0.25rem;
-      padding: 0 0.25rem;
+      font-size: 14px;
     }
     .todo {
       font-weight: 600;
@@ -163,11 +173,13 @@ const statusLabels: Record<Fact['current']['status'], string> = {
       cursor: pointer;
     }
     .hint {
-      font-size: 0.9rem;
+      font-size: 14px;
       margin: 0.25rem 0;
     }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
+    @media (max-width: 600px) {
+      :host {
+        padding: 16px;
+      }
     }
   `,
 })

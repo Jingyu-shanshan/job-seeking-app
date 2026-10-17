@@ -216,7 +216,7 @@ const defaults: RunConfig = {
       display: block;
     }
     p {
-      max-width: 75ch;
+      max-width: 72ch;
     }
     h2 {
       margin-top: 1.5rem;
@@ -250,11 +250,9 @@ const defaults: RunConfig = {
     input {
       box-sizing: border-box;
       min-width: 0;
-      padding: 0.35rem;
       max-width: 100%;
     }
     button {
-      padding: 0.35rem 0.65rem;
     }
     .actions {
       display: flex;
@@ -271,16 +269,13 @@ const defaults: RunConfig = {
     }
     article {
       padding: 1rem 0;
-      border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+      border-top: 1px solid var(--line);
     }
     article h3 {
       margin: 0.25rem 0;
     }
     li {
       overflow-wrap: anywhere;
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
     }
   `,
 })

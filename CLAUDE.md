@@ -24,6 +24,8 @@ T23（2026-10-14）：Facts 的 PDF/Markdown 共用候选审核完成。PDF 最�
 
 T24（2026-10-14交付，2026-10-15用户批准合并）：完整设计规范与离线审阅页的设计交付审定完成，TASKS 的 T24 checkbox 已勾选。28 个场景对应全部业务路由与 Electron 工具栏，66 个关键动作五态、183 个页面状态、亮暗及六种宽度。规范见 docs/T24_DESIGN_HANDOFF.md，稿件在 docs/designs/t24/；Figma 原20画板仍是概念参考，没有同步新状态。T24未改应用业务代码；全站界面实现和生产验收留在 T25–T31，本次未启动 T25。
 
+T25（2026-10-16）：原业务路由保留，应用壳采用 Main / Your setup 分组；宽屏 224px 侧栏，900px 以下原生 details Menu，按 app pane 的 viewport 判断。Menu 的展开由原生 details 管理，避免与额外 signal 同步产生缩放竞态；路由切换关闭窄菜单并聚焦 main，Escape/收窄返回 summary。跳主内容只移动焦点，不改变路径/查询。登录页不显示业务导航，退出有进行中/失败重试。全局 CSS 落实 T24 的精确亮暗色与字体、44px 控件、焦点、主次按钮、反馈和标记，各页重复样式同步；没有新增 UI 依赖或业务 API。Electron toolbarHeight 与 CSS 同步为 160px，三行布局，长状态可聚焦和键盘滚动，不再截断，不改变第三方浏览/读取/隔离。176 个前端与 25 个桌面测试、lint/typecheck/生产及桌面构建通过；Chrome 六宽亮暗 190 组布局/axe、真实 Electron app pane 360/605 和右工具栏 479/834、A4 PDF 正文核对通过。仅测试进程放宽最小窗口来触达 360/479 边界，产品 minWidth 仍为 900。使用编造数据，未跑后端数据库回归、未调用模型或部署；真实屏幕阅读器/系统打印和完整业务验收留 T31。记录在 docs/TASKS.md，检查产物在忽略的 scratch/t25/；首页与 Quick guide 由 T26 实现。
+
 ## Commands
 
 Run from the repository root. Node `^24.15.0 || >=26` (`.nvmrc` pins 24 for CI and Railway).

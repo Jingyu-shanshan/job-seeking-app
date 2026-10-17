@@ -56,10 +56,7 @@ import { methodLabels, statusLabels } from './labels';
     .meta,
     .hint {
       display: block;
-      font-size: 0.9rem;
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
+      font-size: 14px;
     }
   `,
 })

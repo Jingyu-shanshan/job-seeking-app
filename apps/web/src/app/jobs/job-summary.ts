@@ -203,13 +203,13 @@ const evidenceLabels: Record<Outcome, string> = {
     }
     .quote {
       display: block;
-      font-size: 0.9rem;
+      font-size: 14px;
       font-style: italic;
     }
     .evidence {
       margin: 0.25rem 0;
       padding-left: 0.5rem;
-      border-left: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+      border-left: 1px solid var(--line);
     }
     .evidence ul {
       margin: 0.25rem 0;
@@ -220,18 +220,12 @@ const evidenceLabels: Record<Outcome, string> = {
     .unmet {
       font-weight: 600;
     }
-    .tag {
-      font-size: 0.8rem;
-      border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
-      border-radius: 0.25rem;
-      padding: 0 0.25rem;
-    }
     .actions button {
       margin-right: 0.5rem;
     }
     dl {
       display: grid;
-      grid-template-columns: max-content 1fr;
+      grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
       gap: 0.5rem 1rem;
     }
     dt {
@@ -239,12 +233,6 @@ const evidenceLabels: Record<Outcome, string> = {
     }
     dd {
       margin: 0;
-    }
-    .hint {
-      font-size: 0.9rem;
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
     }
     @media (max-width: 40rem) {
       dl {

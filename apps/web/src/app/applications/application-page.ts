@@ -189,7 +189,7 @@ const verdictLabels: Record<FrozenMatch['verdict'], string> = {
     .hint,
     .hash,
     .changed {
-      font-size: 0.9rem;
+      font-size: 14px;
     }
     .hash,
     li .hint {
@@ -204,7 +204,7 @@ const verdictLabels: Record<FrozenMatch['verdict'], string> = {
     }
     .note {
       white-space: pre-wrap;
-      border-left: 3px solid color-mix(in srgb, currentColor 40%, transparent);
+      border-left: 1px solid var(--line);
       padding-left: 0.5rem;
     }
     .text {
@@ -215,10 +215,7 @@ const verdictLabels: Record<FrozenMatch['verdict'], string> = {
     .screenshot {
       display: block;
       max-width: 100%;
-      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
+      border: 1px solid var(--line);
     }
   `,
 })

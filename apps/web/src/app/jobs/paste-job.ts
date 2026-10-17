@@ -56,7 +56,7 @@ const maxTextLength = 100_000;
     form {
       display: grid;
       gap: 0.5rem;
-      max-width: 48rem;
+      max-width: 72ch;
     }
     label {
       display: grid;
@@ -67,7 +67,7 @@ const maxTextLength = 100_000;
     }
     .error {
       margin: 0;
-      color: light-dark(#a3141c, #ff9b9b);
+      color: var(--error-text);
     }
   `,
 })

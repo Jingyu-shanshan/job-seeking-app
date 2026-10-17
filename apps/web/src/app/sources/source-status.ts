@@ -24,10 +24,10 @@ import type { Source } from '@jsa/shared';
   styles: `
     :host {
       display: block;
-      font-size: 0.9rem;
+      font-size: 14px;
     }
     .failure {
-      color: light-dark(#a3141c, #ff9b9b);
+      color: var(--error-text);
     }
   `,
 })

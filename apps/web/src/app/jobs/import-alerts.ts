@@ -154,7 +154,7 @@ const tooLong = `An email’s source can be at most ${maxAlertEmailLength.toLoca
     form {
       display: grid;
       gap: 0.5rem;
-      max-width: 48rem;
+      max-width: 72ch;
     }
     label {
       display: grid;
@@ -174,17 +174,14 @@ const tooLong = `An email’s source can be at most ${maxAlertEmailLength.toLoca
     }
     .note {
       display: block;
-      font-size: 0.9rem;
+      font-size: 14px;
       font-style: italic;
     }
     li {
       overflow-wrap: anywhere;
     }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
-    }
     .warning {
-      color: light-dark(#8a4b00, #ffc46b);
+      color: var(--warn-text);
     }
   `,
 })

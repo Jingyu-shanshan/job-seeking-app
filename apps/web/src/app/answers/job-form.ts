@@ -165,7 +165,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
       font-weight: normal;
     }
     .needs_answer strong {
-      color: light-dark(#a3141c, #ff9b9b);
+      color: var(--error-text);
     }
     .answer,
     .description {
@@ -174,24 +174,10 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
     }
     .note,
     .description {
-      font-size: 0.9rem;
-    }
-    .hint {
-      font-size: 0.9rem;
-    }
-    .tag {
-      font-size: 0.8rem;
-      font-weight: normal;
-      border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
-      border-radius: 0.25rem;
-      padding: 0 0.25rem;
-      margin-left: 0.25rem;
+      font-size: 14px;
     }
     .actions button {
       margin-right: 0.5rem;
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
     }
   `,
 })

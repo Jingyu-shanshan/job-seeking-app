@@ -37,7 +37,7 @@ const statusLabels: Record<Status, string> = {
         <strong>{{ e.name }}</strong>
       </label>
       <span class="kind">{{ kindLabel() }}</span>
-      <span class="status" [class]="status()">{{ statusLabel() }}</span>
+      <span class="status badge" [class]="status()">{{ statusLabel() }}</span>
     </div>
     <p class="meta">From {{ a.senders.join(', ') }}. {{ imported() }}</p>
     <details>
@@ -60,7 +60,7 @@ const statusLabels: Record<Status, string> = {
     :host {
       display: block;
       padding: 0.5rem 0;
-      border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+      border-bottom: 1px solid var(--line);
     }
     .head {
       display: flex;
@@ -71,26 +71,19 @@ const statusLabels: Record<Status, string> = {
     .kind,
     .meta,
     details {
-      font-size: 0.9rem;
+      font-size: 14px;
     }
     .meta {
       margin: 0.25rem 0;
       overflow-wrap: anywhere;
     }
-    .status {
-      font-size: 0.8rem;
-      padding: 0 0.4rem;
-      border-radius: 0.25rem;
-      border: 1px solid currentColor;
-    }
     .detected {
-      color: light-dark(#1b6b2f, #8fd9a0);
+      color: var(--info-text);
+      background: var(--info-bg);
     }
     .review {
-      color: light-dark(#8a4b00, #ffc46b);
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
+      color: var(--warn-text);
+      background: var(--warn-bg);
     }
   `,
 })

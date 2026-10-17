@@ -80,11 +80,11 @@ import { StatementCheck } from './statement-check';
     }
     .out {
       text-decoration: line-through;
-      opacity: 0.75;
+      color: var(--muted);
     }
     label {
       display: block;
-      font-size: 0.9rem;
+      font-size: 14px;
     }
     textarea {
       display: block;
@@ -99,11 +99,8 @@ import { StatementCheck } from './statement-check';
       margin-right: 0.5rem;
     }
     .hint {
-      font-size: 0.9rem;
+      font-size: 14px;
       margin: 0.25rem 0;
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
     }
   `,
 })

@@ -11,7 +11,7 @@ export const routes: Routes = [
     path: '',
     canActivateChild: [requireSignIn],
     children: [
-      { path: '', component: Home, title: 'Job Search Workbench' },
+      { path: '', component: Home, title: 'Overview' },
       {
         path: 'runs',
         loadComponent: () => import('./runs/runs').then((m) => m.Runs),
@@ -57,11 +57,13 @@ export const routes: Routes = [
         path: 'drafts/:id',
         loadComponent: () => import('./drafts/draft-page').then((m) => m.DraftPage),
         title: 'Draft',
+        data: { navigation: '/jobs' },
       },
       {
         path: 'drafts/:id/document',
         loadComponent: () => import('./drafts/document-page').then((m) => m.DocumentPage),
         title: 'Document',
+        data: { navigation: '/jobs' },
       },
       {
         path: 'profile',

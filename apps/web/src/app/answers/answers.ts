@@ -75,7 +75,7 @@ import { AnswersApi } from './answers-api';
       display: inline;
     }
     article {
-      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+      border: 1px solid var(--line);
       border-radius: 0.5rem;
       padding: 0.5rem 1rem;
       margin-bottom: 0.75rem;
@@ -89,20 +89,8 @@ import { AnswersApi } from './answers-api';
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
-    .hint {
-      font-size: 0.9rem;
-    }
-    .tag {
-      border: 1px solid color-mix(in srgb, currentColor 40%, transparent);
-      border-radius: 0.25rem;
-      padding: 0 0.25rem;
-      margin-right: 0.25rem;
-    }
     button {
       margin-right: 0.5rem;
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
     }
   `,
 })

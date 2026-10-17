@@ -145,7 +145,7 @@ const kinds = Object.keys(kindLabels) as FactKind[];
     details > label {
       display: grid;
       gap: 0.5rem;
-      max-width: 48rem;
+      max-width: 72ch;
       margin-bottom: 0.5rem;
     }
     label {
@@ -177,15 +177,9 @@ const kinds = Object.keys(kindLabels) as FactKind[];
       cursor: pointer;
     }
     .withdrawn {
-      border-top: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+      border-top: 1px solid var(--line);
       margin-top: 2rem;
       padding-top: 1rem;
-    }
-    .hint {
-      font-size: 0.9rem;
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
     }
   `,
 })

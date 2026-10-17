@@ -51,10 +51,10 @@ const sources = (n: number) => (n === 1 ? '1 source' : `${n} sources`);
   `,
   styles: `
     .problem {
-      color: light-dark(#a3141c, #ff9b9b);
+      color: var(--error-text);
     }
     .requests {
-      font-size: 0.9rem;
+      font-size: 14px;
     }
   `,
 })

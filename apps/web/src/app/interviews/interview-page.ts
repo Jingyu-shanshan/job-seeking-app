@@ -184,7 +184,7 @@ import { InterviewsApi } from './interviews-api';
   styles: `
     :host {
       display: block;
-      max-width: 75ch;
+      max-width: 72ch;
     }
     section {
       margin-top: 2rem;
@@ -215,12 +215,10 @@ import { InterviewsApi } from './interviews-api';
       margin-top: 0.5rem;
       font: inherit;
       color: inherit;
-      background: light-dark(#fff, #171717);
-      border: 1px solid currentColor;
+      background: var(--surface);
     }
     button {
       min-height: 2.75rem;
-      padding: 0.5rem 0.75rem;
       font: inherit;
     }
     pre {
@@ -231,7 +229,7 @@ import { InterviewsApi } from './interviews-api';
     .refs,
     .hint,
     .hash {
-      font-size: 0.9rem;
+      font-size: 14px;
     }
     .refs {
       display: block;
@@ -246,15 +244,8 @@ import { InterviewsApi } from './interviews-api';
       display: block;
       margin-top: 1rem;
     }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
-    }
     a {
       text-underline-offset: 0.15em;
-    }
-    :focus-visible {
-      outline: 2px solid currentColor;
-      outline-offset: 3px;
     }
   `,
 })

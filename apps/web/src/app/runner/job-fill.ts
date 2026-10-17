@@ -286,11 +286,11 @@ const pollMs = 2000;
   styles: `
     .hint,
     .note {
-      font-size: 0.9rem;
+      font-size: 14px;
     }
     .warning {
-      font-size: 0.9rem;
-      border-left: 3px solid color-mix(in srgb, currentColor 40%, transparent);
+      font-size: 14px;
+      border-left: 1px solid var(--line);
       padding-left: 0.5rem;
     }
     .actions button {
@@ -300,7 +300,7 @@ const pollMs = 2000;
     .application {
       margin-top: 1rem;
       padding: 0.5rem 0.75rem;
-      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+      border: 1px solid var(--line);
     }
     .binds {
       padding-left: 1.25rem;
@@ -330,19 +330,16 @@ const pollMs = 2000;
       overflow-wrap: anywhere;
     }
     .state {
-      font-size: 0.9rem;
+      font-size: 14px;
     }
     .problem .state {
-      color: light-dark(#a3141c, #ff9b9b);
+      color: var(--error-text);
       font-weight: 600;
     }
     .screenshot {
       display: block;
       max-width: 100%;
-      border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
+      border: 1px solid var(--line);
     }
   `,
 })

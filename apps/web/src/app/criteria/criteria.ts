@@ -239,7 +239,7 @@ const blank: Criteria = {
   `,
   styles: `
     section {
-      border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+      border-top: 1px solid var(--line);
       margin-top: 1rem;
     }
     fieldset {
@@ -257,12 +257,6 @@ const blank: Criteria = {
       width: 100%;
       max-width: 30rem;
       box-sizing: border-box;
-    }
-    .hint {
-      font-size: 0.9rem;
-    }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
     }
   `,
 })

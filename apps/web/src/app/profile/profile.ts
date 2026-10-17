@@ -114,9 +114,6 @@ const blank: Profile = { name: '', email: '', phone: '', location: '', links: []
     fieldset {
       margin: 0 0 0.75rem;
     }
-    .error {
-      color: light-dark(#a3141c, #ff9b9b);
-    }
   `,
 })
 export class ProfilePage {

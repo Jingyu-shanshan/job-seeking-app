@@ -154,7 +154,7 @@ const kindNames: Record<DraftKind, string> = { resume: 'Resume', cover_letter: '
     }
     app-document-page .problems,
     app-document-page .error {
-      color: light-dark(#a3141c, #ff9b9b);
+      color: var(--error-text);
     }
   `,
 })
