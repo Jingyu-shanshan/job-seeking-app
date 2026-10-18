@@ -485,6 +485,13 @@ describe('JobDetailPage', () => {
       );
     await settle();
     expect(text(section('Job text')!)).toContain('The job text is longer than 100000 characters.');
+    expect(textarea.value).toBe('Some text');
+    button('Save the text')!.click();
+    await settle();
+    const retry = http.expectOne(`/api/jobs/${jobId}/text`);
+    expect(retry.request.body).toEqual({ text: 'Some text' });
+    retry.flush(detail({ sources: [], canImport: false, saved: true, snapshot: snapshot() }));
+    await settle();
   });
 
   const result = (fields: Partial<CriterionResult>): CriterionResult => ({
@@ -566,7 +573,7 @@ describe('JobDetailPage', () => {
     expect(page().querySelector('pre')!.textContent).toBe(jd);
 
     // A requirement's quote, found whatever the spacing in the text.
-    page().querySelector<HTMLButtonElement>('[aria-label="Show Python in the job text"]')!.click();
+    page().querySelector<HTMLButtonElement>('[aria-label="Show in the job text: Python"]')!.click();
     await settle();
     expect(mark().textContent).toBe('5+ years of   Python');
   });
@@ -607,7 +614,7 @@ describe('JobDetailPage', () => {
       'Python “5+ years of Python” Met by your facts F1 says five years. Five years of Python at Acme. (fact version 2) Show in the job text Correct Remove',
     ]);
     const matchSection = section('Match with your facts')!;
-    expect(text(matchSection)).toBe(
+    expect(text(matchSection)).toContain(
       'Match with your facts Matched by deepseek-flash on 2 Oct 2026 with 2 facts, about $0.0005. Each requirement above shows what it found.',
     );
     expect(button('Match again')).toBeUndefined();
@@ -633,9 +640,11 @@ describe('JobDetailPage', () => {
       ),
     );
     expect(listUnder('Must have')[0]).toContain(
-      'Met by your facts a fact it cites has changed, so it counts as unknown',
+      'Not shown by your facts earlier evidence; this match needs updating and counts as unknown',
     );
     expect(listUnder('Must have')[0]).toContain('(fact version 2, not current)');
+    expect(text(page().querySelector('.next-step'))).toContain('Update the evidence match');
+    expect(listUnder('Must have')[0]).not.toContain('Met by your facts');
     expect(text(section('Match with your facts')!)).toContain(
       'The facts that may be sent to DeepSeek have changed since. Match again to use the change.',
     );
@@ -679,7 +688,7 @@ describe('JobDetailPage', () => {
     expect(items[0]).toContain('12 statements, 2 left out by the checks, 1 PDF kept.');
     expect(items[0]).toContain('The facts that may be used in drafts have changed since.');
     expect(items[1]).toContain('No cover letter draft yet.');
-    expect(drafts.querySelector('a')!.getAttribute('href')).toBe(
+    expect(drafts.querySelector('li a')!.getAttribute('href')).toBe(
       '/drafts/00000000-0000-4000-8000-000000000020',
     );
     expect(button('Write again')).toBeDefined();
@@ -694,7 +703,9 @@ describe('JobDetailPage', () => {
     expect(button('Write again')!.disabled).toBe(true);
     request.flush({ id: '00000000-0000-4000-8000-000000000021' } as Draft);
     await settle();
-    expect(navigate).toHaveBeenCalledWith(['/drafts', '00000000-0000-4000-8000-000000000021']);
+    expect(navigate).toHaveBeenCalledWith(['/drafts', '00000000-0000-4000-8000-000000000021'], {
+      queryParamsHandling: 'preserve',
+    });
     http.expectOne('/api/model-usage').flush(usage);
   });
 
@@ -720,6 +731,164 @@ describe('JobDetailPage', () => {
     expect(text(page().querySelector('[role=alert]'))).toBe(
       'DEEPSEEK_API_KEY is not set on the server, so drafts cannot be written.',
     );
+  });
+
+  it('shows actual stage blockers and keeps form actions outside collapsed source text', async () => {
+    await load(summarised([requirement({})], { factsToSend: 0, factsToDraft: 0 }));
+    const next = page().querySelector('.next-step')!;
+    expect(text(next)).toContain('Matching is blocked');
+    const current = page().querySelector('nav[aria-label="Job stages"] [aria-current=step]')!;
+    expect(current.getAttribute('href')).toBe('#match-heading');
+    expect(section('Match with your facts')!.querySelector('a[href="/facts"]')).not.toBeNull();
+    expect(button('Match with my facts')!.disabled).toBe(true);
+    expect(section('Application form')!.closest('details')).toBeNull();
+    expect(section('Application form')!.querySelector('a[href="/answers"]')).not.toBeNull();
+    expect(section('Application form')!.querySelector('a[href="/profile"]')).not.toBeNull();
+  });
+
+  it('does not offer matching without a verified requirement or treat unknown evidence as met', async () => {
+    await load(
+      summarised([
+        requirement({
+          quoteVerified: false,
+          evidence: evidence({ outcome: 'unknown', facts: [] }),
+        }),
+      ]),
+    );
+    expect(text(page().querySelector('.next-step'))).toContain('Check the job requirements');
+    expect(button('Match with my facts')!.disabled).toBe(true);
+    expect(text(section('Match with your facts')!)).toContain(
+      'No requirements have a verified quote',
+    );
+    expect(page().querySelector('app-job-summary .tag.todo')?.textContent?.trim()).toBe(
+      'Not shown by your facts',
+    );
+    http.expectNone(`/api/snapshots/${snapshotId}/match`);
+  });
+
+  it('prioritises a hard exclusion and shows its reason without model requests', async () => {
+    await load(
+      detail({
+        verdict: 'ineligible',
+        criteria: [
+          result({
+            outcome: 'unmet',
+            effect: 'rules_out',
+            reason: 'Outside the hard location criterion.',
+          }),
+        ],
+      }),
+    );
+    expect(text(page().querySelector('.next-step'))).toContain('Review why this job is ruled out');
+    expect(text(section('Your criteria')!)).toContain('Outside the hard location criterion.');
+    http.expectNone(`/api/jobs/${jobId}/snapshots`);
+  });
+
+  it('keeps current PDFs separate from review and directs the user to the form', async () => {
+    await load(
+      summarised(
+        [requirement({})],
+        {},
+        {
+          match: matched,
+          drafts: ['resume', 'cover_letter'].map((kind, i) => ({
+            id: `${jobId.slice(0, -1)}${i + 4}`,
+            kind: kind as 'resume' | 'cover_letter',
+            createdAt: '2026-10-18T08:00:00Z',
+            statements: 2,
+            rejected: 0,
+            outdated: [],
+            pdfs: 1,
+          })),
+        },
+      ),
+    );
+    expect(text(page().querySelector('.next-step'))).toContain('Prepare the application form');
+    expect(text(page().querySelector('.next-step'))).toContain(
+      'review the actual filled form before approving',
+    );
+  });
+
+  it('preserves run context through stage focus and existing draft links', async () => {
+    const router = TestBed.inject(Router);
+    await router.navigateByUrl('/?run=sample-run');
+    await load(
+      summarised(
+        [requirement({})],
+        {},
+        {
+          match: matched,
+          drafts: [
+            {
+              id: snapshotId,
+              kind: 'resume',
+              createdAt: '2026-10-18T08:00:00Z',
+              statements: 2,
+              rejected: 0,
+              outdated: [],
+              pdfs: 0,
+            },
+          ],
+        },
+      ),
+    );
+    page()
+      .querySelector<HTMLAnchorElement>('nav[aria-label="Job stages"] a[href="#form-heading"]')!
+      .click();
+    await settle();
+    expect(document.activeElement?.id).toBe('form-heading');
+    expect(router.url).toBe('/?run=sample-run');
+    expect(section('Drafts')!.querySelector('li a')!.getAttribute('href')).toBe(
+      `/drafts/${snapshotId}?run=sample-run`,
+    );
+  });
+
+  it('offers paste recovery after a source read fails and preserves saved text', async () => {
+    await load(detail({ snapshot: snapshot() }));
+    button('Check for a newer version')!.click();
+    http
+      .expectOne(`/api/jobs/${jobId}/snapshots`)
+      .flush({ message: 'The board cannot be read.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    expect(text(page().querySelector('[role=alert]'))).toBe('The board cannot be read.');
+    expect(document.activeElement?.id).toBe('job-action-error');
+    expect(page().querySelector('pre')?.textContent).toBe(snapshot().text);
+    expect(text(section('Job text')!)).toContain('Paste original text instead');
+    expect(page().querySelector('app-paste-text-form')).not.toBeNull();
+  });
+
+  it('retries a failed job load', async () => {
+    http
+      .expectOne(`/api/jobs/${jobId}`)
+      .flush({ message: 'Job read unavailable.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    expect(text(page().querySelector('h1'))).toBe('Job unavailable');
+    button('Try again')!.click();
+    await settle();
+    await load(detail());
+    expect(text(page().querySelector('h1'))).toBe('Backend Engineer');
+  });
+
+  it('retries a requirement correction without clearing its text or quote', async () => {
+    await load(summarised([requirement({})]));
+    button('Correct')!.click();
+    await fixture.whenStable();
+    const editor = page().querySelector('app-requirement-form')!;
+    const save = () => editor.querySelector<HTMLButtonElement>('button[type=submit]')!.click();
+    save();
+    await settle();
+    http
+      .expectOne(`/api/snapshots/${snapshotId}/requirements`)
+      .flush({ message: 'Sample write unavailable.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    expect(editor.querySelector('input')?.value).toBe('Python');
+    expect(editor.querySelector('textarea')?.value).toBe('5+ years of Python');
+    save();
+    await settle();
+    const retry = http.expectOne(`/api/snapshots/${snapshotId}/requirements`);
+    expect(retry.request.body.quote).toBe('5+ years of Python');
+    retry.flush(summarised([requirement({})]));
+    await settle();
   });
 
   it('has no drafts section before the app has the job text', async () => {

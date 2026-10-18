@@ -22,27 +22,46 @@ const maxTextLength = 100_000;
   selector: 'app-paste-text-form',
   imports: [FormField, FormRoot],
   template: `
-    <form [formRoot]="textForm">
+    <form [formRoot]="textForm" [attr.aria-busy]="textForm().submitting()">
       @if (needsLink()) {
         <label>
           Link to the job page
-          <input type="url" [formField]="textForm.url" autocomplete="off" />
+          <input
+            type="url"
+            [formField]="textForm.url"
+            autocomplete="off"
+            aria-describedby="text-link-help text-link-error"
+          />
         </label>
+        <p class="hint" id="text-link-help">Use the HTTPS address of the original job page.</p>
         @if (textForm.url().touched() && textForm.url().errors().length) {
-          <p class="error" role="alert">{{ textForm.url().errors()[0].message }}</p>
+          <p class="error" role="alert" id="text-link-error">
+            {{ textForm.url().errors()[0].message }}
+          </p>
         }
       }
       <label>
         Job text
-        <textarea rows="10" [formField]="textForm.text"></textarea>
+        <textarea
+          rows="10"
+          [formField]="textForm.text"
+          aria-describedby="text-help text-error"
+        ></textarea>
       </label>
+      <p class="hint" id="text-help">
+        Paste the full original description, up to 100,000 characters. Saving does not call
+        DeepSeek.
+      </p>
       @if (textForm.text().touched() && textForm.text().errors().length) {
-        <p class="error" role="alert">{{ textForm.text().errors()[0].message }}</p>
+        <p class="error" role="alert" id="text-error">{{ textForm.text().errors()[0].message }}</p>
       }
-      @for (error of textForm().errors(); track $index) {
-        <p class="error" role="alert">{{ error.message }}</p>
+      @if (failure()) {
+        <p class="error" role="alert">{{ failure() }}</p>
       }
-      <button type="submit" [disabled]="textForm().submitting()">Save the text</button>
+      <button type="submit" [disabled]="busy() || textForm().submitting()">
+        {{ textForm().submitting() ? 'Saving…' : 'Save the text' }}
+      </button>
+      <p role="status">{{ textForm().submitting() ? 'Saving the original text…' : '' }}</p>
     </form>
   `,
   styles: `
@@ -66,10 +85,12 @@ const maxTextLength = 100_000;
 })
 export class PasteTextForm {
   private readonly api = inject(JobsApi);
+  protected readonly failure = signal('');
 
   readonly jobId = input.required<string>();
   /** True when the app has no address for the job, so the text needs its link. */
   readonly needsLink = input(false);
+  readonly busy = input(false);
   readonly saved = output<JobDetail>();
 
   private readonly model = signal({ text: '', url: '' });
@@ -93,6 +114,7 @@ export class PasteTextForm {
     {
       submission: {
         action: async (f) => {
+          this.failure.set('');
           try {
             const { text, url } = f().value();
             this.saved.emit(
@@ -103,7 +125,8 @@ export class PasteTextForm {
               ),
             );
           } catch (error) {
-            return { kind: 'server', message: errorMessage(error) };
+            this.failure.set(errorMessage(error));
+            return undefined;
           }
           return undefined;
         },

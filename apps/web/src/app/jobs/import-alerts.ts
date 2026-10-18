@@ -30,6 +30,10 @@ const tooLong = `An email’s source can be at most ${maxAlertEmailLength.toLoca
   template: `
     <p><a routerLink="/jobs">All jobs</a></p>
     <h1>Import job-alert emails</h1>
+    <p class="hint">
+      Paste an email’s original source or choose .eml files. No mailbox is connected and no model is
+      called. Imported listings may still need the full original job text.
+    </p>
     <p>
       For sites the app does not read itself, such as LinkedIn and Duunitori: set up job alerts on
       the site, then import the emails here. The app reads the jobs an email lists, without opening
@@ -53,15 +57,25 @@ const tooLong = `An email’s source can be at most ${maxAlertEmailLength.toLoca
       </p>
     </details>
 
-    <form [formRoot]="pasteForm">
+    <form [formRoot]="pasteForm" [attr.aria-busy]="busy()">
       <label>
         Email source
-        <textarea rows="10" spellcheck="false" [formField]="pasteForm.message"></textarea>
+        <textarea
+          rows="10"
+          spellcheck="false"
+          [formField]="pasteForm.message"
+          aria-describedby="email-help email-error"
+        ></textarea>
       </label>
+      <p class="hint" id="email-help">
+        Include all headers. Up to {{ maxEmailLength }} characters per message.
+      </p>
       @if (pasteForm.message().touched() && pasteForm.message().invalid()) {
-        <p class="error" role="alert">{{ pasteForm.message().errors()[0].message }}</p>
+        <p class="error" role="alert" id="email-error">
+          {{ pasteForm.message().errors()[0].message }}
+        </p>
       }
-      <button type="submit" [disabled]="busy()">Import</button>
+      <button type="submit" [disabled]="busy()">{{ busy() ? 'Importing…' : 'Import' }}</button>
     </form>
     <p>
       <label>
@@ -147,6 +161,9 @@ const tooLong = `An email’s source can be at most ${maxAlertEmailLength.toLoca
         }
       } @else if (recent.error()) {
         <p class="error" role="alert">The imported emails could not be loaded.</p>
+        <button type="button" (click)="recent.reload()">Try again</button>
+      } @else if (recent.isLoading()) {
+        <p role="status">Loading imported emails…</p>
       }
     </section>
   `,
@@ -195,6 +212,7 @@ export class ImportAlerts {
   );
 
   protected readonly outcomes = signal<Outcome[]>([]);
+  protected readonly maxEmailLength = maxAlertEmailLength.toLocaleString('en');
   protected readonly busy = signal(false);
 
   private readonly model = signal({ message: '' });
@@ -276,7 +294,9 @@ export class ImportAlerts {
         try {
           const message = await read();
           if (message.length > maxAlertEmailLength) throw new Error(tooLong);
-          outcomes.push({ label, result: await this.api.importAlertEmail(message) });
+          const result = await this.api.importAlertEmail(message);
+          outcomes.push({ label, result });
+          if (!result.imported) ok = false;
         } catch (error) {
           ok = false;
           outcomes.push({

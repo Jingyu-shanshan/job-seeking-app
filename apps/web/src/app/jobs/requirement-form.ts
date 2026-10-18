@@ -1,4 +1,4 @@
-import { Component, inject, input, linkedSignal, output } from '@angular/core';
+import { Component, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { FormField, FormRoot, form, maxLength, required } from '@angular/forms/signals';
 import type { JobDetail, Requirement, RequirementKind } from '@jsa/shared';
 import { errorMessage } from '../sources/sources-api';
@@ -8,10 +8,14 @@ import { JobsApi } from './jobs-api';
   selector: 'app-requirement-form',
   imports: [FormField, FormRoot],
   template: `
-    <form [formRoot]="requirementForm">
+    <form [formRoot]="requirementForm" [attr.aria-busy]="requirementForm().submitting()">
       <label>
         Requirement
-        <input [formField]="requirementForm.text" autocomplete="off" />
+        <input
+          [formField]="requirementForm.text"
+          autocomplete="off"
+          aria-describedby="requirement-text-error"
+        />
       </label>
       <label>
         Kind
@@ -22,23 +26,36 @@ import { JobsApi } from './jobs-api';
       </label>
       <label>
         Quote from the job text
-        <textarea rows="2" [formField]="requirementForm.quote"></textarea>
+        <textarea
+          rows="2"
+          [formField]="requirementForm.quote"
+          aria-describedby="requirement-help requirement-quote-error"
+        ></textarea>
       </label>
-      <p class="hint">
+      <p class="hint" id="requirement-help">
         Copy the words from the job text. A requirement whose quote is not in the job text stays to
         confirm and is not counted as what the job asks.
       </p>
       @if (requirementForm.text().touched() && requirementForm.text().errors().length) {
-        <p class="error" role="alert">{{ requirementForm.text().errors()[0].message }}</p>
+        <p class="error" role="alert" id="requirement-text-error">
+          {{ requirementForm.text().errors()[0].message }}
+        </p>
       }
       @if (requirementForm.quote().errors().length) {
-        <p class="error" role="alert">{{ requirementForm.quote().errors()[0].message }}</p>
+        <p class="error" role="alert" id="requirement-quote-error">
+          {{ requirementForm.quote().errors()[0].message }}
+        </p>
       }
-      @for (error of requirementForm().errors(); track $index) {
-        <p class="error" role="alert">{{ error.message }}</p>
+      @if (failure()) {
+        <p class="error" role="alert">{{ failure() }}</p>
       }
-      <button type="submit" [disabled]="requirementForm().submitting()">Save</button>
-      <button type="button" (click)="cancelled.emit()">Cancel</button>
+      <button type="submit" [disabled]="busy() || requirementForm().submitting()">
+        {{ requirementForm().submitting() ? 'Saving…' : 'Save' }}
+      </button>
+      <button type="button" [disabled]="requirementForm().submitting()" (click)="cancelled.emit()">
+        Cancel
+      </button>
+      <p role="status">{{ requirementForm().submitting() ? 'Saving the requirement…' : '' }}</p>
     </form>
   `,
   styles: `
@@ -67,9 +84,11 @@ import { JobsApi } from './jobs-api';
 })
 export class RequirementForm {
   private readonly api = inject(JobsApi);
+  protected readonly failure = signal('');
 
   readonly snapshotId = input.required<string>();
   readonly replaces = input<Requirement>();
+  readonly busy = input(false);
   readonly saved = output<JobDetail>();
   readonly cancelled = output();
 
@@ -90,6 +109,7 @@ export class RequirementForm {
     {
       submission: {
         action: async (f) => {
+          this.failure.set('');
           const { text, kind, quote } = f().value();
           try {
             const detail = await this.api.addRequirement(this.snapshotId(), {
@@ -100,7 +120,8 @@ export class RequirementForm {
             });
             this.saved.emit(detail);
           } catch (error) {
-            return { kind: 'server', message: errorMessage(error) };
+            this.failure.set(errorMessage(error));
+            return undefined;
           }
           return undefined;
         },

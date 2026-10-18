@@ -46,7 +46,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   template: `
     @if (data.hasValue()) {
       @let d = data.value();
-      <p><a [routerLink]="['/jobs', d.jobId]">Back to the job</a></p>
+      <p><a [routerLink]="['/jobs', d.jobId]" queryParamsHandling="preserve">Back to the job</a></p>
       <h1>{{ d.kind === 'resume' ? 'Resume' : 'Cover letter' }} draft</h1>
       <p>
         For {{ d.title }}{{ d.company ? ' at ' + d.company : '' }}. Written by {{ d.model }} on
@@ -66,7 +66,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
         finished document.
       </p>
       <p>
-        <a [routerLink]="['/drafts', d.id, 'document']"
+        <a [routerLink]="['/drafts', d.id, 'document']" queryParamsHandling="preserve"
           >See the finished document and save its PDF</a
         >
       </p>

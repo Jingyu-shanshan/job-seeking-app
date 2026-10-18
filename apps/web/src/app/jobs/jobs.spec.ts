@@ -155,17 +155,17 @@ describe('Jobs', () => {
     expect(text()).toContain('Location: Helsinki and Espoo, remote jobs not included.');
     expect(page().querySelector('a[href="/criteria"]')).not.toBeNull();
     expect(items('Eligible (1)')).toEqual([
-      'Backend Engineer Acme · Helsinki, Finland · Job page Posted 20 Sep 2026 · Found 1 Oct 2026 Title (preference): The title has none of “platform”.',
+      'Backend Engineer Eligible Acme · Helsinki, Finland · Job page Posted 20 Sep 2026 · Found 1 Oct 2026 Title (preference): The title has none of “platform”.',
     ]);
     expect(items('To confirm (1)')).toEqual([
-      'Designer Acme · No location given · Job page Posted 20 Sep 2026 · Found 1 Oct 2026 · Listed by 2 of your sources Location unknown: No location given.',
+      'Designer To confirm Acme · No location given · Job page Posted 20 Sep 2026 · Found 1 Oct 2026 · Listed by 2 of your sources Location unknown: No location given.',
     ]);
     // Ruled out is collapsed, and names the board when the source gives no company.
     const out = section('Ruled out (1)')!;
     expect(out.tagName).toBe('DETAILS');
     expect(out.hasAttribute('open')).toBe(false);
     expect(items('Ruled out (1)')).toEqual([
-      'Sales Lead acme · Berlin, Germany · Job page Found 1 Oct 2026 Location: Not in Helsinki or Espoo.Working language unknown, and you rule out unknowns: Summarise the job to find its working language.',
+      'Sales Lead Ruled out acme · Berlin, Germany · Job page Found 1 Oct 2026 Location: Not in Helsinki or Espoo.Working language unknown, and you rule out unknowns: Summarise the job to find its working language.',
     ]);
 
     const [title, external] = section('Eligible')!.querySelectorAll('a');
@@ -187,7 +187,7 @@ describe('Jobs', () => {
     ]);
 
     expect(items('Eligible (1)')).toEqual([
-      'Pasted Engineer Company not given · Helsinki, Finland · Job page Pasted 1 Oct 2026',
+      'Pasted Engineer Eligible Company not given · Helsinki, Finland · Job page Pasted 1 Oct 2026',
     ]);
     expect(page().querySelector('a[href="/jobs/paste"]')).not.toBeNull();
   });
@@ -199,9 +199,9 @@ describe('Jobs', () => {
       job({ title: 'Other Engineer', publishedAt: null }),
     ]);
     expect(items('Eligible (3)').map((item) => item.split(' Acme')[0])).toEqual([
-      'Applied Engineer Applied',
-      'Pending Engineer Application result unknown',
-      'Other Engineer',
+      'Applied Engineer Eligible Applied',
+      'Pending Engineer Eligible Application result unknown',
+      'Other Engineer Eligible',
     ]);
   });
 
@@ -213,8 +213,8 @@ describe('Jobs', () => {
     ]);
 
     expect(items('Eligible (2)')).toEqual([
-      'Saved Engineer Acme · Helsinki, Finland · Job page Saved 1 Oct 2026',
-      'Listed Engineer Acme · Helsinki, Finland · Job page Saved 1 Oct 2026 Needs the job text: paste it, or save its page.',
+      'Saved Engineer Eligible Acme · Helsinki, Finland · Job page Saved 1 Oct 2026',
+      'Listed Engineer Eligible Acme · Helsinki, Finland · Job page Saved 1 Oct 2026 Needs the job text: paste it, or save its page.',
     ]);
   });
 
@@ -236,8 +236,8 @@ describe('Jobs', () => {
     ]);
 
     expect(items('Eligible (2)')).toEqual([
-      'Alert Engineer Acme · Helsinki, Finland · Job page From an alert email 1 Oct 2026 · In alert emails from LinkedIn, Duunitori Needs the job text: paste it, or save its page.',
-      'Board Engineer Acme · Helsinki, Finland · Job page Posted 1 Oct 2026 · Found 1 Oct 2026 · In alert emails from LinkedIn',
+      'Alert Engineer Eligible Acme · Helsinki, Finland · Job page From an alert email 1 Oct 2026 · In alert emails from LinkedIn, Duunitori Needs the job text: paste it, or save its page.',
+      'Board Engineer Eligible Acme · Helsinki, Finland · Job page Posted 1 Oct 2026 · Found 1 Oct 2026 · In alert emails from LinkedIn',
     ]);
   });
 
@@ -255,13 +255,19 @@ describe('Jobs', () => {
     ]);
     const item = section('Eligible (1)')!.querySelector('app-job-list li')!;
     expect(item.querySelector('a[target=_blank]')).toBeNull();
-    expect(text(item)).toContain('Odoo Consultant Acme · Helsinki, Finland From an alert email');
+    expect(text(item)).toContain(
+      'Odoo Consultant Eligible Acme · Helsinki, Finland From an alert email',
+    );
   });
 
-  it('shows only the eligible group while there are no jobs', async () => {
+  it('explains an empty list with all ways to get a job', async () => {
     await load([]);
 
-    expect(text(section('Eligible (0)')!)).toContain('No eligible jobs yet.');
+    expect(text()).toContain('No jobs yet');
+    expect(section('Eligible')).toBeUndefined();
+    expect(page().querySelector('a[href="/jobs/paste"]')).not.toBeNull();
+    expect(page().querySelector('a[href="/jobs/alerts"]')).not.toBeNull();
+    expect(page().querySelector('a[href="/sources"]')).not.toBeNull();
     expect(section('To confirm')).toBeUndefined();
     expect(section('Ruled out')).toBeUndefined();
   });
@@ -306,6 +312,52 @@ describe('Jobs', () => {
     expect(summary).toContain('later (Other boards) was skipped: The app cannot read these yet.');
     expect(summary).toContain('2 of at most 20 requests used.');
     expect(items('Eligible (1)').length).toBe(1);
+  });
+
+  it('distinguishes jobs awaiting criteria checks from a list with no jobs', async () => {
+    await load([jobs[1]!, jobs[2]!]);
+    expect(text()).not.toContain('No jobs yet');
+    expect(text(section('Eligible (0)')!)).toContain('Unknown information is not a pass.');
+    expect(items('To confirm (1)')).toHaveLength(1);
+    expect(section('Ruled out (1)')!.hasAttribute('open')).toBe(false);
+    expect(section('To confirm (1)')!.querySelector('.badge.warning')?.textContent?.trim()).toBe(
+      'To confirm',
+    );
+  });
+
+  it('retries a failed list load without clearing the discovery target', async () => {
+    const input = page().querySelector<HTMLInputElement>('input[type=number]')!;
+    input.value = '7';
+    input.dispatchEvent(new Event('input'));
+    http
+      .expectOne('/api/jobs')
+      .flush(
+        { message: 'Sample service unavailable.' },
+        { status: 503, statusText: 'Unavailable' },
+      );
+    await settle();
+    expect(text()).toContain('The jobs could not be loaded. Sample service unavailable.');
+    [...page().querySelectorAll('button')].find((b) => text(b) === 'Try again')!.click();
+    await settle();
+    await load();
+    expect(input.value).toBe('7');
+    expect(items('Eligible (1)')).toHaveLength(1);
+  });
+
+  it('keeps source results when the list refresh fails, without presenting old counts', async () => {
+    await load();
+    await findJobs('5');
+    http.expectOne('/api/discovery-runs').flush({
+      requests: 1,
+      requestLimit: 20,
+      sources: [sourceRun({ outcome: 'failed', reason: 'HTTP 503.' })],
+    } satisfies DiscoveryRun);
+    await settle();
+    http.expectOne('/api/jobs').flush({}, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    expect(text(section('Last run')!)).toContain('HTTP 503.');
+    expect(text(section('Last run')!)).toContain('Reload the job list');
+    expect(text(section('Last run')!)).not.toContain('1 job eligible.');
   });
 
   it('explains a shortfall against the jobs wanted, without widening anything', async () => {
@@ -384,5 +436,12 @@ describe('Jobs', () => {
       'Jobs are already being looked for. Wait for that run.',
     );
     expect(section('Last run')).toBeUndefined();
+    await findJobs();
+    http
+      .expectOne('/api/discovery-runs')
+      .flush({ requests: 0, requestLimit: 20, sources: [] } satisfies DiscoveryRun);
+    await settle();
+    await load([]);
+    expect(text(section('Last run')!)).toContain('No job board is in use');
   });
 });

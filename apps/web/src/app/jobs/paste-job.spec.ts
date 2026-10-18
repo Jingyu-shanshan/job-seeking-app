@@ -84,5 +84,13 @@ describe('PasteJob', () => {
       .flush({ message: 'Paste the job text.' }, { status: 400, statusText: 'Bad Request' });
     await settle();
     expect(alerts()).toEqual(['Paste the job text.']);
+    expect(field('Job title').value).toBe('Engineer');
+    expect(field('Job text').value).toBe('Text.');
+    expect(field('Link to the job page').value).toBe('https://careers.example.com/jobs/1');
+    await submit();
+    const retry = http.expectOne('/api/jobs');
+    expect(retry.request.body.text).toBe('Text.');
+    retry.flush({ message: 'Still unavailable.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
   });
 });

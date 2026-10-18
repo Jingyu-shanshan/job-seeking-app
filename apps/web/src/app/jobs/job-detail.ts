@@ -61,6 +61,39 @@ const verdictLines: Record<JobVerdict, string> = {
         }
       </p>
       <p>{{ listing() }}</p>
+      <nav aria-label="Job stages">
+        <ol class="stages">
+          @for (step of stages(); track step.id) {
+            <li>
+              <a
+                [href]="'#' + step.id + '-heading'"
+                [attr.aria-current]="nextStep().id === step.id ? 'step' : null"
+                (click)="$event.preventDefault(); goToSection(step.id)"
+                >{{ step.label }}</a
+              >
+            </li>
+          }
+        </ol>
+      </nav>
+      <section class="next-step" aria-labelledby="next-heading">
+        <h2 id="next-heading">{{ nextStep().title }}</h2>
+        <p>{{ nextStep().note }}</p>
+        <a
+          class="button primary"
+          [href]="'#' + nextStep().id + '-heading'"
+          (click)="$event.preventDefault(); goToSection(nextStep().id)"
+          >{{ nextStep().label }}</a
+        >
+      </section>
+
+      <p role="status">{{ status() }}</p>
+      @if (failure()) {
+        <p class="error" role="alert" tabindex="-1" id="job-action-error">{{ failure() }}</p>
+        <p class="hint">
+          Your saved text and results are kept. Review the message before retrying. A model retry
+          may use another paid request; recorded usage is shown below.
+        </p>
+      }
       @if (job.alerts.length) {
         <section aria-labelledby="alerts-heading">
           <h2 id="alerts-heading">In job-alert emails</h2>
@@ -88,7 +121,7 @@ const verdictLines: Record<JobVerdict, string> = {
       }
 
       <section aria-labelledby="criteria-heading">
-        <h2 id="criteria-heading">Your criteria</h2>
+        <h2 id="criteria-heading" tabindex="-1">Your criteria</h2>
         <p>
           <strong>{{ verdictLines[job.verdict] }}</strong
           >&ngsp;<a routerLink="/criteria">Change your criteria</a>
@@ -97,15 +130,15 @@ const verdictLines: Record<JobVerdict, string> = {
           <ul>
             @for (result of job.criteria; track result.criterion) {
               <li>
-                <span class="tag">{{ outcomeLabels[result.outcome] }}</span>
+                <span class="tag" [class.todo]="result.outcome === 'unknown'">{{
+                  outcomeLabels[result.outcome]
+                }}</span>
                 {{ describeResult(result) }}
                 @if (result.quote && job.snapshot) {
                   <button
                     type="button"
                     class="inline"
-                    [attr.aria-label]="
-                      'Show the quote for ' + criterionLabels[result.criterion] + ' in the job text'
-                    "
+                    [attr.aria-label]="'Show in the job text: ' + criterionLabels[result.criterion]"
                     (click)="showQuote(result.quote)"
                   >
                     Show in the job text
@@ -120,7 +153,7 @@ const verdictLines: Record<JobVerdict, string> = {
       </section>
 
       <section aria-labelledby="text-heading">
-        <h2 id="text-heading">Job text</h2>
+        <h2 id="text-heading" tabindex="-1">Job text</h2>
         @if (job.snapshot; as snapshot) {
           <p>
             {{ textOrigins[snapshot.catalogId] ?? 'Read from the job board' }}
@@ -133,6 +166,11 @@ const verdictLines: Record<JobVerdict, string> = {
             <button type="button" [disabled]="busy()" (click)="importText()">
               Check for a newer version
             </button>
+          } @else {
+            <p class="hint">
+              This source cannot be read again here. Open the original page or email to check for
+              changes; paste a newer description below or save its page in the desktop app.
+            </p>
           }
           <details [open]="textOpen()" (toggle)="textOpen.set(details.open)" #details>
             <summary>Show the job text</summary>
@@ -167,23 +205,45 @@ const verdictLines: Record<JobVerdict, string> = {
               can paste it here.
             }
           </p>
-          <app-paste-text-form [jobId]="job.id" [needsLink]="!job.url" (saved)="data.set($event)" />
+          <app-paste-text-form
+            [jobId]="job.id"
+            [needsLink]="!job.url"
+            [busy]="busy()"
+            (saved)="data.set($event)"
+          />
+        }
+        @if (job.canImport || job.snapshot) {
+          <details>
+            <summary>Paste original text instead</summary>
+            <p>
+              Saving keeps earlier versions. Use the full description from the job page, not a
+              listing or email snippet. Saving does not call DeepSeek.
+            </p>
+            <app-paste-text-form
+              [jobId]="job.id"
+              [needsLink]="!job.url"
+              [busy]="busy()"
+              (saved)="data.set($event)"
+            />
+          </details>
         }
       </section>
 
       @if (job.snapshot || job.canImport) {
         <section aria-labelledby="summary-heading">
-          <h2 id="summary-heading">Summary</h2>
+          <h2 id="summary-heading" tabindex="-1">Summary</h2>
           @if (job.snapshot?.summary) {
             <app-job-summary
               [snapshot]="job.snapshot!"
+              [pageBusy]="busy()"
               (changed)="data.set($event)"
               (showQuote)="showQuote($event)"
             />
           } @else {
             <p>
               Summarising sends the job text, and nothing about you, to DeepSeek in one request.
-              Every point of the summary quotes the job text.
+              Every point of the summary quotes the job text. This is a paid request processed
+              outside the EU; its cost is recorded afterwards.
               @if (!job.snapshot) {
                 The app reads the job text from the job board first.
               }
@@ -191,16 +251,14 @@ const verdictLines: Record<JobVerdict, string> = {
             <button type="button" [disabled]="busy()" (click)="summarise()">
               Summarise with DeepSeek
             </button>
-            @if (usage.hasValue()) {
-              <p class="hint">{{ usageLine() }}</p>
-            }
           }
+          <p class="hint">{{ usageLine() }}</p>
         </section>
       }
 
       @if (job.snapshot?.summary || job.snapshot?.requirements?.length) {
         <section aria-labelledby="match-heading">
-          <h2 id="match-heading">Match with your facts</h2>
+          <h2 id="match-heading" tabindex="-1">Match with your facts</h2>
           @if (job.snapshot!.match; as m) {
             <p>
               Matched by {{ m.model }} on {{ m.createdAt | date: 'd MMM y' }} with
@@ -208,67 +266,124 @@ const verdictLines: Record<JobVerdict, string> = {
               shows what it found.
             </p>
             @if (m.outdated.length) {
-              <p>{{ m.outdated.join(' ') }} Match again to use the change.</p>
+              <p class="warning">{{ m.outdated.join(' ') }} Match again to use the change.</p>
             }
-          } @else {
+          }
+          @if (!job.snapshot!.match || job.snapshot!.match.outdated.length) {
             <p>
               Matching sends this job’s requirements whose quotes are in its text, and the
               {{ plural(job.factsToSend, 'fact') }} you allowed to go to DeepSeek, in one request;
               nothing else about you. DeepSeek says for each requirement whether your facts meet it
-              and which facts it rests on; an answer that cites none of them counts as unknown.
+              and which facts it rests on; an answer that cites none of them counts as unknown. This
+              is a paid request processed outside the EU; its cost is recorded afterwards.
             </p>
-          }
-          @if (!job.snapshot!.match || job.snapshot!.match.outdated.length) {
             @if (job.factsToSend === 0) {
               <p>
                 None of your facts may be sent yet. Confirm facts and allow them to go to DeepSeek
                 on the <a routerLink="/facts">Facts</a> page.
               </p>
             }
+            @if (!hasRequirements()) {
+              <p class="warning">
+                No requirements have a verified quote yet. Correct or add a requirement in Summary
+                before matching.
+              </p>
+            }
             <button
               type="button"
-              [disabled]="busy() || job.factsToSend === 0"
+              [disabled]="busy() || job.factsToSend === 0 || !hasRequirements()"
               (click)="match(job.snapshot!.id)"
             >
               {{ job.snapshot!.match ? 'Match again' : 'Match with my facts' }}
             </button>
           }
+          <p class="hint">{{ usageLine() }}</p>
         </section>
       }
 
       @if (job.snapshot) {
         <section aria-labelledby="drafts-heading">
-          <h2 id="drafts-heading">Drafts</h2>
+          <h2 id="drafts-heading" tabindex="-1">Drafts</h2>
           <app-job-drafts
             [job]="job"
             [busy]="busy()"
             (write)="writeDraft(job.snapshot.id, $event)"
           />
+          <p class="hint">{{ usageLine() }}</p>
         </section>
       }
 
       <section aria-labelledby="form-heading">
-        <h2 id="form-heading">Application form</h2>
+        <h2 id="form-heading" tabindex="-1">Application form</h2>
+        <p>
+          Review required answers and your <a routerLink="/profile">Your details</a>. Reusable
+          answers are on <a routerLink="/answers">Form answers</a>. Filling stops before Submit;
+          each application still needs your approval below.
+        </p>
         <app-job-form [jobId]="job.id" (formChanged)="jobFill.refresh()" />
         <app-job-fill #jobFill [jobId]="job.id" (applicationChanged)="jobApplications.refresh()" />
       </section>
 
       <section aria-labelledby="applications-heading">
-        <h2 id="applications-heading">Applications</h2>
+        <h2 id="applications-heading" tabindex="-1">Applications</h2>
         <app-job-applications #jobApplications [jobId]="job.id" (recorded)="jobFill.refresh()" />
       </section>
 
-      <p role="status">{{ status() }}</p>
-      @if (failure()) {
-        <p class="error" role="alert">{{ failure() }}</p>
-      }
+      <section aria-labelledby="usage-heading">
+        <h2 id="usage-heading">Recorded model usage</h2>
+        @if (usage.hasValue()) {
+          <p>{{ usageLine() }}</p>
+          <p class="hint">
+            {{ usage.value().inputTokens }} input tokens · {{ usage.value().outputTokens }} output
+            tokens. Recorded account totals are estimates, not a quote for the next request. Failed
+            requests are not reset by retrying.
+          </p>
+        } @else if (usage.isLoading()) {
+          <p role="status">Loading recorded usage…</p>
+        } @else {
+          <p class="error" role="alert">Recorded usage could not be loaded.</p>
+          <button type="button" (click)="usage.reload()">Retry usage</button>
+        }
+      </section>
     } @else if (data.isLoading()) {
+      <h1>Job</h1>
       <p role="status">Loading the job…</p>
     } @else {
+      <h1>Job unavailable</h1>
       <p class="error" role="alert">The job could not be loaded. {{ loadError() }}</p>
+      <button type="button" (click)="data.reload()">Try again</button>
     }
   `,
   styles: `
+    .stages {
+      display: flex;
+      flex-wrap: wrap;
+      list-style: none;
+      gap: 8px 20px;
+      padding: 0;
+      margin: 24px 0;
+    }
+    .stages a {
+      display: inline-block;
+      padding: 10px 0;
+      min-height: 44px;
+    }
+    [aria-current='step'] {
+      font-weight: 650;
+      text-decoration-thickness: 2px;
+    }
+    .next-step {
+      padding: 20px;
+      border-radius: 12px;
+      background: var(--surface);
+      margin-bottom: 24px;
+    }
+    .next-step h2 {
+      margin-top: 0;
+    }
+    h2 {
+      scroll-margin-top: 24px;
+    }
     .details {
       display: block;
       font-size: 14px;
@@ -309,6 +424,95 @@ export class JobDetailPage {
   protected readonly describeResult = describeResult;
   protected readonly criterionLabels = criterionLabels;
 
+  protected readonly hasRequirements = computed(
+    () => this.data.value()?.snapshot?.requirements.some((r) => r.quoteVerified) ?? false,
+  );
+
+  protected readonly stages = computed(() => {
+    const job = this.data.value();
+    return [
+      { id: 'criteria', label: 'Criteria' },
+      { id: 'text', label: 'Source text' },
+      ...(job?.snapshot || job?.canImport ? [{ id: 'summary', label: 'Summary' }] : []),
+      ...(job?.snapshot?.summary || job?.snapshot?.requirements.length
+        ? [{ id: 'match', label: 'Match' }]
+        : []),
+      ...(job?.snapshot ? [{ id: 'drafts', label: 'Drafts' }] : []),
+      { id: 'form', label: 'Form and approval' },
+      { id: 'applications', label: 'Applications' },
+    ];
+  });
+
+  protected readonly nextStep = computed(() => {
+    const job = this.data.value();
+    if (job?.verdict === 'ineligible')
+      return {
+        id: 'criteria',
+        title: 'Review why this job is ruled out',
+        label: 'Review criteria',
+        note: 'A hard criterion rules this job out. Read the reason before spending time or paid model requests on it.',
+      };
+    if (!job?.snapshot)
+      return {
+        id: 'text',
+        title: 'Get the original job text',
+        label: job?.canImport ? 'Read source text' : 'Add source text',
+        note: 'A listing or email snippet is not the full description. Read a supported board, paste the original text or save its page in the desktop app.',
+      };
+    if (!job.snapshot.summary)
+      return {
+        id: 'summary',
+        title: 'Summarise the current text',
+        label: 'Review summary action',
+        note: 'Check the original description, then request a quoted summary. Earlier text versions are kept; results belong to their own version.',
+      };
+    if (!this.hasRequirements())
+      return {
+        id: 'summary',
+        title: 'Check the job requirements',
+        label: 'Review requirements',
+        note: 'No requirement has a verified quote. Correct or add requirements before matching; unknown information does not count as met.',
+      };
+    if (!job.snapshot.match || job.snapshot.match.outdated.length)
+      return {
+        id: 'match',
+        title: job.snapshot.match ? 'Update the evidence match' : 'Match the requirements',
+        label: 'Review match action',
+        note:
+          job.factsToSend === 0
+            ? 'Matching is blocked: confirm facts and allow them to go to DeepSeek on Facts. Drafts also need permission to appear in materials.'
+            : 'Review the facts permitted for DeepSeek. Missing evidence stays unknown; an old match does not prove the current requirements are met.',
+      };
+    if (
+      ['resume', 'cover_letter'].every((kind) =>
+        job.snapshot!.drafts.some(
+          (draft) => draft.kind === kind && !draft.outdated.length && draft.pdfs > 0,
+        ),
+      )
+    )
+      return {
+        id: 'form',
+        title: 'Prepare the application form',
+        label: 'Review form and answers',
+        note: 'PDFs have been kept for these drafts. Confirm they still match the latest documents, check your details and required answers, then review the actual filled form before approving this application.',
+      };
+    return {
+      id: 'drafts',
+      title: 'Prepare and review your drafts',
+      label: 'Review drafts',
+      note:
+        job.factsToDraft === 0
+          ? 'Writing is blocked: confirm facts and allow both DeepSeek and material use on Facts. Existing drafts remain available to review.'
+          : 'Read each current draft and its evidence, then prepare PDFs and the form. A generated draft or kept PDF does not mean you reviewed or submitted it.',
+    };
+  });
+
+  protected goToSection(id: string) {
+    const heading = this.host.nativeElement.querySelector<HTMLElement>(`#${id}-heading`);
+    heading?.focus();
+    heading?.scrollIntoView?.({ block: 'start' });
+  }
+
   protected readonly textOpen = signal(false);
   /** The quote the user asked to see, marked in the job text. */
   private readonly shownQuote = signal<string | null>(null);
@@ -341,7 +545,10 @@ export class JobDetailPage {
 
   protected readonly usageLine = computed(() => {
     const u = this.usage.value();
-    if (!u) return '';
+    if (!u)
+      return this.usage.isLoading()
+        ? 'Loading recorded DeepSeek usage…'
+        : 'Recorded DeepSeek usage is unavailable; retry below.';
     return `DeepSeek use so far: ${plural(u.calls, 'request')}, ${u.failed} failed, about ${usd(u.costUsd)}.`;
   });
 
@@ -379,10 +586,14 @@ export class JobDetailPage {
     try {
       const draft = await this.api.writeDraft(snapshotId, kind);
       this.status.set('');
-      await this.router.navigate(['/drafts', draft.id]);
+      await this.router.navigate(['/drafts', draft.id], { queryParamsHandling: 'preserve' });
     } catch (error) {
       this.status.set('');
       this.failure.set(errorMessage(error));
+      afterNextRender(
+        () => this.host.nativeElement.querySelector<HTMLElement>('#job-action-error')?.focus(),
+        { injector: this.injector },
+      );
     } finally {
       this.busy.set(false);
       this.usage.reload();
@@ -419,6 +630,10 @@ export class JobDetailPage {
     } catch (error) {
       this.status.set('');
       this.failure.set(errorMessage(error));
+      afterNextRender(
+        () => this.host.nativeElement.querySelector<HTMLElement>('#job-action-error')?.focus(),
+        { injector: this.injector },
+      );
     } finally {
       this.busy.set(false);
     }
