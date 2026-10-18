@@ -23,6 +23,11 @@ const permit: SavedAnswer = {
   updatedAt: '2026-10-07T08:00:00.000Z',
 };
 
+async function settle() {
+  await new Promise((resolve) => setTimeout(resolve));
+  TestBed.tick();
+}
+
 describe('Answers', () => {
   let fixture: ComponentFixture<Answers>;
   let http: HttpTestingController;
@@ -156,5 +161,59 @@ describe('Answers', () => {
     request.flush(null);
     await fixture.whenStable();
     expect(cards().map((c) => c.getAttribute('aria-label'))).toEqual([permit.wordings[0]]);
+  });
+  it('serialises answer saves and deletion, and never loses a failed edit', async () => {
+    await load([notice, permit]);
+    button('Edit', cards()[0]!).click();
+    await settle();
+    await fixture.whenStable();
+    const input = field('Your answer', cards()[0]!);
+    await type(input, 'Six weeks');
+    button('Save', cards()[0]!).click();
+    const request = http.expectOne(`/api/answers/${notice.id}`);
+    TestBed.tick();
+    expect(text()).toContain('Saving answer…');
+    expect(button('Delete', cards()[1]!).disabled).toBe(true);
+    expect(button('Cancel', cards()[0]!).disabled).toBe(true);
+    expect(input.closest('fieldset')?.disabled).toBe(true);
+    request.flush({ message: 'Sample write failed.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    await fixture.whenStable();
+    expect(input.value).toBe('Six weeks');
+    expect(button('Delete', cards()[1]!).disabled).toBe(false);
+    expect(text()).toContain('Sample write failed.');
+  });
+
+  it('keeps a saved answer when deletion fails and confirms a later deletion', async () => {
+    await load([notice]);
+    button('Delete', cards()[0]!).click();
+    const request = http.expectOne(`/api/answers/${notice.id}`);
+    TestBed.tick();
+    button('Delete', cards()[0]!).click();
+    http.expectNone(`/api/answers/${notice.id}`);
+    request.flush({ message: 'Sample delete failed.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    await fixture.whenStable();
+    expect(cards()).toHaveLength(1);
+    expect(text()).toContain('Sample delete failed.');
+    button('Delete', cards()[0]!).click();
+    http.expectOne(`/api/answers/${notice.id}`).flush(null);
+    await settle();
+    await fixture.whenStable();
+    expect(cards()).toHaveLength(0);
+    expect(text()).toContain('Saved answer deleted. Frozen application answers remain unchanged.');
+  });
+
+  it('keeps the add form unavailable on a failed load and offers retry', async () => {
+    http
+      .expectOne('/api/answers')
+      .flush({ message: 'Sample read failed.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    await fixture.whenStable();
+    expect(page().querySelector('app-answer-editor')).toBeNull();
+    button('Try again').click();
+    TestBed.tick();
+    await load([]);
+    expect(page().querySelector('app-answer-editor')).not.toBeNull();
   });
 });

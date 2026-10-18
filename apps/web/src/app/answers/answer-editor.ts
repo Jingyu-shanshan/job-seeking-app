@@ -1,4 +1,4 @@
-import { Component, inject, input, linkedSignal, output } from '@angular/core';
+import { Component, computed, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { FormField, FormRoot, form, required } from '@angular/forms/signals';
 import type { SaveAnswerRequest, SavedAnswer } from '@jsa/shared';
 import { errorMessage } from '../sources/sources-api';
@@ -45,43 +45,67 @@ function toRequest(m: Model): SaveAnswerRequest {
   imports: [FormField, FormRoot],
   template: `
     <form [formRoot]="editor">
-      <label>
-        Questions it answers, one per line, worded as forms ask them
-        <textarea rows="3" [formField]="editor.wordings"></textarea>
-      </label>
-      <label>
-        Your answer
-        <textarea rows="3" [formField]="editor.answer"></textarea>
-      </label>
-      <label class="check">
-        <input type="checkbox" [formField]="editor.several" />
-        Several options, one per line, for a question where you pick more than one
-      </label>
-      <label class="check">
-        <input type="checkbox" [formField]="editor.sensitive" />
-        Sensitive, such as a work permit, salary or self-identification: it fills an optional
-        question only when you choose so for that job
-      </label>
-      <label>
-        Only for jobs whose location names one of these places, separated by commas (empty: every
-        job)
-        <input type="text" [formField]="editor.places" />
-      </label>
-      @for (field of [editor.wordings, editor.answer]; track $index) {
-        @if (field().touched() && field().errors().length) {
-          <p class="error" role="alert">{{ field().errors()[0].message }}</p>
+      <fieldset class="form-fields" [disabled]="locked() || editor().submitting()">
+        <label>
+          Questions it answers, one per line, worded as forms ask them
+          <textarea rows="3" [formField]="editor.wordings"></textarea>
+        </label>
+        <label>
+          Your answer
+          <textarea rows="3" [formField]="editor.answer"></textarea>
+        </label>
+        <label class="check">
+          <input type="checkbox" [formField]="editor.several" />
+          Several options, one per line, for a question where you pick more than one
+        </label>
+        <label class="check">
+          <input type="checkbox" [formField]="editor.sensitive" />
+          Sensitive, such as a work permit, salary or self-identification: it fills an optional
+          question only when you choose so for that job
+        </label>
+        <label>
+          Only for jobs whose location names one of these places, separated by commas (empty: every
+          job)
+          <input type="text" [formField]="editor.places" />
+        </label>
+        @for (field of [editor.wordings, editor.answer]; track $index) {
+          @if (field().touched() && field().errors().length) {
+            <p class="error" role="alert">{{ field().errors()[0].message }}</p>
+          }
         }
-      }
-      @for (error of editor().errors(); track $index) {
-        <p class="error" role="alert">{{ error.message }}</p>
-      }
-      <p>
-        <button type="submit" [disabled]="editor().submitting()">
+        @if (failure()) {
+          <p class="error" role="alert">{{ failure() }}</p>
+        }
+        <p class="hint">
+          Question wordings and your answer are required. Places are optional; an empty list means
+          every job. Nothing here is sent to DeepSeek.
+        </p>
+      </fieldset>
+      <div class="actions">
+        <button
+          type="submit"
+          [disabled]="locked() || editor().submitting() || (answer() !== null && !unsaved())"
+        >
           {{ answer() ? 'Save' : 'Add' }}
         </button>
         @if (answer()) {
-          <button type="button" (click)="cancelled.emit()">Cancel</button>
+          <button
+            type="button"
+            [disabled]="locked() || editor().submitting()"
+            (click)="cancelled.emit()"
+          >
+            Cancel
+          </button>
         }
+      </div>
+      <p role="status">
+        {{
+          editor().submitting()
+            ? 'Saving answer…'
+            : unsaved()
+              ? 'Unsaved changes.'
+              : status() || 'No unsaved changes.'
+        }}
       </p>
     </form>
   `,
@@ -95,9 +119,7 @@ function toRequest(m: Model): SaveAnswerRequest {
       display: grid;
       gap: 0.25rem;
     }
-    .check {
-      display: block;
-    }
+
     button {
       margin-right: 0.5rem;
     }
@@ -109,9 +131,16 @@ export class AnswerEditor {
   /** The saved answer to change; null to add one. */
   readonly answer = input<SavedAnswer | null>(null);
   readonly saved = output<SavedAnswer>();
+  readonly saving = output<boolean>();
+  readonly locked = input(false);
   readonly cancelled = output();
 
   private readonly model = linkedSignal<Model>(() => toModel(this.answer()));
+  protected readonly status = signal('');
+  protected readonly failure = signal('');
+  protected readonly unsaved = computed(
+    () => JSON.stringify(this.model()) !== JSON.stringify(toModel(this.answer())),
+  );
 
   protected readonly editor = form(
     this.model,
@@ -122,6 +151,10 @@ export class AnswerEditor {
     {
       submission: {
         action: async (f) => {
+          if (this.locked()) return undefined;
+          this.status.set('');
+          this.failure.set('');
+          this.saving.emit(true);
           const request = toRequest(f().value());
           const existing = this.answer();
           try {
@@ -129,9 +162,13 @@ export class AnswerEditor {
               existing ? await this.api.update(existing.id, request) : await this.api.add(request),
             );
           } catch (error) {
-            return { kind: 'server', message: errorMessage(error) };
+            this.failure.set(errorMessage(error));
+            return undefined;
+          } finally {
+            this.saving.emit(false);
           }
           if (!existing) f().reset(toModel(null));
+          this.status.set('Answer saved.');
           return undefined;
         },
       },

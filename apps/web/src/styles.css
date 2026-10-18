@@ -374,3 +374,16 @@ mark {
     color: #000;
   }
 }
+
+/* Shared settings forms keep the native disabled fieldset without an extra visual panel. */
+.form-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: 0 16px;
+}

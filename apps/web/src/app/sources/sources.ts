@@ -46,7 +46,7 @@ const alertSections: { section: AlertSection; title: string }[] = [
     </p>
 
     <section aria-labelledby="sources-heading">
-      <h2 id="sources-heading">Catalog</h2>
+      <h2 id="sources-heading">Choose your sources</h2>
       @if (data.hasValue()) {
         @for (group of entriesByAccess(); track group.access) {
           <section [attr.aria-labelledby]="'access-' + group.access">
@@ -70,6 +70,9 @@ const alertSections: { section: AlertSection; title: string }[] = [
                 </section>
               }
             } @else {
+              @if (group.access === 'manual') {
+                <p><a class="button" routerLink="/jobs/paste">Paste a job</a></p>
+              }
               @for (item of group.entries; track item.entry.id) {
                 <app-catalog-entry
                   [entry]="item.entry"
@@ -84,6 +87,7 @@ const alertSections: { section: AlertSection; title: string }[] = [
         <p role="status">Loading sources…</p>
       } @else {
         <p class="error" role="alert">The sources could not be loaded. {{ loadError() }}</p>
+        <button type="button" (click)="data.reload()">Try again</button>
       }
     </section>
   `,

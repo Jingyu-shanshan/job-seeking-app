@@ -47,14 +47,15 @@ const accessLabels: Record<AccessMethod, string> = {
                   #enabled
                   type="checkbox"
                   [checked]="source.enabled"
-                  [disabled]="busy()"
+                  [disabled]="busy() || addForm().submitting()"
                   (change)="setEnabled(source, enabled)"
                 />
                 Use <strong>{{ source.param }}</strong>
               </label>
               <button
                 type="button"
-                [disabled]="busy()"
+                class="danger"
+                [disabled]="busy() || addForm().submitting()"
                 [attr.aria-label]="'Remove ' + source.param + ' from ' + e.name"
                 (click)="remove(source)"
               >
@@ -65,32 +66,49 @@ const accessLabels: Record<AccessMethod, string> = {
           }
         </ul>
       } @else {
-        <p>None added yet.</p>
+        <p>
+          No boards added yet. Enter a supported board below; adding it does not start a discovery.
+        </p>
       }
       <form [formRoot]="addForm">
-        <label>
-          {{ param.label }}
-          <input
-            [formField]="addForm.param"
-            autocomplete="off"
-            spellcheck="false"
-            [attr.aria-describedby]="e.id + '-hint'"
-          />
-        </label>
-        <button
-          type="submit"
-          [disabled]="addForm().submitting()"
-          [attr.aria-label]="'Add to ' + e.name"
-        >
-          Add
-        </button>
-        <p class="hint" [id]="e.id + '-hint'">{{ param.hint }}</p>
-        @if (addForm.param().touched() && addForm.param().errors().length) {
-          <p class="error" role="alert">{{ addForm.param().errors()[0].message }}</p>
-        }
+        <fieldset class="form-fields" [disabled]="busy() || addForm().submitting()">
+          <label>
+            {{ param.label }}
+            <input
+              [formField]="addForm.param"
+              autocomplete="off"
+              spellcheck="false"
+              [attr.aria-describedby]="e.id + '-hint'"
+            />
+          </label>
+          <button
+            type="submit"
+            [disabled]="busy() || addForm().submitting()"
+            [attr.aria-label]="'Add to ' + e.name"
+          >
+            {{ addForm().submitting() ? 'Adding…' : 'Add' }}
+          </button>
+          <p class="hint" [id]="e.id + '-hint'">{{ param.hint }}</p>
+          @if (addForm.param().touched() && addForm.param().errors().length) {
+            <p class="error" role="alert">{{ addForm.param().errors()[0].message }}</p>
+          }
+        </fieldset>
       </form>
     } @else {
       <p>Always available.</p>
+    }
+    @if (busy() || addForm().submitting() || addForm.param().dirty() || message()) {
+      <p role="status">
+        {{
+          busy()
+            ? 'Saving source change…'
+            : addForm().submitting()
+              ? 'Adding board…'
+              : addForm.param().dirty()
+                ? 'Unsaved board name.'
+                : message()
+        }}
+      </p>
     }
     @if (failure()) {
       <p class="error" role="alert">{{ failure() }}</p>
@@ -150,6 +168,7 @@ export class CatalogEntryCard {
 
   protected readonly busy = signal(false);
   protected readonly failure = signal('');
+  protected readonly message = signal('');
 
   protected readonly accessLabel = computed(() => accessLabels[this.entry().access]);
 
@@ -174,12 +193,17 @@ export class CatalogEntryCard {
     {
       submission: {
         action: async (f) => {
+          if (this.busy()) return undefined;
+          this.failure.set('');
+          this.message.set('');
           try {
             await this.api.add(this.entry().id, f.param().value().trim());
           } catch (error) {
-            return { kind: 'server', message: errorMessage(error), fieldTree: f.param };
+            this.failure.set(errorMessage(error));
+            return undefined;
           }
           f().reset({ param: '' });
+          this.message.set('Board added. Discovery uses only enabled boards.');
           this.changed.emit();
           return undefined;
         },
@@ -193,19 +217,29 @@ export class CatalogEntryCard {
   });
 
   protected setEnabled(source: Source, box: HTMLInputElement) {
-    return this.mutate(() => this.api.setEnabled(source.id, box.checked), box);
+    return this.mutate(
+      () => this.api.setEnabled(source.id, box.checked),
+      box.checked ? 'Source enabled.' : 'Source disabled. Its board will not be requested.',
+      box,
+    );
   }
 
   protected remove(source: Source) {
-    return this.mutate(() => this.api.remove(source.id));
+    return this.mutate(
+      () => this.api.remove(source.id),
+      'Board removed. Existing jobs and application history remain.',
+    );
   }
 
   /** Runs one change. When it fails, the checkbox that started it goes back to its old state. */
-  private async mutate(change: () => Promise<unknown>, box?: HTMLInputElement) {
+  private async mutate(change: () => Promise<unknown>, message: string, box?: HTMLInputElement) {
+    if (this.busy() || this.addForm().submitting()) return;
+    this.message.set('');
     this.busy.set(true);
     this.failure.set('');
     try {
       await change();
+      this.message.set(message);
     } catch (error) {
       if (box) box.checked = !box.checked;
       this.failure.set(errorMessage(error));

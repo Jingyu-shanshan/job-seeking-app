@@ -67,7 +67,7 @@ describe('RunnerPage', () => {
     await load([laptop, old]);
     const items = [...page().querySelectorAll('.tokens > li')].map((li) => text(li));
     expect(items[0]).toMatch(
-      /^Laptop, issued 7 Oct 2026, \d\d:00\. Last used 7 Oct 2026, \d\d:30:00\. Revoke$/,
+      /^Laptop, issued 7 Oct 2026, \d\d:00\. Active Last used 7 Oct 2026, \d\d:30:00\. Revoke$/,
     );
     expect(items[1]).toMatch(
       /^Old laptop, issued 1 Oct 2026, \d\d:00\. Revoked 2 Oct 2026, \d\d:00\.$/,
@@ -114,8 +114,9 @@ describe('RunnerPage', () => {
       .expectOne('/api/runner-tokens')
       .flush({ message: 'Something is wrong.' }, { status: 400, statusText: 'Bad Request' });
     await settle();
+    http.expectOne('/api/runner-tokens').flush([]);
     await fixture.whenStable();
-    expect(text(page().querySelector('[role=alert]'))).toBe('Something is wrong.');
+    expect(text(page().querySelector('[role=alert]'))).toContain('Something is wrong.');
   });
 
   it('revokes a token', async () => {
@@ -132,5 +133,55 @@ describe('RunnerPage', () => {
     await fixture.whenStable();
     expect(text(page().querySelector('.tokens'))).toContain('Revoked 7 Oct 2026');
     expect(text()).toContain('the fills its runner had open are closed');
+  });
+  it('serialises issue and revoke, keeps the secret out of live messages, and can hide it', async () => {
+    await load([laptop]);
+    button('Issue a token')!.click();
+    const request = http.expectOne({ method: 'POST', url: '/api/runner-tokens' });
+    TestBed.tick();
+    expect(text()).toContain('Creating token…');
+    expect(button('Revoke Laptop')!.disabled).toBe(true);
+    button('Issue a token')!.click();
+    http.expectNone({ method: 'POST', url: '/api/runner-tokens' });
+    const token = `jsa_runner_${'b'.repeat(43)}`;
+    request.flush({ token, runnerToken: laptop });
+    await settle();
+    http.expectOne('/api/runner-tokens').flush([laptop]);
+    await fixture.whenStable();
+    expect(text(page().querySelector('.token'))).toBe(token);
+    for (const live of page().querySelectorAll('[role=status], [role=alert]')) {
+      expect(text(live)).not.toContain(token);
+    }
+    button('Hide token')!.click();
+    await fixture.whenStable();
+    expect(text()).not.toContain(token);
+  });
+
+  it('keeps token status and the computer name when revoke fails', async () => {
+    await load([laptop]);
+    button('Revoke Laptop')!.click();
+    const request = http.expectOne(`/api/runner-tokens/${laptop.id}`);
+    TestBed.tick();
+    expect(button('Issue a token')!.disabled).toBe(true);
+    request.flush({ message: 'Sample revoke failed.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    http.expectOne('/api/runner-tokens').flush([laptop]);
+    await fixture.whenStable();
+    expect(text(page().querySelector('.tokens'))).toContain('Active');
+    expect(text()).toContain('Sample revoke failed.');
+    expect(page().querySelector('input')!.value).toBe('This computer');
+  });
+
+  it('retries token loading before enabling token creation', async () => {
+    http
+      .expectOne('/api/runner-tokens')
+      .flush({ message: 'Sample read failed.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    await fixture.whenStable();
+    expect(button('Issue a token')!.disabled).toBe(true);
+    button('Try again')!.click();
+    TestBed.tick();
+    await load([]);
+    expect(button('Issue a token')!.disabled).toBe(false);
   });
 });

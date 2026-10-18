@@ -17,4 +17,18 @@ describe('ExportPage', () => {
     expect(page.textContent).toContain('your browser’s download folder');
     expect(page.textContent).not.toMatch(/iCloud|Backups|JSA_BACKUP_|db:backup|db:restore/);
   });
+  it('reports a requested download without claiming transfer success', async () => {
+    TestBed.configureTestingModule({ imports: [ExportPage], providers: [provideRouter([])] });
+    const fixture = TestBed.createComponent(ExportPage);
+    await fixture.whenStable();
+    const page = fixture.nativeElement as HTMLElement;
+    const link = page.querySelector<HTMLAnchorElement>('a[download]')!;
+    link.addEventListener('click', (event) => event.preventDefault());
+    link.click();
+    await fixture.whenStable();
+    expect(page.querySelector('[role=status]')?.textContent).toContain('Download requested.');
+    expect(page.querySelector('[role=status]')?.textContent).toContain('cannot confirm');
+    expect(page.textContent).toContain('If no ZIP arrives');
+    expect(link.getAttribute('href')).toBe('/api/export');
+  });
 });

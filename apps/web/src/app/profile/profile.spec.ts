@@ -12,6 +12,11 @@ const saved: Profile = {
   links: ['https://github.com/test-person'],
 };
 
+async function settle() {
+  await new Promise((resolve) => setTimeout(resolve));
+  TestBed.tick();
+}
+
 describe('ProfilePage', () => {
   let fixture: ComponentFixture<ProfilePage>;
   let http: HttpTestingController;
@@ -86,5 +91,53 @@ describe('ProfilePage', () => {
     expect(text(page().querySelector('[role=alert]'))).toBe(
       'Enter an email address such as name@example.com, or leave it empty.',
     );
+  });
+  it('locks edits while saving, keeps failed input, and clears saved feedback on the next edit', async () => {
+    expect(text()).toContain('No unsaved changes.');
+    await type(field('Phone'), '+358 40 111 1111');
+    expect(text()).toContain('Unsaved changes.');
+    save().click();
+    const request = http.expectOne({ method: 'PUT', url: '/api/profile' });
+    TestBed.tick();
+    expect(text()).toContain('Saving your details…');
+    expect(field('Phone').closest('fieldset')?.disabled).toBe(true);
+    save().click();
+    http.expectNone({ method: 'PUT', url: '/api/profile' });
+    request.flush(
+      { message: 'Sample save unavailable.' },
+      { status: 503, statusText: 'Unavailable' },
+    );
+    await settle();
+    await fixture.whenStable();
+    expect(field('Phone').value).toBe('+358 40 111 1111');
+    expect(field('Phone').closest('fieldset')?.disabled).toBe(false);
+    save().click();
+    http.expectOne('/api/profile').flush({ ...saved, phone: '+358 40 111 1111' });
+    await settle();
+    await fixture.whenStable();
+    expect(text()).toContain('Saved.');
+    await type(field('Phone'), '+358 40 222 2222');
+    expect(text(page().querySelector('[role=status]'))).toBe('Unsaved changes.');
+  });
+
+  it('retries a failed load without writing blank details', async () => {
+    const other = TestBed.createComponent(ProfilePage);
+    await Promise.resolve();
+    TestBed.tick();
+    http
+      .expectOne('/api/profile')
+      .flush({ message: 'Sample read unavailable.' }, { status: 503, statusText: 'Unavailable' });
+    await other.whenStable();
+    const retry = other.nativeElement.querySelector('button') as HTMLButtonElement;
+    expect(retry.textContent).toContain('Try again');
+    retry.click();
+    TestBed.tick();
+    http
+      .expectOne('/api/profile')
+      .flush({ name: '', email: '', phone: '', location: '', links: [] });
+    await other.whenStable();
+    expect(other.nativeElement.querySelector('input').value).toBe('');
+    expect(other.nativeElement.querySelector('button[type=submit]').disabled).toBe(true);
+    other.destroy();
   });
 });
