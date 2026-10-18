@@ -251,7 +251,7 @@ describe('JobFill', () => {
     const quiet = task({ status: 'paused', runnerSeenAt: '2026-10-07T08:00:00.000Z' });
     await load(state({ task: quiet, cannotStart: 'The runner has this job’s form already.' }));
     expect(text()).toMatch(
-      /The runner has not been in touch since \d\d:00:00\. If it stopped, close this fill\./,
+      /The runner has not been in touch since \d\d:00:00\. If it stopped, check the visible Chrome window/,
     );
     button('Continue')!.click();
     TestBed.tick();
@@ -275,11 +275,18 @@ describe('JobFill', () => {
     const filled = task({ status: 'filled', message: 'Filled in.', runnerSeenAt: now(), check });
     await load(state({ task: filled, approval: approval() }));
     const section = page().querySelector('section.approval')!;
+    expect(
+      page().querySelector('.fields')!.compareDocumentPosition(section) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(text(section)).toContain(
+      'Changes to the form, job text, answers or PDFs invalidate approval.',
+    );
     expect(text(section)).toContain(
       'Approving lets the runner press Submit once, for this job only',
     );
     expect([...section.querySelectorAll('.binds > li')].map((li) => text(li))).toEqual([
-      expect.stringMatching(/^the value of every field below, as read at \d\d:00:00;$/),
+      expect.stringMatching(/^the value of every field above, as read at \d\d:00:00;$/),
       expect.stringMatching(/^the job’s text as read on 7 Oct 2026, \d\d:00;$/),
       'Resume/CV: Test Person - Resume.pdf (SHA-256 abababababab…);',
       'your answers and documents as the fill started with them.',
@@ -394,6 +401,11 @@ describe('JobFill', () => {
       }),
     );
     expect(text()).toContain('Application: Result unknown');
+    expect(text()).toContain('Result unknown — verification needed');
+    expect(text()).not.toContain('Last fill: Submitted');
+    expect(text()).toContain('This still counts toward the submission limit.');
+    expect(button('Approve and submit')).toBeUndefined();
+    expect(button('Fill in the form with the runner')).toBeUndefined();
     expect(text()).toContain('The window was closed before Greenhouse’s confirmation page showed.');
     button('It did not go through')!.click();
     TestBed.tick();
@@ -443,5 +455,66 @@ describe('JobFill', () => {
       }),
     );
     expect(changed).toBe(1);
+  });
+
+  it.each([
+    ['waiting', 'Waiting for the runner', ['Cancel']],
+    ['filling', 'Filling in', ['Close the window']],
+    ['paused', 'Paused: your turn', ['Continue', 'Close the window']],
+    ['filled', 'Filled in, stopped before Submit', ['Look at the form again', 'Close the window']],
+    ['approved', 'Approved for submitting', ['Withdraw your approval', 'Close the window']],
+    ['submitting', 'Submit pressed', []],
+    ['submitted', 'Submitted', []],
+    ['to_verify', 'Result unknown — verification needed', []],
+    ['closed', 'Closed', []],
+    ['failed', 'Failed', []],
+  ] as const)('shows permitted controls for %s', async (status, label, actions) => {
+    await load(state({ task: task({ status }), cannotStart: 'Sample restriction.' }));
+    expect(text()).toContain(label);
+    expect([...page().querySelectorAll('button')].map((b) => text(b))).toEqual(actions);
+  });
+
+  it('shows blockers and page-only answers, and never approves without a readback', async () => {
+    await load(
+      state({
+        task: task({
+          status: 'paused',
+          check: {
+            ...check,
+            blocker: 'captcha',
+            fields: [
+              preview({
+                key: 'new',
+                label: 'New page question',
+                required: true,
+                value: ['User answer'],
+                state: 'from_window',
+              }),
+              preview({
+                key: 'empty',
+                label: 'Required answer',
+                required: true,
+                state: 'empty',
+                appAnswer: ['Original answer'],
+              }),
+            ],
+          },
+        }),
+      }),
+    );
+    expect(text()).toContain('Complete the CAPTCHA in visible Chrome');
+    expect([...page().querySelector('.fields > li')!.children].map((el) => text(el))).toEqual([
+      'New page question (required)',
+      'User answer',
+      'Not from the app',
+    ]);
+    expect(text()).toContain('The app put in: Original answer');
+    expect(button('Approve and submit')).toBeUndefined();
+    await click(
+      'Continue',
+      `/api/fill-tasks/${taskId}/continue`,
+      state({ task: task({ status: 'filled', check: null }), approval: approval() }),
+    );
+    expect(button('Approve and submit')).toBeUndefined();
   });
 });

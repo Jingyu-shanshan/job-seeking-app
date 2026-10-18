@@ -207,7 +207,9 @@ describe('JobForm', () => {
     await settle();
     http.expectOne('/api/answers').flush(saved);
     await fixture.whenStable();
-    expect(text()).toContain('8 questions: 3 filled, 3 need your answer, 2 optional left empty.');
+    expect(text()).toContain(
+      '8 questions: 3 ready to fill, 3 need your answer, 2 optional left empty.',
+    );
     expect(button('Read the form again')).toBeDefined();
   });
 
@@ -224,7 +226,7 @@ describe('JobForm', () => {
     const lines = (label: string) => [...item(label).querySelectorAll('p')].map((p) => text(p));
     expect(lines('Email')).toEqual([
       'Email (required)',
-      'Filled: test.person@example.com',
+      'Ready to fill: test.person@example.com',
       'From Your details: email.',
       'Answer for this job',
     ]);
@@ -276,8 +278,33 @@ describe('JobForm', () => {
     // The saved answers are read again: there may be a new one.
     http.expectOne('/api/answers').flush(saved);
     await fixture.whenStable();
-    expect(text(item('First Name').querySelectorAll('p')[1]!)).toBe('Filled: Test');
+    expect(text(item('First Name').querySelectorAll('p')[1]!)).toBe('Ready to fill: Test');
     expect(item('First Name').querySelector('form')).toBeNull();
+  });
+
+  it('retains an answer after a server error and retries without changing it', async () => {
+    await load(state());
+    expect(text()).toContain('These are the answers the app would use.');
+    const li = await open('First Name');
+    const input = control<HTMLInputElement>('Your answer for this job', li);
+    input.value = 'Test';
+    input.dispatchEvent(new Event('input'));
+    button('Save', li)!.click();
+    const url = `/api/jobs/${jobId}/form/answers/first_name`;
+    http
+      .expectOne(url)
+      .flush({ message: 'Save unavailable.' }, { status: 503, statusText: 'Unavailable' });
+    await fixture.whenStable();
+    expect(input.value).toBe('Test');
+    expect(text(li.querySelector('[role=alert]'))).toBe('Save unavailable.');
+    button('Save', li)!.click();
+    const retry = http.expectOne(url);
+    expect(retry.request.body).toEqual({ answer: ['Test'] });
+    retry.flush(state());
+    await settle();
+    http.expectOne('/api/answers').flush(saved);
+    await fixture.whenStable();
+    expect(li.querySelector('form')).toBeNull();
   });
 
   it('takes one option, several options, or a consent', async () => {

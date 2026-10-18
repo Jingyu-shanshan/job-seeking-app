@@ -50,7 +50,14 @@ const kindNames: Record<DraftKind, string> = { resume: 'Resume', cover_letter: '
             contact details, go to <a routerLink="/profile">Your details</a>.
           </li>
           <li>
-            <button type="button" (click)="print()">Print</button>
+            <button
+              type="button"
+              class="primary"
+              [disabled]="busy() || d.missing.length > 0"
+              (click)="print()"
+            >
+              Print
+            </button>
             and choose “Save as PDF”. The page sets its size (A4) and margins and keeps the
             browser’s date, address and page numbers off the page; if the print preview shows them,
             turn off “Headers and footers”. The suggested file name is “{{ d.fileName }}.pdf”.
@@ -66,8 +73,8 @@ const kindNames: Record<DraftKind, string> = { resume: 'Resume', cover_letter: '
                 (change)="upload(file)"
               />
             </label>
-            The app keeps it only if its text is exactly the document’s, with nothing missing, cut
-            off or added.
+            Select a non-empty PDF, at most 2 MiB. Selecting it starts verification. The app keeps
+            it only if its text is exactly the document’s, with nothing missing, cut off or added.
           </li>
         </ol>
         <p role="status">{{ status() }}</p>
@@ -79,6 +86,10 @@ const kindNames: Record<DraftKind, string> = { resume: 'Resume', cover_letter: '
                 <li>{{ p }}</li>
               }
             </ul>
+            <p>
+              Check the file and print the current document again if needed, with headers and
+              footers off. Then select the PDF to retry.
+            </p>
           </div>
         }
 
@@ -90,6 +101,9 @@ const kindNames: Record<DraftKind, string> = { resume: 'Resume', cover_letter: '
                 <a [href]="'/api/document-pdfs/' + pdf.id">{{ pdf.fileName }}</a
                 >, kept {{ pdf.createdAt | date: 'd MMM y, HH:mm' }}: {{ pages(pdf.pages) }},
                 {{ size(pdf.bytes) }}.
+                <span class="tag" [class.todo]="!pdf.current">{{
+                  pdf.current ? 'Current PDF' : 'Outdated PDF'
+                }}</span>
                 {{
                   pdf.current
                     ? 'Its text is the document’s text.'
@@ -99,8 +113,16 @@ const kindNames: Record<DraftKind, string> = { resume: 'Resume', cover_letter: '
             }
           </ul>
         } @else {
-          <p>None yet.</p>
+          <p>
+            None yet. Read and print the document, then upload the saved PDF here. Printing alone
+            does not keep a file in the app.
+          </p>
         }
+        <p>
+          <a [routerLink]="['/jobs', d.jobId]" queryParamsHandling="preserve"
+            >Return to the job to review form answers and fill it in</a
+          >
+        </p>
         <h2>The document</h2>
       </div>
       <app-document-sheet [blocks]="d.blocks" [kind]="d.kind" />
@@ -109,6 +131,7 @@ const kindNames: Record<DraftKind, string> = { resume: 'Resume', cover_letter: '
     } @else {
       <p><a routerLink="/jobs">All jobs</a></p>
       <p class="error" role="alert">The document could not be loaded. {{ loadError() }}</p>
+      <button type="button" (click)="data.reload()">Try again</button>
     }
   `,
   styles: `
@@ -138,6 +161,8 @@ const kindNames: Record<DraftKind, string> = { resume: 'Resume', cover_letter: '
     }
     @media print {
       app-root > header,
+      app-root > .skip,
+      app-quick-guide,
       app-document-page .screen-only {
         display: none !important;
       }
@@ -193,20 +218,28 @@ export class DocumentPage {
 
   protected print() {
     this.document.defaultView?.print();
+    this.status.set(
+      'Print requested. Check the saved PDF yourself, then upload it here. The app cannot tell whether you saved a file.',
+    );
   }
 
   protected async upload(input: HTMLInputElement) {
     const file = input.files?.[0];
     // Cleared, so that choosing the same file again uploads it again.
     input.value = '';
-    if (!file) return;
+    if (!file || this.busy()) return;
     this.status.set('');
     this.problems.set([]);
+    if (!file.size) {
+      this.problems.set(['The PDF is empty. Select the saved PDF to try again.']);
+      return;
+    }
     if (file.size > maxPdfBytes) {
       this.problems.set([`The PDF is larger than ${maxPdfBytes / 1024 / 1024} MB.`]);
       return;
     }
     this.busy.set(true);
+    this.status.set('Reading and comparing the PDF text…');
     try {
       const result = await this.api.uploadPdf(this.id(), file);
       if (result.pdf) {
@@ -218,6 +251,7 @@ export class DocumentPage {
     } catch (error) {
       this.problems.set([errorMessage(error)]);
     } finally {
+      if (this.problems().length) this.status.set('');
       this.busy.set(false);
     }
   }

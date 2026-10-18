@@ -94,6 +94,10 @@ describe('JobApplicationsView', () => {
     button('I applied outside the app')!.click();
     await fixture.whenStable();
     expect(text()).toContain('Test Person - Resume.pdf (resume, kept 8 Oct 2026');
+    expect(text()).toContain('It does not submit a form or approve the runner.');
+    expect(page().querySelector('form a')?.getAttribute('href')).toBe(
+      `/api/document-pdfs/${pdfId}`,
+    );
 
     type(input('input[type="datetime-local"]'), '2026-10-08T15:30');
     type(input('input[type="text"]'), 'Through the company’s site');
@@ -180,6 +184,8 @@ describe('JobApplicationsView', () => {
     await settle();
     await fixture.whenStable();
     expect(text()).toContain('The same file is given twice: Sent.pdf.');
+    expect(text()).toContain('Selected files (kept here if saving fails):');
+    expect(text(page().querySelector('form ul li'))).toBe('Sent.pdf');
 
     choose('%PDF-1.4 edited before sending');
     button('Record the application')!.click();

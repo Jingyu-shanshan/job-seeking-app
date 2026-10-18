@@ -61,6 +61,10 @@ async function base64Of(file: File): Promise<string> {
             The record keeps this job’s text as the app has it now, its latest match, and the files
             you name below. It counts as applied at once, and not toward the runner’s limit.
           </p>
+          <p class="notice">
+            This only records an application you already sent. It does not submit a form or approve
+            the runner.
+          </p>
           <label>
             When you sent it
             <input type="datetime-local" [formField]="recordForm.sentAt" [max]="latest" />
@@ -76,31 +80,51 @@ async function base64Of(file: File): Promise<string> {
             <p class="error" role="alert">{{ recordForm.note().errors()[0].message }}</p>
           }
           @if (s.pdfs.length) {
+            <p class="hint">
+              These are kept files, including older versions. Open each PDF and select only the
+              exact version you actually sent.
+            </p>
             <fieldset>
               <legend>PDFs the app kept that you sent</legend>
               @for (pdf of s.pdfs; track pdf.id) {
                 <label class="check">
                   <input
                     type="checkbox"
+                    [disabled]="recordForm().submitting()"
                     [checked]="picked().includes(pdf.id)"
                     (change)="toggle(pdf.id)"
                   />
                   {{ pdf.fileName }} ({{ kindLabels[pdf.kind] }}, kept
                   {{ pdf.createdAt | date: 'd MMM y, HH:mm' }})
                 </label>
+                <a [href]="'/api/document-pdfs/' + pdf.id" target="_blank" rel="noopener"
+                  >Read {{ pdf.fileName }}</a
+                >
               }
             </fieldset>
           }
           <label>
             The files you sent, as sent (PDF, up to {{ maxFiles }}, 2 MiB each)
             <input
-              #files
+              #uploads
               type="file"
               accept="application/pdf,.pdf"
               multiple
-              (change)="choose(files)"
+              [disabled]="recordForm().submitting()"
+              (change)="choose(uploads)"
             />
           </label>
+          @if (files().length) {
+            <p>Selected files (kept here if saving fails):</p>
+            <ul>
+              @for (file of files(); track $index) {
+                <li>{{ file.name }}</li>
+              }
+            </ul>
+          }
+          <p role="status">
+            {{ recordForm().submitting() ? 'Saving the application record and exact files…' : '' }}
+          </p>
           @if (fileProblem()) {
             <p class="error" role="alert">{{ fileProblem() }}</p>
           }
@@ -111,7 +135,9 @@ async function base64Of(file: File): Promise<string> {
             <button type="submit" [disabled]="recordForm().submitting() || !!fileProblem()">
               Record the application
             </button>
-            <button type="button" (click)="open.set(false)">Cancel</button>
+            <button type="button" [disabled]="recordForm().submitting()" (click)="open.set(false)">
+              Cancel
+            </button>
           </p>
         </form>
       }
@@ -119,6 +145,7 @@ async function base64Of(file: File): Promise<string> {
       <p role="status">Loading…</p>
     } @else {
       <p class="error" role="alert">The applications could not be loaded. {{ loadError() }}</p>
+      <button type="button" (click)="state.reload()">Try again</button>
     }
   `,
   styles: `
@@ -127,7 +154,9 @@ async function base64Of(file: File): Promise<string> {
       gap: 0.5rem;
       max-width: 72ch;
       margin-top: 1rem;
-      padding: 0.5rem 0.75rem;
+      padding: 24px;
+      border-radius: 12px;
+      background: var(--surface);
       border: 1px solid var(--line);
     }
     h3 {
@@ -176,7 +205,7 @@ export class JobApplicationsView {
   protected readonly open = signal(false);
   protected readonly failure = signal('');
   protected readonly picked = signal<string[]>([]);
-  private readonly files = signal<File[]>([]);
+  protected readonly files = signal<File[]>([]);
 
   protected readonly fileProblem = computed(() => {
     const files = this.files();

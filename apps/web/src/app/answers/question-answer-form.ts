@@ -21,6 +21,10 @@ interface Model {
   imports: [FormField, FormRoot],
   template: `
     @let q = fill().question;
+    <p class="hint">
+      Saving an answer does not submit this application. Review it in the actual form before
+      approving.
+    </p>
     <form [formRoot]="answerForm">
       @switch (q.kind) {
         @case ('text') {
@@ -91,9 +95,19 @@ interface Model {
           <p class="error" role="alert">{{ error.message }}</p>
         }
       }
+      @if (failure()) {
+        <p class="error" role="alert">{{ failure() }}</p>
+      }
+      <p role="status">{{ answerForm().submitting() ? 'Saving your answer…' : '' }}</p>
       <p>
         <button type="submit" [disabled]="answerForm().submitting() || busy()">Save</button>
-        <button type="button" (click)="cancelled.emit()">Cancel</button>
+        <button
+          type="button"
+          [disabled]="answerForm().submitting() || busy()"
+          (click)="cancelled.emit()"
+        >
+          Cancel
+        </button>
       </p>
     </form>
 
@@ -108,7 +122,14 @@ interface Model {
             }
           </select>
         </label>
-        <button type="button" [disabled]="!pick() || busy()" (click)="useSaved()">Use it</button>
+        <button
+          type="button"
+          [disabled]="!pick() || busy() || answerForm().submitting()"
+          (click)="useSaved()"
+        >
+          Use it
+        </button>
+        <p role="status">{{ busy() ? 'Applying the selected answer…' : '' }}</p>
         @if (pickFailure()) {
           <p class="error" role="alert">{{ pickFailure() }}</p>
         }
@@ -169,6 +190,7 @@ export class QuestionAnswerForm {
   protected readonly busy = signal(false);
   protected readonly pick = signal('');
   protected readonly pickFailure = signal('');
+  protected readonly failure = signal('');
 
   protected readonly describe = (a: SavedAnswer) =>
     `${a.wordings[0]}: ${a.answer.join('; ')}${a.places.length ? ` (${a.places.join(', ')})` : ''}`;
@@ -199,6 +221,7 @@ export class QuestionAnswerForm {
       submission: {
         action: async (f) => {
           const { save, sensitive, places } = f().value();
+          this.failure.set('');
           try {
             this.changed.emit(
               await this.api.answer(this.jobId(), this.fill().question.key, {
@@ -207,7 +230,7 @@ export class QuestionAnswerForm {
               }),
             );
           } catch (error) {
-            return { kind: 'server', message: errorMessage(error) };
+            this.failure.set(errorMessage(error));
           }
           return undefined;
         },

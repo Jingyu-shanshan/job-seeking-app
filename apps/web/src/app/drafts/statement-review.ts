@@ -1,4 +1,15 @@
-import { Component, inject, input, linkedSignal, output, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  Injector,
+  afterNextRender,
+  inject,
+  input,
+  linkedSignal,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core';
 import type { Draft, DraftStatement, EditStatementRequest } from '@jsa/shared';
 import { errorMessage } from '../sources/sources-api';
 import { DraftsApi } from './drafts-api';
@@ -13,73 +24,96 @@ import { StatementCheck } from './statement-check';
   imports: [StatementCheck],
   template: `
     @let s = statement();
-    <span class="text" [id]="'s-' + s.id" [class.out]="!s.inDocument" [class.entry]="entry()">
-      {{ s.text }}
-    </span>
-    <app-statement-check [statement]="s" />
-    @if (editing()) {
-      <label>
-        Your text
-        <textarea rows="3" [value]="text()" (input)="text.set(area.value)" #area></textarea>
-      </label>
-      <p class="hint">
-        Checked like DeepSeek’s text, against the same facts or quote, so it cannot add what they do
-        not say. DeepSeek’s text is kept.
-      </p>
-      <button
-        type="button"
-        [disabled]="busy()"
-        (click)="save({ text: text(), included: s.included })"
-      >
-        Save
-      </button>
-      <button type="button" [disabled]="busy()" (click)="editing.set(false)">Cancel</button>
-    } @else {
-      <div class="actions">
+    <div class="wording">
+      <p class="hint">{{ s.edited ? 'Your wording' : 'DeepSeek wording' }}</p>
+      <span class="text" [id]="'s-' + s.id" [class.out]="!s.inDocument" [class.entry]="entry()">
+        {{ s.text }}
+      </span>
+      @if (editing()) {
+        <label>
+          Your text
+          <textarea
+            rows="3"
+            maxlength="2000"
+            [disabled]="busy()"
+            [value]="text()"
+            (input)="text.set(area.value)"
+            #area
+          ></textarea>
+        </label>
+        <p class="hint">
+          Checked like DeepSeek’s text, against the same facts or quote. Checks do not judge
+          meaning; read the evidence yourself. DeepSeek’s text is kept. At most 2,000 characters.
+        </p>
         <button
           type="button"
-          [disabled]="busy()"
-          [attr.aria-describedby]="'s-' + s.id"
-          (click)="editing.set(true)"
+          [disabled]="busy() || !text().trim() || text().length > 2000"
+          (click)="save({ text: text(), included: s.included })"
         >
-          Edit
+          Save
         </button>
-        <!-- Only a statement that passes its checks can be in the document. -->
-        @if (!s.problems.length) {
+        <button type="button" [disabled]="busy()" (click)="setEditing(false)">Cancel</button>
+      } @else {
+        <div class="actions">
           <button
+            #editButton
             type="button"
             [disabled]="busy()"
             [attr.aria-describedby]="'s-' + s.id"
-            (click)="save({ text: s.text, included: !s.included })"
+            (click)="setEditing(true)"
           >
-            {{ s.included ? 'Leave out' : 'Put back' }}
+            Edit
           </button>
-        }
-        @if (s.edited) {
-          <button
-            type="button"
-            [disabled]="busy()"
-            [attr.aria-describedby]="'s-' + s.id"
-            (click)="save({ text: s.modelText, included: s.included })"
-          >
-            Use DeepSeek’s text
-          </button>
-        }
-      </div>
-    }
-    @if (failure()) {
-      <p class="error" role="alert">{{ failure() }}</p>
-    }
+          <!-- Only a statement that passes its checks can be in the document. -->
+          @if (!s.problems.length) {
+            <button
+              type="button"
+              [disabled]="busy()"
+              [attr.aria-describedby]="'s-' + s.id"
+              (click)="save({ text: s.text, included: !s.included })"
+            >
+              {{ s.included ? 'Leave out' : 'Put back' }}
+            </button>
+          }
+          @if (s.edited) {
+            <button
+              type="button"
+              [disabled]="busy()"
+              [attr.aria-describedby]="'s-' + s.id"
+              (click)="save({ text: s.modelText, included: s.included })"
+            >
+              Use DeepSeek’s text
+            </button>
+          }
+        </div>
+      }
+      @if (failure()) {
+        <p class="error" role="alert">{{ failure() }}</p>
+      }
+      <p role="status">{{ busy() ? 'Saving and checking this statement…' : status() }}</p>
+    </div>
+    <app-statement-check [statement]="s" />
   `,
   styles: `
     :host {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 24px;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .wording {
+      min-width: 0;
+    }
+    .text {
       display: block;
+      white-space: pre-wrap;
+      line-height: 1.7;
     }
     .entry {
       font-weight: 600;
     }
     .out {
-      text-decoration: line-through;
       color: var(--muted);
     }
     label {
@@ -102,10 +136,19 @@ import { StatementCheck } from './statement-check';
       font-size: 14px;
       margin: 0.25rem 0;
     }
+    @media (max-width: 900px) {
+      :host {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+      }
+    }
   `,
 })
 export class StatementReview {
   private readonly api = inject(DraftsApi);
+  private readonly injector = inject(Injector);
+  private readonly area = viewChild<ElementRef<HTMLTextAreaElement>>('area');
+  private readonly editButton = viewChild<ElementRef<HTMLButtonElement>>('editButton');
 
   readonly draftId = input.required<string>();
   readonly statement = input.required<DraftStatement>();
@@ -117,14 +160,24 @@ export class StatementReview {
   protected readonly editing = signal(false);
   protected readonly busy = signal(false);
   protected readonly failure = signal('');
+  protected readonly status = signal('');
   protected readonly text = linkedSignal(() => this.statement().text);
+
+  protected setEditing(editing: boolean) {
+    this.editing.set(editing);
+    afterNextRender(() => (editing ? this.area() : this.editButton())?.nativeElement.focus(), {
+      injector: this.injector,
+    });
+  }
 
   protected async save(change: EditStatementRequest) {
     this.busy.set(true);
     this.failure.set('');
+    this.status.set('');
     try {
       this.changed.emit(await this.api.editStatement(this.draftId(), this.statement().id, change));
-      this.editing.set(false);
+      this.setEditing(false);
+      this.status.set('Saved and checked. Read the wording against its evidence.');
     } catch (error) {
       this.failure.set(errorMessage(error));
     } finally {

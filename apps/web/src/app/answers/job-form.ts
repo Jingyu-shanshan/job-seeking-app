@@ -1,6 +1,15 @@
 import { httpResource } from '@angular/common/http';
-import { DatePipe } from '@angular/common';
-import { Component, computed, inject, input, output, signal } from '@angular/core';
+import { DOCUMENT, DatePipe } from '@angular/common';
+import {
+  Component,
+  Injector,
+  afterNextRender,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type {
   FillStatus,
@@ -14,7 +23,7 @@ import { AnswersApi } from './answers-api';
 import { QuestionAnswerForm } from './question-answer-form';
 
 const statusLabels: Record<FillStatus, string> = {
-  filled: 'Filled',
+  filled: 'Ready to fill',
   needs_answer: 'Needs your answer',
   optional_empty: 'Optional, left empty',
   held_back: 'Held back',
@@ -37,6 +46,11 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
     @if (state.hasValue()) {
       @let s = state.value();
       @if (s.form; as form) {
+        <h3>Answers prepared for this job</h3>
+        <p class="notice">
+          These are the answers the app would use. Review the runner’s actual readback below after
+          filling; the live page can contain extra questions or different values.
+        </p>
         <p>
           Read from the job board {{ form.readAt | date: 'd MMM y'
           }}{{
@@ -58,7 +72,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
         <ol class="questions">
           @for (f of form.fills; track f.question.key) {
             @let q = f.question;
-            <li [class]="f.status">
+            <li [class]="f.status" [id]="'q-' + jobId() + '-' + q.key" tabindex="-1">
               <p class="label">
                 {{ q.label }}
                 <span class="hint">({{ q.required ? 'required' : 'optional' }})</span>
@@ -83,8 +97,8 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
                   [jobId]="jobId()"
                   [fill]="f"
                   [saved]="saved.value() ?? []"
-                  (changed)="changed($event)"
-                  (cancelled)="editing.set(null)"
+                  (changed)="changed($event, q.key)"
+                  (cancelled)="editQuestion(q.key, false)"
                 />
               } @else {
                 <p class="actions">
@@ -104,7 +118,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
                       type="button"
                       [disabled]="busy()"
                       [attr.aria-label]="change + ': ' + q.label"
-                      (click)="editing.set(q.key)"
+                      (click)="editQuestion(q.key, true)"
                     >
                       {{ change }}
                     </button>
@@ -124,6 +138,12 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
             </li>
           }
         </ol>
+        @if (saved.error()) {
+          <p class="error" role="alert">
+            Saved answers could not be loaded. You can still write an answer for this job.
+          </p>
+          <button type="button" (click)="saved.reload()">Retry saved answers</button>
+        }
       } @else if (s.canRead) {
         <p>
           Reading the form sends one request to the job board, and nothing about you. The app then
@@ -146,6 +166,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
       <p role="status">Loading the application form…</p>
     } @else {
       <p class="error" role="alert">The application form could not be loaded. {{ loadError() }}</p>
+      <button type="button" (click)="state.reload()">Try again</button>
     }
   `,
   styles: `
@@ -153,7 +174,9 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
       padding-left: 1.5rem;
     }
     .questions > li {
-      margin-bottom: 1rem;
+      margin-bottom: 1.5rem;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--line);
     }
     .questions p {
       margin: 0.25rem 0;
@@ -183,6 +206,8 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 })
 export class JobForm {
   private readonly api = inject(AnswersApi);
+  private readonly document = inject(DOCUMENT);
+  private readonly injector = inject(Injector);
 
   readonly jobId = input.required<string>();
   /** The user changed an answer or read the form: what can be filled may have changed. */
@@ -208,7 +233,7 @@ export class JobForm {
     const fills = this.state.value()?.form?.fills ?? [];
     const counted = (status: FillStatus) => fills.filter((f) => f.status === status).length;
     const parts = [
-      `${counted('filled')} filled`,
+      `${counted('filled')} ready to fill`,
       `${counted('needs_answer')} need your answer`,
       `${counted('optional_empty') + counted('held_back')} optional left empty`,
     ];
@@ -224,10 +249,26 @@ export class JobForm {
       : '';
   }
 
-  protected changed(state: JobFormState) {
+  protected editQuestion(key: string, editing: boolean) {
+    this.editing.set(editing ? key : null);
+    afterNextRender(
+      () => {
+        const row = this.document.getElementById('q-' + this.jobId() + '-' + key);
+        (editing
+          ? row?.querySelector<HTMLElement>(
+              'app-question-answer-form input, app-question-answer-form textarea, app-question-answer-form select',
+            )
+          : row
+        )?.focus();
+      },
+      { injector: this.injector },
+    );
+  }
+
+  protected changed(state: JobFormState, key: string) {
     this.state.set(state);
     this.formChanged.emit(state);
-    this.editing.set(null);
+    this.editQuestion(key, false);
     // A new saved answer, or a remembered wording.
     this.saved.reload();
   }
