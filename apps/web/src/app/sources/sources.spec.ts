@@ -234,10 +234,6 @@ describe('Sources', () => {
       'acme has already been added.',
     );
 
-    // The server's error stays on the field until the name changes.
-    submit();
-    http.expectNone('/api/sources');
-
     input.value = 'other';
     input.dispatchEvent(new Event('input'));
     submit();
@@ -311,5 +307,40 @@ describe('Sources', () => {
     http.expectOne('/api/sources').flush({ catalog, sources: [], alerts: [] });
     await fixture.whenStable();
     expect(textOf(alertRow('Recruiter messages'))).toContain('Nope.');
+  });
+  it('locks board changes while an add is pending, retaining failed input and status', async () => {
+    await load([source({})]);
+    const boardCard = card('Some job boards');
+    const input = boardCard.querySelector<HTMLInputElement>('form input')!;
+    input.value = 'other';
+    input.dispatchEvent(new Event('input'));
+    TestBed.tick();
+    expect(textOf(boardCard)).toContain('Unsaved board name.');
+    boardCard.querySelector<HTMLButtonElement>('form button')!.click();
+    const request = http.expectOne({ method: 'POST', url: '/api/sources' });
+    TestBed.tick();
+    expect(boardCard.querySelector<HTMLInputElement>('li input')!.disabled).toBe(true);
+    expect(textOf(boardCard)).toContain('Adding board…');
+    request.flush({ message: 'Sample add failed.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    await fixture.whenStable();
+    expect(input.value).toBe('other');
+    expect(textOf(boardCard)).toContain('Sample add failed.');
+    expect(boardCard.querySelector<HTMLInputElement>('li input')!.checked).toBe(true);
+  });
+
+  it('retries catalog errors without requesting any boards', async () => {
+    http
+      .expectOne('/api/sources')
+      .flush({ message: 'Sample read failed.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    await fixture.whenStable();
+    page().querySelector<HTMLButtonElement>('button')!.click();
+    TestBed.tick();
+    await load([source({ enabled: false })]);
+    expect(card('Some job boards').querySelector<HTMLInputElement>('li input')!.checked).toBe(
+      false,
+    );
+    http.expectNone((req) => req.method !== 'GET');
   });
 });

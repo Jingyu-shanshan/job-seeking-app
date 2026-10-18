@@ -21,10 +21,19 @@ import { AnswersApi } from './answers-api';
       sent to DeepSeek.
     </p>
 
-    <details>
-      <summary><h2>Add an answer</h2></summary>
-      <app-answer-editor (saved)="added($event)" />
-    </details>
+    @if (data.hasValue()) {
+      <details>
+        <summary><h2>Add an answer</h2></summary>
+        <app-answer-editor [locked]="busy()" (saving)="busy.set($event)" (saved)="added($event)" />
+      </details>
+    }
+    <p class="hint">
+      Sensitive answers fill optional questions only when you choose so for that job. Frozen
+      application answers stay unchanged when you edit or delete a saved answer.
+    </p>
+    @if (busy() || message()) {
+      <p role="status">{{ busy() ? 'Saving answer change…' : message() }}</p>
+    }
 
     @if (data.hasValue()) {
       <section aria-labelledby="saved-heading">
@@ -34,6 +43,8 @@ import { AnswersApi } from './answers-api';
             @if (editing() === a.id) {
               <app-answer-editor
                 [answer]="a"
+                [locked]="busy()"
+                (saving)="busy.set($event)"
                 (saved)="replace($event)"
                 (cancelled)="editing.set(null)"
               />
@@ -51,7 +62,9 @@ import { AnswersApi } from './answers-api';
                 {{ a.places.length ? 'Only for jobs in ' + a.places.join(', ') : 'Every job' }}
               </p>
               <button type="button" [disabled]="busy()" (click)="editing.set(a.id)">Edit</button>
-              <button type="button" [disabled]="busy()" (click)="remove(a)">Delete</button>
+              <button type="button" class="danger" [disabled]="busy()" (click)="remove(a)">
+                Delete
+              </button>
             }
           </article>
         } @empty {
@@ -68,6 +81,7 @@ import { AnswersApi } from './answers-api';
       <p role="status">Loading your answers…</p>
     } @else {
       <p class="error" role="alert">Your answers could not be loaded. {{ loadError() }}</p>
+      <button type="button" (click)="data.reload()">Try again</button>
     }
   `,
   styles: `
@@ -103,21 +117,29 @@ export class Answers {
   protected readonly editing = signal<string | null>(null);
   protected readonly busy = signal(false);
   protected readonly failure = signal('');
+  protected readonly message = signal('');
 
   protected added(answer: SavedAnswer) {
+    this.failure.set('');
+    this.message.set('Answer saved.');
     this.data.update((answers) => answers && [...answers, answer]);
   }
 
   protected replace(answer: SavedAnswer) {
+    this.failure.set('');
+    this.message.set('Answer saved. Frozen application answers remain unchanged.');
     this.data.update((answers) => answers?.map((a) => (a.id === answer.id ? answer : a)));
     this.editing.set(null);
   }
 
   protected async remove(answer: SavedAnswer) {
+    if (this.busy()) return;
+    this.message.set('');
     this.busy.set(true);
     this.failure.set('');
     try {
       await this.api.remove(answer.id);
+      this.message.set('Saved answer deleted. Frozen application answers remain unchanged.');
       this.data.update((answers) => answers?.filter((a) => a.id !== answer.id));
     } catch (error) {
       this.failure.set(errorMessage(error));

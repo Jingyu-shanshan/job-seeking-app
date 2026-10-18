@@ -52,6 +52,9 @@ const statusLabels: Record<Status, string> = {
         The app never requests this site.
       </p>
     </details>
+    @if (busy() || message()) {
+      <p role="status">{{ busy() ? 'Saving source selection…' : message() }}</p>
+    }
     @if (failure()) {
       <p class="error" role="alert">{{ failure() }}</p>
     }
@@ -99,6 +102,7 @@ export class AlertSource {
 
   protected readonly busy = signal(false);
   protected readonly failure = signal('');
+  protected readonly message = signal('');
 
   /** Most sources are used until turned off; recruiter messages only once turned on. */
   protected readonly inUse = computed(
@@ -126,6 +130,8 @@ export class AlertSource {
   });
 
   protected async setUsed(box: HTMLInputElement) {
+    if (this.busy()) return;
+    this.message.set('');
     const source = this.source();
     this.busy.set(true);
     this.failure.set('');
@@ -133,6 +139,11 @@ export class AlertSource {
       await (source
         ? this.api.setEnabled(source.id, box.checked)
         : this.api.add(this.entry().id, undefined, box.checked));
+      this.message.set(
+        box.checked
+          ? 'Source enabled for emails you import.'
+          : 'Source disabled. Its emails will not be imported.',
+      );
     } catch (error) {
       box.checked = !box.checked;
       this.failure.set(errorMessage(error));

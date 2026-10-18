@@ -141,4 +141,40 @@ describe('CriteriaPage', () => {
     expect(textInput('Working language').value).toBe('Klingon');
     expect(save().disabled).toBe(false);
   });
+  it('locks pending edits and retries the same criteria after a failed save', async () => {
+    await type(textInput('Job title'), 'platform');
+    save().click();
+    const request = http.expectOne('/api/criteria');
+    TestBed.tick();
+    expect(text()).toContain('Saving criteria…');
+    expect(textInput('Job title').closest('fieldset')?.disabled).toBe(true);
+    request.flush({ message: 'Sample save failed.' }, { status: 503, statusText: 'Unavailable' });
+    await new Promise((resolve) => setTimeout(resolve));
+    await fixture.whenStable();
+    expect(textInput('Job title').value).toBe('platform');
+    expect(text()).toContain('Sample save failed.');
+    save().click();
+    const retry = http.expectOne('/api/criteria');
+    expect(retry.request.body.title.words).toEqual(['platform']);
+    expect(retry.request.body.location.ifUnknown).toBe('to_confirm');
+    retry.flush({ ...saved, title: { strength: 'hard', words: ['platform'] } });
+    await fixture.whenStable();
+    expect(text()).toContain('Saved.');
+  });
+
+  it('shows a load error and can retry without interpreting missing criteria as a pass', async () => {
+    const other = TestBed.createComponent(CriteriaPage);
+    TestBed.tick();
+    http
+      .expectOne('/api/criteria')
+      .flush({ message: 'Sample read failed.' }, { status: 503, statusText: 'Unavailable' });
+    await other.whenStable();
+    expect(other.nativeElement.querySelector('form')).toBeNull();
+    other.nativeElement.querySelector('button').click();
+    TestBed.tick();
+    http.expectOne('/api/criteria').flush(saved);
+    await other.whenStable();
+    expect(other.nativeElement.textContent).toContain('Not saying never');
+    other.destroy();
+  });
 });

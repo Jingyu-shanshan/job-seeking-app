@@ -108,133 +108,143 @@ const blank: Criteria = {
 
     @if (saved.hasValue()) {
       <form [formRoot]="criteriaForm">
-        <section aria-labelledby="location-heading">
-          <h2 id="location-heading">Location</h2>
-          <p class="hint">
-            From the location the job board or you gave. Helsinki includes Espoo, not Vantaa. A
-            remote job counts only if it may be done from Finland.
-          </p>
-          <fieldset>
-            <legend>Jobs located in</legend>
-            <label>
-              <input type="radio" value="helsinki" [formField]="criteriaForm.area" /> Helsinki and
-              Espoo
-            </label>
-            <label>
-              <input type="radio" value="finland" [formField]="criteriaForm.area" /> Finland
-            </label>
-            <label>
-              <input type="radio" value="worldwide" [formField]="criteriaForm.area" /> Anywhere
-            </label>
-          </fieldset>
-          <label class="line">
-            <input type="checkbox" [formField]="criteriaForm.includeRemote" />
-            Also remote jobs
-            @if (criteriaForm.includeRemote().disabled()) {
-              (already included)
-            }
-          </label>
-          <app-criterion-strength
-            [strength]="criteriaForm.location.strength"
-            [ifUnknown]="criteriaForm.location.ifUnknown"
-            unknownLabel="If the location is missing or unclear (when hard)"
-          />
-        </section>
-
-        <section aria-labelledby="title-heading">
-          <h2 id="title-heading">Job title</h2>
-          <label class="line">
-            Words the title should have, any one of them (separate with commas)
-            <input type="text" [formField]="criteriaForm.title.words" />
-          </label>
-          <app-criterion-strength [strength]="criteriaForm.title.strength" />
-          @for (error of criteriaForm.title.words().errors(); track $index) {
-            <p class="error" role="alert">{{ error.message }}</p>
-          }
-        </section>
-
-        <section aria-labelledby="avoid-heading">
-          <h2 id="avoid-heading">Words to avoid in the title</h2>
-          <label class="line">
-            Words the title should not have (separate with commas)
-            <input type="text" [formField]="criteriaForm.avoid.words" />
-          </label>
-          <app-criterion-strength [strength]="criteriaForm.avoid.strength" />
-          @for (error of criteriaForm.avoid.words().errors(); track $index) {
-            <p class="error" role="alert">{{ error.message }}</p>
-          }
-        </section>
-
-        <section aria-labelledby="languages-heading">
-          <h2 id="languages-heading">Working language</h2>
-          <p class="hint">
-            Compared with the working language the job’s summary quotes from its text, so a job is
-            unknown here until it is summarised. A job that also asks for a language you did not
-            list goes to To confirm.
-          </p>
-          <label class="line">
-            Languages you can work in (separate with commas)
-            <input type="text" [formField]="criteriaForm.languages.names" />
-          </label>
-          <app-criterion-strength
-            [strength]="criteriaForm.languages.strength"
-            [ifUnknown]="criteriaForm.languages.ifUnknown"
-          />
-          @for (error of criteriaForm.languages.names().errors(); track $index) {
-            <p class="error" role="alert">{{ error.message }}</p>
-          }
-        </section>
-
-        <section aria-labelledby="employment-heading">
-          <h2 id="employment-heading">Employment type</h2>
-          <p class="hint">
-            Compared with the employment type the job’s summary quotes. Hours (full-time or
-            part-time) and the kind of contract are checked separately, each only if you accept a
-            type of it.
-          </p>
-          <fieldset>
-            <legend>Types you accept</legend>
-            @for (type of employmentTypes; track type) {
+        <fieldset class="form-fields" [disabled]="criteriaForm().submitting()">
+          <section aria-labelledby="location-heading">
+            <h2 id="location-heading">Location</h2>
+            <p class="hint">
+              From the location the job board or you gave. Helsinki includes Espoo, not Vantaa. A
+              remote job counts only if it may be done from Finland.
+            </p>
+            <fieldset>
+              <legend>Jobs located in</legend>
               <label>
-                <input type="checkbox" [formField]="criteriaForm.employment.types[type]" />
-                {{ employmentLabels[type] }}
+                <input type="radio" value="helsinki" [formField]="criteriaForm.area" /> Helsinki and
+                Espoo
               </label>
+              <label>
+                <input type="radio" value="finland" [formField]="criteriaForm.area" /> Finland
+              </label>
+              <label>
+                <input type="radio" value="worldwide" [formField]="criteriaForm.area" /> Anywhere
+              </label>
+            </fieldset>
+            <label class="line">
+              <input type="checkbox" [formField]="criteriaForm.includeRemote" />
+              Also remote jobs
+              @if (criteriaForm.includeRemote().disabled()) {
+                (already included)
+              }
+            </label>
+            <app-criterion-strength
+              [strength]="criteriaForm.location.strength"
+              [ifUnknown]="criteriaForm.location.ifUnknown"
+              unknownLabel="If the location is missing or unclear (when hard)"
+            />
+          </section>
+
+          <section aria-labelledby="title-heading">
+            <h2 id="title-heading">Job title</h2>
+            <label class="line">
+              Words the title should have, any one of them (separate with commas)
+              <input type="text" [formField]="criteriaForm.title.words" />
+            </label>
+            <app-criterion-strength [strength]="criteriaForm.title.strength" />
+            @for (error of criteriaForm.title.words().errors(); track $index) {
+              <p class="error" role="alert">{{ error.message }}</p>
             }
-          </fieldset>
-          <app-criterion-strength
-            [strength]="criteriaForm.employment.strength"
-            [ifUnknown]="criteriaForm.employment.ifUnknown"
-          />
-          @for (error of criteriaForm.employment.types().errors(); track $index) {
-            <p class="error" role="alert">{{ error.message }}</p>
-          }
-        </section>
+          </section>
 
-        <section aria-labelledby="must-heading">
-          <h2 id="must-heading">The job’s must-haves</h2>
-          <p class="hint">
-            Whether your confirmed facts meet the must-haves of the job, from its latest match with
-            your facts on the job page. Unknown until the job is summarised and matched, and again
-            when a fact the match cited changes.
-          </p>
-          <app-criterion-strength
-            [strength]="criteriaForm.mustHaves.strength"
-            [ifUnknown]="criteriaForm.mustHaves.ifUnknown"
-          />
-        </section>
+          <section aria-labelledby="avoid-heading">
+            <h2 id="avoid-heading">Words to avoid in the title</h2>
+            <label class="line">
+              Words the title should not have (separate with commas)
+              <input type="text" [formField]="criteriaForm.avoid.words" />
+            </label>
+            <app-criterion-strength [strength]="criteriaForm.avoid.strength" />
+            @for (error of criteriaForm.avoid.words().errors(); track $index) {
+              <p class="error" role="alert">{{ error.message }}</p>
+            }
+          </section>
 
-        <p>
+          <section aria-labelledby="languages-heading">
+            <h2 id="languages-heading">Working language</h2>
+            <p class="hint">
+              Compared with the working language the job’s summary quotes from its text, so a job is
+              unknown here until it is summarised. A job that also asks for a language you did not
+              list goes to To confirm.
+            </p>
+            <label class="line">
+              Languages you can work in (separate with commas)
+              <input type="text" [formField]="criteriaForm.languages.names" />
+            </label>
+            <app-criterion-strength
+              [strength]="criteriaForm.languages.strength"
+              [ifUnknown]="criteriaForm.languages.ifUnknown"
+            />
+            @for (error of criteriaForm.languages.names().errors(); track $index) {
+              <p class="error" role="alert">{{ error.message }}</p>
+            }
+          </section>
+
+          <section aria-labelledby="employment-heading">
+            <h2 id="employment-heading">Employment type</h2>
+            <p class="hint">
+              Compared with the employment type the job’s summary quotes. Hours (full-time or
+              part-time) and the kind of contract are checked separately, each only if you accept a
+              type of it.
+            </p>
+            <fieldset>
+              <legend>Types you accept</legend>
+              @for (type of employmentTypes; track type) {
+                <label>
+                  <input type="checkbox" [formField]="criteriaForm.employment.types[type]" />
+                  {{ employmentLabels[type] }}
+                </label>
+              }
+            </fieldset>
+            <app-criterion-strength
+              [strength]="criteriaForm.employment.strength"
+              [ifUnknown]="criteriaForm.employment.ifUnknown"
+            />
+            @for (error of criteriaForm.employment.types().errors(); track $index) {
+              <p class="error" role="alert">{{ error.message }}</p>
+            }
+          </section>
+
+          <section aria-labelledby="must-heading">
+            <h2 id="must-heading">The job’s must-haves</h2>
+            <p class="hint">
+              Whether your confirmed facts meet the must-haves of the job, from its latest match
+              with your facts on the job page. Unknown until the job is summarised and matched, and
+              again when a fact the match cited changes.
+            </p>
+            <app-criterion-strength
+              [strength]="criteriaForm.mustHaves.strength"
+              [ifUnknown]="criteriaForm.mustHaves.ifUnknown"
+            />
+          </section>
+        </fieldset>
+        <div class="actions">
           <button type="submit" [disabled]="!unsaved() || criteriaForm().submitting()">Save</button>
-          <span role="status">{{ status() }}</span>
+        </div>
+        <p role="status">
+          {{
+            criteriaForm().submitting()
+              ? 'Saving criteria…'
+              : unsaved()
+                ? 'Unsaved changes.'
+                : status() || 'No unsaved changes.'
+          }}
         </p>
-        @for (error of criteriaForm().errors(); track $index) {
-          <p class="error" role="alert">{{ error.message }}</p>
+        @if (failure()) {
+          <p class="error" role="alert">{{ failure() }}</p>
         }
       </form>
     } @else if (saved.isLoading()) {
       <p role="status">Loading your criteria…</p>
     } @else {
       <p class="error" role="alert">Your criteria could not be loaded. {{ loadError() }}</p>
+      <button type="button" (click)="saved.reload()">Try again</button>
     }
   `,
   styles: `
@@ -242,7 +252,7 @@ const blank: Criteria = {
       border-top: 1px solid var(--line);
       margin-top: 1rem;
     }
-    fieldset {
+    fieldset:not(.form-fields) {
       display: flex;
       flex-wrap: wrap;
       gap: 0.25rem 1.5rem;
@@ -270,12 +280,15 @@ export class CriteriaPage {
   protected readonly loadError = computed(() => errorMessage(this.saved.error()));
 
   // Follows the saved criteria; the user's edits stay local until saved.
-  private readonly model = linkedSignal<Model>(() => toModel(this.saved.value() ?? blank));
+  private readonly model = linkedSignal<Model>(() =>
+    toModel(this.saved.hasValue() ? this.saved.value() : blank),
+  );
 
   protected readonly status = signal('');
+  protected readonly failure = signal('');
 
   protected readonly unsaved = computed(() => {
-    const saved = this.saved.value();
+    const saved = this.saved.hasValue() ? this.saved.value() : undefined;
     return !saved || JSON.stringify(toCriteria(this.model())) !== JSON.stringify(saved);
   });
 
@@ -309,13 +322,15 @@ export class CriteriaPage {
       submission: {
         action: async (f) => {
           this.status.set('');
+          this.failure.set('');
           try {
             const criteria = toCriteria(f().value());
             this.saved.set(
               await firstValueFrom(this.http.put<Criteria>('/api/criteria', criteria)),
             );
           } catch (error) {
-            return { kind: 'server', message: errorMessage(error) };
+            this.failure.set(errorMessage(error));
+            return undefined;
           }
           this.status.set('Saved.');
           return undefined;

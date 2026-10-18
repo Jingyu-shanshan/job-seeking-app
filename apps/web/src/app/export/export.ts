@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 /** A downloadable copy of the user's job-search data (T10). */
@@ -32,7 +32,23 @@ import { RouterLink } from '@angular/router';
       facts and your applications: keep it somewhere private.
     </p>
     <p>The zip downloads to your browser’s download folder. You choose where to keep it.</p>
-    <p><a href="/api/export" download>Download the export</a></p>
+    <p class="actions">
+      <a class="button primary" href="/api/export" download (click)="requested.set(true)"
+        >Download the export</a
+      >
+    </p>
+    @if (requested()) {
+      <p role="status">
+        Download requested. Check your browser’s download folder; the app cannot confirm that you
+        kept the file.
+      </p>
+    }
+    <p class="hint">
+      If no ZIP arrives, check your browser’s downloads, sign in again if needed, and try the
+      download again. Keep any partial file separate.
+    </p>
   `,
 })
-export class ExportPage {}
+export class ExportPage {
+  protected readonly requested = signal(false);
+}
