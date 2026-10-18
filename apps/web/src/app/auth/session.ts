@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 
 /** The signed-in account, as Better Auth returns it; only the fields the UI uses. */
 export interface User {
+  id: string;
   email: string;
 }
 

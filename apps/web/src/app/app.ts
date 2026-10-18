@@ -1,11 +1,21 @@
 import { DOCUMENT } from '@angular/common';
-import { Component, DestroyRef, Injector, afterNextRender, inject, signal } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  Injector,
+  afterNextRender,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router';
 import { Session } from './auth/session';
+import { QuickGuide } from './home/quick-guide';
 
 @Component({
-  imports: [RouterLink, RouterOutlet],
+  imports: [RouterLink, RouterOutlet, QuickGuide],
   selector: 'app-root',
   host: { '[class.signed-in]': "!!session.user() && section() !== '/login'" },
   styleUrl: './app.css',
@@ -44,6 +54,7 @@ import { Session } from './auth/session';
         </details>
         <div class="account">
           <span>{{ user.email }}</span>
+          <button type="button" #guideHelp (click)="guide()?.reopen()">Quick guide</button>
           <button type="button" [disabled]="signingOut()" (click)="signOut()">
             {{ signingOut() ? 'Signing out…' : 'Sign out' }}
           </button>
@@ -54,12 +65,17 @@ import { Session } from './auth/session';
       }
     </header>
     <main id="main-content" tabindex="-1" #main>
+      @if (session.user() && section() !== '/login') {
+        <app-quick-guide (closed)="focusGuideHelp()" />
+      }
       <router-outlet />
     </main>
   `,
 })
 export class App {
   protected readonly session = inject(Session);
+  protected readonly guide = viewChild(QuickGuide);
+  private readonly guideHelp = viewChild<ElementRef<HTMLButtonElement>>('guideHelp');
   private readonly router = inject(Router);
   private readonly document = inject(DOCUMENT);
   private readonly injector = inject(Injector);
@@ -126,6 +142,10 @@ export class App {
     if (this.wide()) return;
     menu.open = false;
     toggle.focus();
+  }
+
+  protected focusGuideHelp() {
+    this.guideHelp()?.nativeElement.focus();
   }
 
   protected async signOut() {

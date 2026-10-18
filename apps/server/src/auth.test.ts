@@ -76,6 +76,9 @@ describe('authentication', needsDatabase, () => {
     });
     assert.equal(session.statusCode, 200);
     assert.equal(session.json().user.email, account.email);
+    assert.equal(typeof res.json().user.id, 'string');
+    assert.ok(res.json().user.id.length > 0);
+    assert.equal(session.json().user.id, res.json().user.id);
 
     const probe = await app.inject({ method: 'GET', url: '/api/probe', headers: { cookie } });
     assert.equal(probe.statusCode, 200);
