@@ -19,7 +19,7 @@ import { changedWords, wordDiff } from './word-diff';
     } @else {
       <span class="tag">In the document</span> {{ passedLine() }}
     }
-    <details>
+    <details open>
       <summary>What it rests on</summary>
       @switch (s.about) {
         @case ('me') {
@@ -58,6 +58,7 @@ import { changedWords, wordDiff } from './word-diff';
     @if (s.edited) {
       <details>
         <summary>Your changes to DeepSeek’s text</summary>
+        <p>DeepSeek’s original text: {{ s.modelText }}</p>
         <app-diff-text [parts]="fromModel()" />
       </details>
     }
@@ -65,10 +66,9 @@ import { changedWords, wordDiff } from './word-diff';
   styles: `
     :host {
       display: block;
+      min-width: 0;
       font-size: 14px;
       margin: 0.125rem 0 0.5rem;
-      padding-left: 0.5rem;
-      border-left: 1px solid var(--line);
     }
     .left-out {
       font-weight: 600;

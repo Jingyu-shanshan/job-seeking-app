@@ -48,6 +48,9 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
       @let d = data.value();
       <p><a [routerLink]="['/jobs', d.jobId]" queryParamsHandling="preserve">Back to the job</a></p>
       <h1>{{ d.kind === 'resume' ? 'Resume' : 'Cover letter' }} draft</h1>
+      <p class="review-intro">
+        Read every statement against its evidence before using the document.
+      </p>
       <p>
         For {{ d.title }}{{ d.company ? ' at ' + d.company : '' }}. Written by {{ d.model }} on
         {{ d.createdAt | date: 'd MMM y, HH:mm' }} from {{ plural(d.factsSent, 'fact') }}, about
@@ -56,20 +59,36 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
       @if (d.outdated.length) {
         <p class="notice">{{ d.outdated.join(' ') }} You can write it again on the job page.</p>
       }
-      <p>{{ counts() }}</p>
-      <p class="hint">
-        The checks compare numbers, months, names and words such as “expected” or “basic” with the
-        facts a statement cites, and leave out statements that cite nothing, contact details,
-        permits, visas and salary. They do not judge meaning: read what is not your fact word for
-        word against what it rests on. You can edit a statement, which is checked again the same
-        way, and leave out one that passes. The app adds your name and contact details to the
-        finished document.
+      <p class="review-counts">{{ counts() }}</p>
+      <p class="notice">
+        Passing deterministic checks does not prove that the meaning is correct. Inclusion is not a
+        record of your review.
       </p>
-      <p>
-        <a [routerLink]="['/drafts', d.id, 'document']" queryParamsHandling="preserve"
+      <details>
+        <summary>What the checks do</summary>
+        <p class="hint">
+          The checks compare numbers, months, names and words such as “expected” or “basic” with the
+          facts a statement cites, and leave out statements that cite nothing, contact details,
+          permits, visas and salary. They do not judge meaning: read what is not your fact word for
+          word against what it rests on. You can edit a statement, which is checked again the same
+          way, and leave out one that passes. The app adds your name and contact details to the
+          finished document.
+        </p>
+      </details>
+      <p class="actions">
+        <a
+          class="button primary"
+          [routerLink]="['/drafts', d.id, 'document']"
+          queryParamsHandling="preserve"
           >See the finished document and save its PDF</a
         >
       </p>
+      @if (!hasIncluded()) {
+        <p class="notice">
+          No statements are included. Review the evidence, correct failing wording, or put back
+          statements that pass the checks.
+        </p>
+      }
 
       @for (part of parts(); track part.section) {
         <h2>{{ part.heading }}</h2>
@@ -107,6 +126,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
     } @else {
       <p><a routerLink="/jobs">All jobs</a></p>
       <p class="error" role="alert">The draft could not be loaded. {{ loadError() }}</p>
+      <button type="button" (click)="data.reload()">Try again</button>
     }
   `,
   styles: `
@@ -114,7 +134,13 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
       padding-left: 1.25rem;
     }
     li {
-      margin-bottom: 0.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .review-intro {
+      font-size: 18px;
+    }
+    .review-counts {
+      font-weight: 600;
     }
     .notice {
       font-weight: 600;
@@ -128,6 +154,9 @@ export class DraftPage {
   protected readonly loadError = computed(() => errorMessage(this.data.error()));
   protected readonly plural = plural;
   protected readonly usd = usd;
+  protected readonly hasIncluded = computed(() =>
+    this.data.value()?.statements.some((s) => s.inDocument),
+  );
 
   protected readonly counts = computed(() => {
     const statements = this.data.value()?.statements ?? [];

@@ -22,7 +22,7 @@ const statusLabels: Record<FillTaskStatus, string> = {
   approved: 'Approved for submitting',
   submitting: 'Submit pressed',
   submitted: 'Submitted',
-  to_verify: 'Submitted, result unknown',
+  to_verify: 'Result unknown — verification needed',
   closed: 'Closed',
   failed: 'Failed',
 };
@@ -84,7 +84,7 @@ const pollMs = 2000;
       @if (s.task; as task) {
         @let active = isOpen(task.status);
         @if (active) {
-          <p>
+          <p role="status">
             <strong>{{ statusLabels[task.status] }}.</strong>&ngsp;<span>{{ task.message }}</span>
           </p>
         } @else {
@@ -100,7 +100,21 @@ const pollMs = 2000;
         @if (runnerActs(task.status) && quietSince(); as since) {
           <p class="warning">
             The runner has not been in touch since {{ since | date: 'HH:mm:ss' }}. If it stopped,
-            close this fill.
+            check the visible Chrome window and restart the runner. Close this fill only before
+            submission; when Submit is in progress, wait for the result and verify it.
+          </p>
+        }
+        @if (task.status === 'paused') {
+          <p class="warning">
+            Complete the requested CAPTCHA or sign-in in visible Chrome, correct any highlighted
+            fields, then Continue. Review the new readback before approving.
+          </p>
+        }
+        @if (task.status === 'submitting') {
+          <p class="warning">
+            Wait for the result. If Chrome asks for a CAPTCHA, emailed security code or field
+            correction, finish it in that window while the runner watches. Do not approve another
+            submission.
           </p>
         }
         @if (active) {
@@ -127,17 +141,83 @@ const pollMs = 2000;
             }
           </p>
         }
+      }
+      @if (!s.task || !isOpen(s.task.status)) {
+        @if (s.cannotStart) {
+          <p class="notice">{{ s.cannotStart }}</p>
+          <p class="hint">
+            Check <a routerLink="/profile">Your details</a>,
+            <a routerLink="/answers">Form answers</a> and the job’s current PDFs above. Missing or
+            outdated materials must be corrected before starting a new fill.
+          </p>
+        } @else {
+          <button type="button" [disabled]="busy()" (click)="start()">
+            Fill in the form with the runner
+          </button>
+        }
+      }
+      @if (s.task?.check; as check) {
+        <h4>{{ isOpen(s.task!.status) ? 'What the form holds' : 'What the form held' }}</h4>
+        <p class="hint">
+          As the runner read it from the page at {{ check.checkedAt | date: 'HH:mm:ss' }}.
+        </p>
+        <p class="hint">
+          This is the actual page readback, separate from the prepared answers above. Read changed
+          values, empty required fields and questions added by the page. Sensitive answers remain
+          visible for your review.
+        </p>
+        @if (check.blocker) {
+          <p class="warning">
+            {{ check.blocker === 'captcha' ? 'Complete the CAPTCHA' : 'Sign in' }} in visible
+            Chrome, then Continue to get a fresh readback.
+          </p>
+        }
+        <ul class="fields">
+          @for (f of check.fields; track f.key) {
+            <li [class]="f.state" [class.problem]="isProblem(f)">
+              <span class="label"
+                >{{ f.label }}
+                <span class="hint">({{ f.required ? 'required' : 'optional' }})</span></span
+              >
+              <span class="value">{{ f.value.join('; ') || '—' }}</span>
+              <span class="state">{{ stateLabels[f.state] }}</span>
+              @if (
+                (f.state === 'changed' || f.state === 'missing' || f.state === 'empty') &&
+                f.appAnswer.length
+              ) {
+                <span class="note">The app put in: {{ f.appAnswer.join('; ') }}</span>
+              }
+            </li>
+          }
+        </ul>
+        <details>
+          <summary>View form screenshot</summary>
+          <a [href]="check.screenshotUrl" target="_blank" rel="noopener">
+            <img
+              class="screenshot"
+              [src]="check.screenshotUrl"
+              alt="The form as the runner saw it"
+            />
+          </a>
+        </details>
+      }
+      @if (s.task; as task) {
         @if (s.approval; as approval) {
           <section class="approval" aria-labelledby="approval-heading">
             <h4 id="approval-heading">Submit this application</h4>
             <p class="hint">
               Approving lets the runner press Submit once, for this job only, with the form exactly
-              as shown below. Just before, it reads the form again; if anything has changed, it does
+              as shown above. Just before, it reads the form again; if anything has changed, it does
               not press Submit. The approval binds:
+            </p>
+            <p class="hint">
+              Changes to the form, job text, answers or PDFs invalidate approval. Look at the form
+              again and review a fresh readback; if answers or materials changed, close this fill
+              and start it again. Stopping a linked run also withdraws unused approval.
             </p>
             <ul class="binds">
               <li>
-                the value of every field below, as read at
+                the value of every field above, as read at
                 {{ task.check?.checkedAt | date: 'HH:mm:ss' }};
               </li>
               @if (approval.snapshot; as snapshot) {
@@ -159,14 +239,14 @@ const pollMs = 2000;
               {{ approval.submittedLastDay }} of at most {{ approval.dailyCap }} applications went
               in (or may have) in the last 24 hours.
             </p>
-            @if (task.status === 'filled') {
+            @if (task.status === 'filled' && task.check) {
               @if (approval.problem) {
                 <p class="warning">{{ approval.problem }}</p>
               } @else {
                 <button
                   type="button"
                   class="primary"
-                  [disabled]="busy()"
+                  [disabled]="busy() || state.isLoading()"
                   (click)="approve(task.id, task.check!.id)"
                 >
                   Approve and submit
@@ -180,39 +260,6 @@ const pollMs = 2000;
             }
           </section>
         }
-      }
-      @if (!s.task || !isOpen(s.task.status)) {
-        @if (s.cannotStart) {
-          <p>{{ s.cannotStart }}</p>
-        } @else {
-          <button type="button" [disabled]="busy()" (click)="start()">
-            Fill in the form with the runner
-          </button>
-        }
-      }
-      @if (s.task?.check; as check) {
-        <h4>{{ isOpen(s.task!.status) ? 'What the form holds' : 'What the form held' }}</h4>
-        <p class="hint">
-          As the runner read it from the page at {{ check.checkedAt | date: 'HH:mm:ss' }}.
-        </p>
-        <ul class="fields">
-          @for (f of check.fields; track f.key) {
-            <li [class]="f.state" [class.problem]="isProblem(f)">
-              <span class="label"
-                >{{ f.label }}
-                <span class="hint">({{ f.required ? 'required' : 'optional' }})</span></span
-              >
-              <span class="value">{{ f.value.join('; ') || '—' }}</span>
-              <span class="state">{{ stateLabels[f.state] }}</span>
-              @if ((f.state === 'changed' || f.state === 'missing') && f.appAnswer.length) {
-                <span class="note">The app put in: {{ f.appAnswer.join('; ') }}</span>
-              }
-            </li>
-          }
-        </ul>
-        <a [href]="check.screenshotUrl" target="_blank" rel="noopener">
-          <img class="screenshot" [src]="check.screenshotUrl" alt="The form as the runner saw it" />
-        </a>
       }
       @if (s.application; as application) {
         <section class="application" aria-labelledby="application-heading">
@@ -238,7 +285,8 @@ const pollMs = 2000;
               <p>
                 The runner pressed Submit on {{ application.createdAt | date: 'd MMM y, HH:mm' }},
                 but did not see Greenhouse’s confirmation page. Check your email or the company’s
-                site. The app never presses Submit again by itself.
+                site. This still counts toward the submission limit. The app never presses Submit
+                again by itself. Verify before trying again.
               </p>
               @if (s.task?.status !== 'submitting') {
                 <p class="actions">
@@ -276,11 +324,22 @@ const pollMs = 2000;
       }
       @if (failure()) {
         <p class="error" role="alert">{{ failure() }}</p>
+        <p class="hint">
+          Check the refreshed state before acting again. A failed approval request does not prove
+          submission failed; do not start another submission while the result is unknown.
+        </p>
+        <button type="button" [disabled]="busy() || state.isLoading()" (click)="state.reload()">
+          Refresh fill state
+        </button>
       }
     } @else if (state.isLoading()) {
       <p role="status">Loading…</p>
     } @else {
-      <p class="error" role="alert">The fill could not be loaded. {{ loadError() }}</p>
+      <p class="error" role="alert">
+        The fill could not be loaded. {{ loadError() }} Check the visible Chrome window; do not
+        assume a submission failed.
+      </p>
+      <button type="button" (click)="state.reload()">Refresh fill state</button>
     }
   `,
   styles: `
@@ -290,8 +349,6 @@ const pollMs = 2000;
     }
     .warning {
       font-size: 14px;
-      border-left: 1px solid var(--line);
-      padding-left: 0.5rem;
     }
     .actions button {
       margin-right: 0.5rem;
@@ -299,7 +356,9 @@ const pollMs = 2000;
     .approval,
     .application {
       margin-top: 1rem;
-      padding: 0.5rem 0.75rem;
+      padding: 24px;
+      border-radius: 12px;
+      background: var(--surface);
       border: 1px solid var(--line);
     }
     .binds {
@@ -313,7 +372,8 @@ const pollMs = 2000;
       padding-left: 1.25rem;
     }
     .fields > li {
-      margin-bottom: 0.5rem;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--line);
     }
     .fields span {
       display: block;

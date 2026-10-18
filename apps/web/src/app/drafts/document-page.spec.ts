@@ -146,6 +146,10 @@ describe('DocumentPage', () => {
       .mockImplementation(() => {});
     [...page().querySelectorAll('button')].find((b) => text(b) === 'Print')!.click();
     expect(print).toHaveBeenCalled();
+    await fixture.whenStable();
+    expect(text(page().querySelector('[role=status]'))).toContain(
+      'The app cannot tell whether you saved a file.',
+    );
   });
 
   it('says what is missing before a PDF can be kept', async () => {
@@ -154,6 +158,7 @@ describe('DocumentPage', () => {
     const details = [...page().querySelectorAll('a')].find((a) => text(a) === 'Your details')!;
     expect(details.getAttribute('href')).toBe('/profile');
     expect(fileInput().disabled).toBe(true);
+    expect(page().querySelector<HTMLButtonElement>('button')!.disabled).toBe(true);
   });
 
   it('uploads a PDF and lists it once the app kept it', async () => {
@@ -161,6 +166,8 @@ describe('DocumentPage', () => {
     const file = new File(['%PDF-1.7'], 'resume.pdf', { type: 'application/pdf' });
     await choose(file);
     const request = http.expectOne(`/api/drafts/${draftId}/pdfs`);
+    expect(text(page().querySelector('[role=status]'))).toBe('Reading and comparing the PDF text…');
+    expect(fileInput().disabled).toBe(true);
     expect(request.request.body).toBe(file);
     expect(request.request.headers.get('content-type')).toBe('application/pdf');
     request.flush({ pdf, problems: [] } satisfies PdfCheck);
@@ -171,7 +178,7 @@ describe('DocumentPage', () => {
     await load(resume({ pdfs: [pdf, { ...pdf, id: `${pdf.id.slice(0, -1)}8`, current: false }] }));
     const kept = [...page().querySelectorAll('.screen-only li')].slice(-2).map((li) => text(li));
     expect(kept[0]).toContain(`${pdf.fileName}, kept 6 Oct 2026`);
-    expect(kept[0]).toContain('1 page, 40 KB. Its text is the document’s text.');
+    expect(kept[0]).toContain('1 page, 40 KB. Current PDF Its text is the document’s text.');
     expect(kept[1]).toContain('The document has changed since.');
     const download = [...page().querySelectorAll('a')].find((a) => text(a) === pdf.fileName)!;
     expect(download.getAttribute('href')).toBe(`/api/document-pdfs/${pdf.id}`);
@@ -202,6 +209,28 @@ describe('DocumentPage', () => {
       .flush({ message: 'This file is not a PDF.' }, { status: 400, statusText: 'Bad Request' });
     await settle();
     expect(text(page().querySelector('[role=alert] li'))).toBe('This file is not a PDF.');
+  });
+
+  it('rejects an empty PDF locally and can retry the same file after a save failure', async () => {
+    await load(resume({ pdfs: [{ ...pdf, current: false }] }));
+    expect(text()).toContain('Outdated PDF');
+    await choose(new File([], 'empty.pdf'));
+    http.expectNone(`/api/drafts/${draftId}/pdfs`);
+    expect(text(page().querySelector('[role=alert]'))).toContain('The PDF is empty.');
+    const file = new File(['%PDF-1.7'], 'resume.pdf');
+    await choose(file);
+    http
+      .expectOne(`/api/drafts/${draftId}/pdfs`)
+      .flush({ message: 'Could not save PDF.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    expect(fileInput().disabled).toBe(false);
+    expect(fileInput().value).toBe('');
+    expect(text(page().querySelector('[role=status]'))).toBe('');
+    await choose(file);
+    http.expectOne(`/api/drafts/${draftId}/pdfs`).flush({ pdf, problems: [] });
+    await settle();
+    await load(resume({ pdfs: [pdf] }));
+    expect(text()).toContain('Current PDF');
   });
 
   it('says when the document cannot be loaded', async () => {

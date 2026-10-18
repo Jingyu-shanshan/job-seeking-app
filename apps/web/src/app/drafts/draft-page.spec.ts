@@ -241,6 +241,57 @@ describe('DraftPage', () => {
     expect(text(item(invoice.body).querySelector('[role=alert]'))).toBe('There is no such draft.');
   });
 
+  it('keeps unsaved wording and exclusion after a failed save, then retries unchanged', async () => {
+    const original = statement({ text: invoice.body, included: false });
+    const draft = resume({ statements: [original] });
+    await load(draft);
+    const row = item(invoice.body);
+    buttonIn(row, 'Edit')!.click();
+    await fixture.whenStable();
+    const area = row.querySelector('textarea')!;
+    area.value = 'Built the invoice API in Go.';
+    area.dispatchEvent(new Event('input'));
+    buttonIn(row, 'Save')!.click();
+    const url = `/api/drafts/${draftId}/statements/${original.id}`;
+    const first = http.expectOne(url);
+    const body = { text: area.value, included: false };
+    expect(first.request.body).toEqual(body);
+    first.flush(
+      { message: 'Save unavailable. Try again.' },
+      { status: 503, statusText: 'Unavailable' },
+    );
+    await fixture.whenStable();
+    expect(area.value).toBe(body.text);
+    expect(check(invoice.body)).toContain('Left out by you.');
+    buttonIn(row, 'Save')!.click();
+    const retry = http.expectOne(url);
+    expect(retry.request.body).toEqual(body);
+    retry.flush(
+      resume({
+        statements: [statement({ ...original, ...body, edited: true, modelText: original.text })],
+      }),
+    );
+    await fixture.whenStable();
+    expect(text()).toContain('No statements are included.');
+    expect(text()).toContain('DeepSeek’s original text: ' + original.text);
+    expect(text()).toContain(
+      'Passing deterministic checks does not prove that the meaning is correct.',
+    );
+  });
+
+  it('does not offer inclusion for failing statements, including user-excluded ones', async () => {
+    await load(
+      resume({
+        statements: [
+          statement({ included: false, problems: [{ code: 'uncited', message: 'No evidence.' }] }),
+        ],
+      }),
+    );
+    expect(buttonIn(page(), 'Put back')).toBeUndefined();
+    expect(buttonIn(page(), 'Leave out')).toBeUndefined();
+    expect(text()).toContain('No statements are included.');
+  });
+
   it('shows a cover letter by paragraph, and statements about the job with their quotes', async () => {
     await load(
       resume({
