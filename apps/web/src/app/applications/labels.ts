@@ -7,8 +7,16 @@ export const statusLabels: Record<ApplicationStatus, string> = {
 };
 
 export const methodLabels: Record<ApplicationMethod, string> = {
-  runner: 'submitted by the runner',
+  runner: 'via the runner',
   manual: 'sent outside the app',
+};
+
+export const statusNotes: Record<ApplicationStatus, string> = {
+  submitted: 'This application is recorded as applied.',
+  to_verify:
+    'Submit was pressed, but the result is unknown. Verify on the job page before trying again.',
+  not_submitted:
+    'You verified that this application did not go through. It does not count as applied.',
 };
 
 export const kindLabels: Record<DraftKind, string> = {

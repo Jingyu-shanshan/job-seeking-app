@@ -4,7 +4,7 @@ import { Component, computed } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { ApplicationsResponse } from '@jsa/shared';
 import { errorMessage } from '../sources/sources-api';
-import { methodLabels, statusLabels } from './labels';
+import { methodLabels, statusLabels, statusNotes } from './labels';
 
 /** Every application, newest first (T09). Only “Applied” counts as having applied. */
 @Component({
@@ -12,34 +12,62 @@ import { methodLabels, statusLabels } from './labels';
   imports: [DatePipe, RouterLink],
   template: `
     <h1>Applications</h1>
-    <p class="hint">
-      An application counts as applied only when it went in: Greenhouse confirmed the runner’s
-      submission, you said a submission whose result was unknown went through, or you recorded one
-      you sent outside the app. Each keeps the job text, the match, the files and the facts it was
-      built from, as they were then.
+    <p>
+      What went out, with the job text, files and fact versions kept as they were then. Writing a
+      draft does not count as applying.
     </p>
+    <details>
+      <summary>When an application counts as applied</summary>
+      <p>
+        Greenhouse confirmed the runner’s submission, you verified that an unknown result went
+        through, or you recorded an application you sent outside the app.
+      </p>
+    </details>
     @if (data.hasValue()) {
       @let applications = data.value().applications;
       @if (applications.length) {
         <ul>
           @for (a of applications; track a.id) {
             <li>
-              <a class="title" [routerLink]="['/applications', a.id]">{{ a.title }}</a>
-              <span class="meta">
-                {{ a.company ?? 'Company not given' }} · {{ statusLabels[a.status] }},
-                {{ methodLabels[a.method] }},
-                {{ a.submittedAt ?? a.createdAt | date: 'd MMM y, HH:mm' }}
-              </span>
+              <span
+                class="tag"
+                [class.applied]="a.status === 'submitted'"
+                [class.todo]="a.status === 'to_verify'"
+                >{{ statusLabels[a.status] }}</span
+              >
+              <h2>
+                <a [routerLink]="['/applications', a.id]">{{ a.title }}</a>
+              </h2>
+              <p>{{ a.company ?? 'Company not given' }} · {{ methodLabels[a.method] }}</p>
+              <p class="meta">
+                @if (a.status === 'submitted') {
+                  Submitted {{ a.submittedAt | date: 'd MMM y, HH:mm' }}
+                } @else {
+                  Submit attempted {{ a.createdAt | date: 'd MMM y, HH:mm' }}
+                }
+              </p>
+              <p>{{ statusNotes[a.status] }}</p>
+              @if (a.status === 'to_verify') {
+                <a class="button" [routerLink]="['/jobs', a.jobId]" fragment="application-heading"
+                  >Verify on the job page</a
+                >
+              }
             </li>
           }
         </ul>
       } @else {
-        <p>No applications yet.</p>
+        <h2>No applications recorded</h2>
+        <p>
+          Choose a job and review its materials and form, or record an application you already sent
+          outside the app.
+        </p>
+        <a class="button primary" routerLink="/jobs">Choose a job</a>
       }
     } @else if (data.isLoading()) {
-      <p role="status">Loading…</p>
+      <p role="status">Loading applications…</p>
     } @else {
       <p class="error" role="alert">The applications could not be loaded. {{ loadError() }}</p>
+      <button type="button" (click)="data.reload()">Try again</button>
     }
   `,
   styles: `
@@ -48,15 +76,14 @@ import { methodLabels, statusLabels } from './labels';
       list-style: none;
     }
     li {
-      margin-bottom: 0.75rem;
+      padding: 24px 0;
+      border-bottom: 1px solid var(--line);
     }
-    .title {
-      font-weight: 600;
+    h2 {
+      margin: 12px 0 8px;
     }
-    .meta,
-    .hint {
-      display: block;
-      font-size: 14px;
+    li p {
+      margin-bottom: 8px;
     }
   `,
 })
@@ -65,4 +92,5 @@ export class Applications {
   protected readonly loadError = computed(() => errorMessage(this.data.error()));
   protected readonly statusLabels = statusLabels;
   protected readonly methodLabels = methodLabels;
+  protected readonly statusNotes = statusNotes;
 }
