@@ -23,11 +23,13 @@ describe('Session', () => {
   it('asks the server once, then remembers the answer', async () => {
     const first = session.load();
     await settle();
-    http.expectOne('/api/auth/get-session').flush({ user: { email: 'owner@example.com' } });
-    expect(await first).toEqual({ email: 'owner@example.com' });
+    http
+      .expectOne('/api/auth/get-session')
+      .flush({ user: { id: 'account-1', email: 'owner@example.com' } });
+    expect(await first).toEqual({ id: 'account-1', email: 'owner@example.com' });
 
-    expect(await session.load()).toEqual({ email: 'owner@example.com' });
-    expect(session.user()).toEqual({ email: 'owner@example.com' });
+    expect(await session.load()).toEqual({ id: 'account-1', email: 'owner@example.com' });
+    expect(session.user()).toEqual({ id: 'account-1', email: 'owner@example.com' });
   });
 
   it('is signed out when the server has no session', async () => {
@@ -57,9 +59,9 @@ describe('Session', () => {
     const request = http.expectOne('/api/auth/sign-in/email');
     expect(request.request.method).toBe('POST');
     expect(request.request.body).toEqual({ email: 'owner@example.com', password: 'a password' });
-    request.flush({ user: { email: 'owner@example.com' } });
+    request.flush({ user: { id: 'account-1', email: 'owner@example.com' } });
     await signIn;
-    expect(session.user()).toEqual({ email: 'owner@example.com' });
+    expect(session.user()).toEqual({ id: 'account-1', email: 'owner@example.com' });
 
     const signOut = session.signOut();
     await settle();

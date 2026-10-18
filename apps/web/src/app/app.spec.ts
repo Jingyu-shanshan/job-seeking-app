@@ -14,6 +14,7 @@ describe('App', () => {
   let signOut: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    localStorage.clear();
     user = signal<User | null>(null);
     signOut = vi.fn(async () => user.set(null));
     TestBed.configureTestingModule({
@@ -29,6 +30,8 @@ describe('App', () => {
       ],
     });
   });
+
+  afterEach(() => localStorage.clear());
 
   const heading = (harness: RouterTestingHarness) =>
     (harness.routeNativeElement as HTMLElement).querySelector('h1')?.textContent;
@@ -56,22 +59,24 @@ describe('App', () => {
   });
 
   it('shows the start page to the signed-in user', async () => {
-    user.set({ email: 'owner@example.com' });
+    user.set({ id: 'account-1', email: 'owner@example.com' });
     const harness = await RouterTestingHarness.create('/');
-    TestBed.inject(HttpTestingController).expectOne('/health').flush({ status: 'ok' });
+    TestBed.inject(HttpTestingController).expectOne('/api/facts').flush({ facts: [] });
+    TestBed.inject(HttpTestingController).expectOne('/api/profile').flush({ name: '' });
+    TestBed.inject(HttpTestingController).expectOne('/api/jobs').flush({ jobs: [] });
 
-    expect(heading(harness)).toBe('Job Search Workbench');
+    expect(heading(harness)).toBe('Your next step');
   });
 
   it('shows the sources page to the signed-in user', async () => {
-    user.set({ email: 'owner@example.com' });
+    user.set({ id: 'account-1', email: 'owner@example.com' });
     const harness = await RouterTestingHarness.create('/sources');
 
     expect(heading(harness)).toBe('Sources');
   });
 
   it('shows the jobs page to the signed-in user', async () => {
-    user.set({ email: 'owner@example.com' });
+    user.set({ id: 'account-1', email: 'owner@example.com' });
     const harness = await RouterTestingHarness.create('/jobs');
     TestBed.inject(HttpTestingController).expectOne('/api/jobs');
 
@@ -87,7 +92,7 @@ describe('App', () => {
       );
     expect(links()).toEqual([]);
 
-    user.set({ email: 'owner@example.com' });
+    user.set({ id: 'account-1', email: 'owner@example.com' });
     fixture.detectChanges();
     expect(links()).toEqual([
       '/',
@@ -110,7 +115,7 @@ describe('App', () => {
   });
 
   it('keeps the current section and title on child routes and closes Menu after navigation', async () => {
-    user.set({ email: 'owner@example.com' });
+    user.set({ id: 'account-1', email: 'owner@example.com' });
     const fixture = TestBed.createComponent(App);
     const root = fixture.nativeElement as HTMLElement;
     fixture.detectChanges();
@@ -143,7 +148,7 @@ describe('App', () => {
   });
 
   it('hides business navigation on the login route even with a cached user', async () => {
-    user.set({ email: 'owner@example.com' });
+    user.set({ id: 'account-1', email: 'owner@example.com' });
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     await TestBed.inject(Router).navigateByUrl('/login?next=%2Ffacts');
@@ -152,10 +157,48 @@ describe('App', () => {
     expect(root.querySelector('nav')).toBeNull();
     expect(root.querySelector('.account')).toBeNull();
     expect(root.querySelector('h1')?.textContent).toBe('Sign in');
+    expect(root.querySelector('app-quick-guide')).toBeNull();
+  });
+
+  it('keeps a deep link while guiding, closes and reopens from help, and clears guide memory on sign-out', async () => {
+    user.set({ id: 'account-1', email: 'owner@example.com' });
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const router = TestBed.inject(Router);
+    await router.navigateByUrl('/jobs/paste?run=sample#description');
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    const guide = () => root.querySelector('app-quick-guide')!;
+    const button = (label: string) =>
+      Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === label)!;
+    const target = '/jobs/paste?run=sample#description';
+    expect(guide().textContent).toContain('Step 1 of 3');
+    button('Continue').click();
+    await fixture.whenStable();
+    expect(router.url).toBe(target);
+    button('Skip guide').click();
+    await fixture.whenStable();
+    expect(guide().querySelector('section')).toBeNull();
+    expect(document.activeElement).toBe(button('Quick guide'));
+    button('Quick guide').click();
+    await fixture.whenStable();
+    expect(guide().textContent).toContain('Step 1 of 3');
+    expect(document.activeElement?.id).toBe('guide-title');
+    expect(router.url).toBe(target);
+    button('Sign out').click();
+    await fixture.whenStable();
+    expect(root.querySelector('app-quick-guide')).toBeNull();
+    expect(router.url).toBe('/login');
+    user.set({ id: 'account-2', email: 'owner@example.com' });
+    await router.navigateByUrl(target);
+    await fixture.whenStable();
+    expect(guide().textContent).toContain('Step 1 of 3');
+    expect(localStorage.getItem('jsa:quick-guide:v1:account-2')).toBeNull();
+    TestBed.inject(HttpTestingController).expectNone((r) => r.method !== 'GET');
   });
 
   it('closes the narrow Menu with Escape and returns focus to its summary', async () => {
-    user.set({ email: 'owner@example.com' });
+    user.set({ id: 'account-1', email: 'owner@example.com' });
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const root = fixture.nativeElement as HTMLElement;
@@ -175,7 +218,7 @@ describe('App', () => {
     const breakpoint = Object.assign(new EventTarget(), { matches: true });
     vi.stubGlobal('matchMedia', () => breakpoint);
     try {
-      user.set({ email: 'owner@example.com' });
+      user.set({ id: 'account-1', email: 'owner@example.com' });
       const fixture = TestBed.createComponent(App);
       fixture.detectChanges();
       const root = fixture.nativeElement as HTMLElement;
@@ -197,31 +240,33 @@ describe('App', () => {
   });
 
   it('keeps the session visible when sign-out fails and permits retry', async () => {
-    user.set({ email: 'owner@example.com' });
+    user.set({ id: 'account-1', email: 'owner@example.com' });
     signOut.mockRejectedValueOnce(new Error('offline'));
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const root = fixture.nativeElement as HTMLElement;
-    root.querySelector<HTMLButtonElement>('.account button')!.click();
+    root.querySelector<HTMLButtonElement>('.account button:last-of-type')!.click();
     await fixture.whenStable();
 
     expect(root.querySelector('[role="alert"]')?.textContent).toContain('Could not sign out');
     expect(root.textContent).toContain('owner@example.com');
-    expect(root.querySelector<HTMLButtonElement>('.account button')?.disabled).toBe(false);
-    root.querySelector<HTMLButtonElement>('.account button')!.click();
+    expect(root.querySelector<HTMLButtonElement>('.account button:last-of-type')?.disabled).toBe(
+      false,
+    );
+    root.querySelector<HTMLButtonElement>('.account button:last-of-type')!.click();
     await fixture.whenStable();
     expect(TestBed.inject(Router).url).toBe('/login');
     expect(root.querySelector('nav')).toBeNull();
   });
 
   it('prevents repeated sign-out while the request is pending', async () => {
-    user.set({ email: 'owner@example.com' });
+    user.set({ id: 'account-1', email: 'owner@example.com' });
     let finish!: () => void;
     signOut.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const root = fixture.nativeElement as HTMLElement;
-    const button = root.querySelector<HTMLButtonElement>('.account button')!;
+    const button = root.querySelector<HTMLButtonElement>('.account button:last-of-type')!;
     button.click();
     button.click();
     fixture.detectChanges();
@@ -233,13 +278,15 @@ describe('App', () => {
   });
 
   it('shows who is signed in and signs out', async () => {
-    user.set({ email: 'owner@example.com' });
+    user.set({ id: 'account-1', email: 'owner@example.com' });
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const header = (fixture.nativeElement as HTMLElement).querySelector('header')!;
     expect(header.textContent).toContain('owner@example.com');
 
-    header.querySelector('button')!.click();
+    Array.from(header.querySelectorAll('button'))
+      .find((button) => button.textContent?.trim() === 'Sign out')!
+      .click();
     await fixture.whenStable();
 
     expect(signOut).toHaveBeenCalled();
