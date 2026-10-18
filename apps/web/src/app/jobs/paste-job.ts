@@ -16,40 +16,87 @@ const maxTextLength = 100_000;
       For a job from any site, including sites the app does not read, such as LinkedIn. Copy the
       job’s link and its text from the page. The text is saved as it is and never changed.
     </p>
-    <form [formRoot]="pasteForm">
+    <p class="hint">
+      Saving does not call DeepSeek. You can read, summarise and match the saved job afterwards.
+    </p>
+    <form [formRoot]="pasteForm" [attr.aria-busy]="pasteForm().submitting()">
       <label>
         Job title
-        <input [formField]="pasteForm.title" autocomplete="off" />
+        <input
+          [formField]="pasteForm.title"
+          autocomplete="off"
+          aria-describedby="paste-title-error"
+        />
       </label>
       @if (showErrors(pasteForm.title)) {
-        <p class="error" role="alert">{{ pasteForm.title().errors()[0].message }}</p>
+        <p class="error" role="alert" id="paste-title-error">
+          {{ pasteForm.title().errors()[0].message }}
+        </p>
       }
       <label>
         Company (optional)
-        <input [formField]="pasteForm.company" autocomplete="off" />
+        <input
+          [formField]="pasteForm.company"
+          autocomplete="off"
+          aria-describedby="paste-company-error"
+        />
       </label>
+      @if (showErrors(pasteForm.company)) {
+        <p class="error" role="alert" id="paste-company-error">
+          {{ pasteForm.company().errors()[0].message }}
+        </p>
+      }
       <label>
         Location (optional)
-        <input [formField]="pasteForm.location" autocomplete="off" />
+        <input
+          [formField]="pasteForm.location"
+          autocomplete="off"
+          aria-describedby="paste-location-error"
+        />
       </label>
+      @if (showErrors(pasteForm.location)) {
+        <p class="error" role="alert" id="paste-location-error">
+          {{ pasteForm.location().errors()[0].message }}
+        </p>
+      }
       <label>
         Link to the job page
-        <input type="url" [formField]="pasteForm.url" autocomplete="off" />
+        <input
+          type="url"
+          [formField]="pasteForm.url"
+          autocomplete="off"
+          aria-describedby="paste-url-help paste-url-error"
+        />
       </label>
+      <p class="hint" id="paste-url-help">Use the HTTPS address of the original job page.</p>
       @if (showErrors(pasteForm.url)) {
-        <p class="error" role="alert">{{ pasteForm.url().errors()[0].message }}</p>
+        <p class="error" role="alert" id="paste-url-error">
+          {{ pasteForm.url().errors()[0].message }}
+        </p>
       }
       <label>
         Job text
-        <textarea rows="16" [formField]="pasteForm.text"></textarea>
+        <textarea
+          rows="16"
+          [formField]="pasteForm.text"
+          aria-describedby="paste-text-help paste-text-error"
+        ></textarea>
       </label>
+      <p class="hint" id="paste-text-help">
+        The full original description, up to 100,000 characters.
+      </p>
       @if (showErrors(pasteForm.text)) {
-        <p class="error" role="alert">{{ pasteForm.text().errors()[0].message }}</p>
+        <p class="error" role="alert" id="paste-text-error">
+          {{ pasteForm.text().errors()[0].message }}
+        </p>
       }
-      @for (error of pasteForm().errors(); track $index) {
-        <p class="error" role="alert">{{ error.message }}</p>
+      @if (failure()) {
+        <p class="error" role="alert">{{ failure() }}</p>
       }
-      <button type="submit" [disabled]="pasteForm().submitting()">Save the job</button>
+      <button type="submit" [disabled]="pasteForm().submitting()">
+        {{ pasteForm().submitting() ? 'Saving…' : 'Save the job' }}
+      </button>
+      <p role="status">{{ pasteForm().submitting() ? 'Saving the job…' : '' }}</p>
     </form>
   `,
   styles: `
@@ -73,6 +120,7 @@ const maxTextLength = 100_000;
 })
 export class PasteJob {
   private readonly api = inject(JobsApi);
+  protected readonly failure = signal('');
   private readonly router = inject(Router);
 
   private readonly model = signal({ title: '', company: '', location: '', url: '', text: '' });
@@ -94,6 +142,7 @@ export class PasteJob {
     {
       submission: {
         action: async (f) => {
+          this.failure.set('');
           const { title, company, location, url, text } = f().value();
           try {
             const job = await this.api.paste({
@@ -105,7 +154,8 @@ export class PasteJob {
             });
             await this.router.navigate(['/jobs', job.id]);
           } catch (error) {
-            return { kind: 'server', message: errorMessage(error) };
+            this.failure.set(errorMessage(error));
+            return undefined;
           }
           return undefined;
         },

@@ -20,90 +20,118 @@ const areaLabels: Record<SearchScope['area'], string> = {
   imports: [FormField, FormRoot, JobList, RouterLink, RunSummary],
   template: `
     <h1>Jobs</h1>
-    <p>
-      <a routerLink="/runs">Runs</a> saves presets and prepares jobs in the background with a
-      budget.
-    </p>
-    <p>
-      Open jobs on the job boards you use, and jobs you pasted, saved or imported from alert emails,
-      sorted by when they were posted and grouped by your hard
-      <a routerLink="/criteria">criteria</a>. Choose the boards on the
-      <a routerLink="/sources">Sources</a> page. Open a job to read, summarise and match it with
-      your facts.
-    </p>
-    <p>
-      <a routerLink="/jobs/paste">Paste a job</a> from any other site,
-      <a routerLink="/jobs/alerts">import job-alert emails</a>, or browse the site in the desktop
-      app and save the job you are looking at.
-    </p>
-
-    <form [formRoot]="runForm">
-      <label>
-        Eligible jobs you want (optional)
-        <input type="number" step="1" [formField]="runForm.target" />
-      </label>
-      <button type="submit" [disabled]="runForm().submitting()">Find jobs</button>
-      <p role="status">
-        @if (runForm().submitting()) {
-          Reading your job boards. This can take a minute.
-        }
+    <p>Jobs from your sources, grouped by your hard <a routerLink="/criteria">criteria</a>.</p>
+    <div class="actions">
+      <a class="button primary" routerLink="/jobs/paste">Paste a job</a>
+      <a class="button" routerLink="/jobs/alerts">Import job-alert emails</a>
+    </div>
+    <details>
+      <summary>Save a job in the desktop app</summary>
+      <p>
+        Browse the site in the desktop app, open the job description and press “Save this job”.
+        Saving a results page keeps only its visible listings; each job still needs its original
+        text.
       </p>
-      @if (runForm.target().errors().length) {
-        <p class="error" role="alert">{{ runForm.target().errors()[0].message }}</p>
-      }
-      @for (error of runForm().errors(); track $index) {
-        <p class="error" role="alert">{{ error.message }}</p>
-      }
-    </form>
+    </details>
+
+    <section aria-labelledby="discovery-heading">
+      <h2 id="discovery-heading">Read your boards</h2>
+      <p class="hint">
+        Only enabled Greenhouse and Ashby boards are read. Choose them on
+        <a routerLink="/sources">Sources</a>. Use <a routerLink="/runs">Runs</a> to save presets and
+        prepare jobs in the background with a budget.
+      </p>
+
+      <form [formRoot]="runForm">
+        <label>
+          Eligible jobs you want (optional)
+          <input type="number" step="1" [formField]="runForm.target" />
+        </label>
+        <button type="submit" [disabled]="runForm().submitting()">
+          {{ runForm().submitting() ? 'Reading boards…' : 'Find jobs' }}
+        </button>
+        <p role="status">
+          @if (runForm().submitting()) {
+            Reading your job boards. This can take a minute.
+          }
+        </p>
+        @if (runForm.target().errors().length) {
+          <p class="error" role="alert">{{ runForm.target().errors()[0].message }}</p>
+        }
+        @if (failure()) {
+          <p class="error" role="alert">{{ failure() }}</p>
+        }
+      </form>
+    </section>
 
     @if (lastRun(); as run) {
       <section aria-labelledby="run-heading">
         <h2 id="run-heading">Last run</h2>
-        <app-run-summary [run]="run" [counts]="counts()" [target]="runTarget()" />
+        <app-run-summary
+          [run]="run"
+          [counts]="data.hasValue() && !data.isLoading() ? counts() : null"
+          [target]="runTarget()"
+        />
       </section>
     }
 
     @if (data.hasValue()) {
-      <p>Location: {{ scopeLabel() }}.</p>
-      <section aria-labelledby="eligible-heading">
-        <h2 id="eligible-heading">Eligible ({{ groups().eligible.length }})</h2>
-        @if (groups().eligible.length) {
-          <app-job-list [jobs]="groups().eligible" />
-        } @else {
-          <p>No eligible jobs yet.</p>
-        }
-      </section>
-      @if (groups().toConfirm.length) {
-        <section aria-labelledby="to-confirm-heading">
-          <h2 id="to-confirm-heading">To confirm ({{ groups().toConfirm.length }})</h2>
-          <p>
-            The job does not say enough for a hard criterion, so it is not ruled out. Summarise it,
-            match it with your facts, or check the job page.
-          </p>
-          <app-job-list [jobs]="groups().toConfirm" />
+      <p class="meta">Location: {{ scopeLabel() }}.</p>
+      @if (data.value().jobs.length === 0) {
+        <h2>No jobs yet</h2>
+        <p>
+          Paste an original job description, import a job-alert email, save a page in the desktop
+          app, or enable a supported board on <a routerLink="/sources">Sources</a> and choose Find
+          jobs.
+        </p>
+      } @else {
+        <section aria-labelledby="eligible-heading">
+          <h2 id="eligible-heading">Eligible ({{ groups().eligible.length }})</h2>
+          @if (groups().eligible.length) {
+            <app-job-list [jobs]="groups().eligible" />
+          } @else {
+            <p class="warning">
+              No jobs currently meet all your hard criteria. Read To confirm or expand Ruled out to
+              see why, or <a routerLink="/criteria">review your criteria</a>. Unknown information is
+              not a pass.
+            </p>
+          }
         </section>
-      }
-      @if (groups().ineligible.length) {
-        <details>
-          <summary>
-            <h2>Ruled out ({{ groups().ineligible.length }})</h2>
-          </summary>
-          <p>Each says which hard criterion ruled it out.</p>
-          <app-job-list [jobs]="groups().ineligible" />
-        </details>
+        @if (groups().toConfirm.length) {
+          <section aria-labelledby="to-confirm-heading">
+            <h2 id="to-confirm-heading">To confirm ({{ groups().toConfirm.length }})</h2>
+            <p>
+              The job does not say enough for a hard criterion, so it is not ruled out. Summarise
+              it, match it with your facts, or check the job page.
+            </p>
+            <app-job-list [jobs]="groups().toConfirm" />
+          </section>
+        }
+        @if (groups().ineligible.length) {
+          <details>
+            <summary>
+              <h2>Ruled out ({{ groups().ineligible.length }})</h2>
+            </summary>
+            <p>Each says which hard criterion ruled it out.</p>
+            <app-job-list [jobs]="groups().ineligible" />
+          </details>
+        }
       }
     } @else if (data.isLoading()) {
       <p role="status">Loading jobs…</p>
     } @else {
       <p class="error" role="alert">The jobs could not be loaded. {{ loadError() }}</p>
+      <button type="button" (click)="data.reload()">Try again</button>
     }
   `,
   styles: `
     form label {
-      margin-right: 0.5rem;
+      display: grid;
+      gap: 4px;
+      max-width: 24rem;
     }
     form input {
-      width: 5rem;
+      width: 8rem;
     }
     summary h2 {
       display: inline;
@@ -112,6 +140,7 @@ const areaLabels: Record<SearchScope['area'], string> = {
 })
 export class Jobs {
   private readonly http = inject(HttpClient);
+  protected readonly failure = signal('');
 
   protected readonly data = httpResource<JobsResponse>(() => '/api/jobs');
   protected readonly loadError = computed(() => errorMessage(this.data.error()));
@@ -162,12 +191,14 @@ export class Jobs {
     {
       submission: {
         action: async (f) => {
+          this.failure.set('');
           this.lastRun.set(undefined);
           let run: DiscoveryRun;
           try {
             run = await firstValueFrom(this.http.post<DiscoveryRun>('/api/discovery-runs', {}));
           } catch (error) {
-            return { kind: 'server', message: errorMessage(error) };
+            this.failure.set(errorMessage(error));
+            return undefined;
           }
           this.runTarget.set(f.target().value());
           this.lastRun.set(run);

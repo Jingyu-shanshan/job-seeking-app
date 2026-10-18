@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import type { CitedFact, Draft, DraftStatement } from '@jsa/shared';
 import { DraftPage } from './draft-page';
 
@@ -114,6 +114,7 @@ describe('DraftPage', () => {
     [...el.querySelectorAll('button')].find((b) => text(b) === label);
 
   it('shows every statement where it goes, with what its checks found', async () => {
+    await TestBed.inject(Router).navigateByUrl('/?run=sample-run');
     await load(resume());
     expect(text(page().querySelector('h1'))).toBe('Resume draft');
     expect(text()).toContain(
@@ -125,7 +126,10 @@ describe('DraftPage', () => {
     );
     expect(headings()).toEqual(['Headline', 'Summary', 'Experience', 'Skills']);
     const links = [...page().querySelectorAll('a')].map((a) => a.getAttribute('href'));
-    expect(links).toEqual([`/jobs/${jobId}`, `/drafts/${draftId}/document`]);
+    expect(links).toEqual([
+      `/jobs/${jobId}?run=sample-run`,
+      `/drafts/${draftId}/document?run=sample-run`,
+    ]);
 
     expect(check('Cut processing time by 45%.')).toContain(
       'Left out: “45%” is not in the facts it cites.',

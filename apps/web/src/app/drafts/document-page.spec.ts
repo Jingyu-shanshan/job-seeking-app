@@ -3,7 +3,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Title } from '@angular/platform-browser';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import type { DocumentPdf, DraftDocument, PdfCheck } from '@jsa/shared';
 import { DocumentPage } from './document-page';
 
@@ -90,7 +90,11 @@ describe('DocumentPage', () => {
   afterEach(() => http.verify());
 
   it('shows the document as the server built it, and nothing else on the sheet', async () => {
+    await TestBed.inject(Router).navigateByUrl('/?run=sample-run');
     await load(resume());
+    expect(page().querySelector('a')?.getAttribute('href')).toBe(
+      `/drafts/${draftId}?run=sample-run`,
+    );
     expect(text(page().querySelector('h1'))).toBe('Resume for Payments Engineer at Example Pay');
     const lines = [...sheet().querySelectorAll('p, h2, li')].map((el) => text(el));
     expect(lines).toEqual([

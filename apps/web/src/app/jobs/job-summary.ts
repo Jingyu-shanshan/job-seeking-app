@@ -71,6 +71,7 @@ const evidenceLabels: Record<Outcome, string> = {
                 <app-requirement-form
                   [snapshotId]="s.id"
                   [replaces]="r"
+                  [busy]="pageBusy()"
                   (saved)="saved($event)"
                   (cancelled)="editing.set(null)"
                 />
@@ -87,11 +88,13 @@ const evidenceLabels: Record<Outcome, string> = {
                 }
                 @if (r.evidence; as e) {
                   <div class="evidence">
-                    <span class="tag" [class.unmet]="e.outcome === 'unmet'">
-                      {{ evidenceLabels[e.outcome] }}
+                    <span class="tag" [class.todo]="changedSince(e) || e.outcome === 'unknown'">
+                      {{ evidenceLabels[changedSince(e) ? 'unknown' : e.outcome] }}
                     </span>
                     @if (changedSince(e)) {
-                      <span class="tag">a fact it cites has changed, so it counts as unknown</span>
+                      <span class="tag todo"
+                        >earlier evidence; this match needs updating and counts as unknown</span
+                      >
                     }
                     {{ e.note }}
                     @if (e.facts.length) {
@@ -112,7 +115,7 @@ const evidenceLabels: Record<Outcome, string> = {
                   @if (r.quoteVerified) {
                     <button
                       type="button"
-                      [attr.aria-label]="'Show ' + r.text + ' in the job text'"
+                      [attr.aria-label]="'Show in the job text: ' + r.text"
                       (click)="showQuote.emit(r.quote)"
                     >
                       Show in the job text
@@ -149,6 +152,7 @@ const evidenceLabels: Record<Outcome, string> = {
         [snapshotId]="s.id"
         (saved)="saved($event)"
         (cancelled)="editing.set(null)"
+        [busy]="pageBusy()"
       />
     } @else {
       <button type="button" [disabled]="busy()" (click)="editing.set('new')">
@@ -217,9 +221,6 @@ const evidenceLabels: Record<Outcome, string> = {
     .evidence .tag {
       margin-right: 0.25rem;
     }
-    .unmet {
-      font-weight: 600;
-    }
     .actions button {
       margin-right: 0.5rem;
     }
@@ -248,6 +249,7 @@ export class JobSummaryView {
   private readonly api = inject(JobsApi);
 
   readonly snapshot = input.required<Snapshot>();
+  readonly pageBusy = input(false);
   readonly changed = output<JobDetail>();
   /** A quote of the job text the user wants to see in place. */
   readonly showQuote = output<string>();
@@ -255,7 +257,8 @@ export class JobSummaryView {
   protected readonly evidenceLabels = evidenceLabels;
 
   protected readonly editing = signal<string | null>(null);
-  protected readonly busy = signal(false);
+  private readonly saving = signal(false);
+  protected readonly busy = computed(() => this.pageBusy() || this.saving());
   protected readonly failure = signal('');
 
   protected readonly summary = computed(() => this.snapshot().summary!);
@@ -299,7 +302,7 @@ export class JobSummaryView {
 
   /** A met or unmet outcome no longer counts once a fact it cites is not current. */
   protected changedSince(evidence: Evidence) {
-    return evidence.outcome !== 'unknown' && evidence.facts.some((f) => !f.current);
+    return !!this.snapshot().match?.outdated.length || evidence.facts.some((f) => !f.current);
   }
 
   protected kindLabel(requirement: Requirement) {
@@ -313,14 +316,14 @@ export class JobSummaryView {
   }
 
   protected async remove(requirement: Requirement) {
-    this.busy.set(true);
+    this.saving.set(true);
     this.failure.set('');
     try {
       this.changed.emit(await this.api.removeRequirement(requirement.id));
     } catch (error) {
       this.failure.set(errorMessage(error));
     } finally {
-      this.busy.set(false);
+      this.saving.set(false);
     }
   }
 }

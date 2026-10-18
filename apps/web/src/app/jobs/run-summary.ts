@@ -23,6 +23,12 @@ const sources = (n: number) => (n === 1 ? '1 source' : `${n} sources`);
     <p>
       <strong>{{ headline() }}</strong>
     </p>
+    @if (r.sources.some(hasProblem)) {
+      <p class="warning">
+        Some sources were not read. Results from other sources are kept; review the reasons below
+        before retrying.
+      </p>
+    }
     @if (r.sources.length === 0) {
       <p>
         No job board is in use, so nothing was read. Add one on the
@@ -60,20 +66,26 @@ const sources = (n: number) => (n === 1 ? '1 source' : `${n} sources`);
 })
 export class RunSummary {
   readonly run = input.required<DiscoveryRun>();
-  readonly counts = input.required<JobCounts>();
+  readonly counts = input.required<JobCounts | null>();
   /** How many eligible jobs the user wanted; null when they did not say. */
   readonly target = input.required<number | null>();
 
   protected readonly headline = computed(() => {
-    const found = `${jobs(this.counts().eligible)} eligible.`;
+    const counts = this.counts();
+    if (!counts)
+      return 'Board reading finished. Reload the job list for the current criteria results.';
+    const found = `${jobs(counts.eligible)} eligible.`;
     const target = this.target();
     return target === null ? found : `${found} You wanted ${target}.`;
   });
+  protected readonly hasProblem = (source: SourceRun) => source.outcome !== 'ok';
 
   /** Only when there is a target and the eligible jobs fall short of it. */
   protected readonly shortfall = computed(() => {
     const target = this.target();
-    const { eligible, toConfirm, ineligible } = this.counts();
+    const counts = this.counts();
+    if (!counts) return [];
+    const { eligible, toConfirm, ineligible } = counts;
     if (target === null || eligible >= target) return [];
     const outcomes = this.run().sources.map((s) => s.outcome);
     const failed = outcomes.filter((outcome) => outcome === 'failed').length;

@@ -157,6 +157,7 @@ describe('ImportAlerts', () => {
     expect(text(results())).toContain(
       'Unknown sender · “engineer”: new jobs · sent 2 Oct 2026 Not imported: It is from info@glassdoor.com',
     );
+    expect(page().querySelector('textarea')!.value).toBe('From: info@glassdoor.com\n\nmade up');
 
     await paste('not an email');
     http

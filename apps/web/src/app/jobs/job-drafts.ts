@@ -21,10 +21,16 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
       allowed both to go to DeepSeek and to appear in documents, in one request; nothing else about
       you, and no name or contact details. Every statement must cite your facts or quote the job
       text, and the app checks its numbers, dates and names against them: a statement that fails is
-      left out of the document.
+      left out of the document. This is a paid request processed outside the EU; its cost is
+      recorded afterwards.
+    </p>
+    <p>
+      Read each statement and its evidence before using a draft. A check passing does not prove its
+      meaning is correct. Set the name and contact details for your documents in
+      <a routerLink="/profile">Your details</a>; those details are not sent to DeepSeek.
     </p>
     @if (job.factsToDraft === 0) {
-      <p>
+      <p class="warning">
         None of your facts may be used yet. Confirm facts and allow them both to go to DeepSeek and
         to appear in documents on the <a routerLink="/facts">Facts</a> page.
       </p>
@@ -34,13 +40,17 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
         @let d = latest()[kind];
         <li>
           @if (d) {
-            <a [routerLink]="['/drafts', d.id]">{{ capital(draftNames[kind]) }} draft</a>, written
-            {{ d.createdAt | date: 'd MMM y, HH:mm' }}: {{ plural(d.statements, 'statement') }},
-            {{ d.rejected }} left out by the checks{{
+            <a [routerLink]="['/drafts', d.id]" queryParamsHandling="preserve"
+              >{{ capital(draftNames[kind]) }} draft</a
+            >, written {{ d.createdAt | date: 'd MMM y, HH:mm' }}:
+            {{ plural(d.statements, 'statement') }}, {{ d.rejected }} left out by the checks{{
               d.pdfs ? ', ' + plural(d.pdfs, 'PDF') + ' kept' : ''
             }}.
             @if (d.outdated.length) {
-              <span class="hint">{{ d.outdated.join(' ') }}</span>
+              <p class="warning">
+                {{ d.outdated.join(' ') }} Review the current text and facts before using this
+                draft.
+              </p>
             }
           } @else {
             No {{ draftNames[kind] }} draft yet.

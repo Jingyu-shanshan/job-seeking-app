@@ -32,7 +32,11 @@ const kindNames: Record<DraftKind, string> = { resume: 'Resume', cover_letter: '
     @if (data.hasValue()) {
       @let d = data.value();
       <div class="screen-only">
-        <p><a [routerLink]="['/drafts', d.draftId]">Back to the draft</a></p>
+        <p>
+          <a [routerLink]="['/drafts', d.draftId]" queryParamsHandling="preserve"
+            >Back to the draft</a
+          >
+        </p>
         <h1>{{ kindNames[d.kind] }} for {{ d.title }}{{ d.company ? ' at ' + d.company : '' }}</h1>
         @if (d.outdated.length) {
           <p class="notice">{{ d.outdated.join(' ') }}</p>
