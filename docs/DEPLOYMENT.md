@@ -2,13 +2,15 @@
 
 更新：2026-10-13。**生产服务已运行，数据库迁移、原账户登录/退出、历史投递/PDF 下载、导出、时间点隔离恢复、重部署、兼容构建回滚及恢复、本机执行器连接与令牌吊销均通过。T12 已完成 GitHub `main` 自动发布验收。** 用户已批准 Railway App 只新增本仓库访问，`main` 触发器已建立并启用等待 CI；实际推送已先等待 GitHub 检查，CI 通过后自动构建、执行迁移并发布成功。用户已选择自动发布并迁移现有本地资料和投递记录。T03a 的不含个人数据独立欧盟演练已先完成，演练服务现已停止。`npm ci`、`npm run build`、`npm start`、`npm run db:migrate` 和 `npm run auth:create-account` 已实现。
 
-2026-10-13 后续决定（**T32 待执行**）：只保留现有 `job-seeking-app-production` project；旧 `job-seeking-app-staging` project 清点依赖后删除。需要云端演练时，仅在保留项目中创建 `staging` environment，不需要就不建。本轮只读核实 production 正常、旧 staging 无运行部署但 project 仍存在；历史认证迁移错误为 `relation "user" already exists`，与 T03a 故障演练吻合，仍需核对当时数据库指向，不能把它当作当前生产故障。[整理任务](TASKS.md)、[Railway 环境](https://docs.railway.com/environments)。
+2026-10-13 后续决定（**T32 已执行删除请求，待平台清除核验**）：只保留现有 `job-seeking-app-production` project。2026-10-19 完成 T32.1 清点并获用户明确批准后，对旧 `job-seeking-app-staging` 执行删除；Railway 返回的删除排期为 10 月 21 日 15:40（赫尔辛基），当前旧项目仍可列出，不能视为最终清除。删除请求前后 production 的配置、域名、部署、main/Wait for CI、43 张业务表和 6 个附件均一致，健康与原账户退出/重新登录通过。当前无云端演练需求，不新建 environment，独立 Neon 演练资源保留。实际下载 ZIP 已核验包含完整的两份冻结 PDF，最终清除核验及独立下载链接的自动化边界见 [T32 维护记录](T32_MAINTENANCE.md)，完整范围见 [整理任务](TASKS.md)。
 
 ## 拓扑
 
 保留一个 Railway project；每个实际需要的 environment 中，一个 web 服务运行 Node 24 + Fastify，同时提供 Angular 静态页面和同源 `/api`；生产 PostgreSQL 在 Neon。这样不需要第二个 Web 服务、跨源 Cookie 或前端数据库变量。Railway 的 [`PORT` 与 `0.0.0.0` 要求](https://docs.railway.com/networking/troubleshooting/application-failed-to-respond)在 T01 实现，本地开发默认只监听 loopback。Railway 从仓库根目录依次构建共享包、服务和 Angular；应用启动前执行数据库迁移。
 
 个人事实、JD 快照、申请状态及有大小上限的实际投递文件都以 Neon 为主数据。Railway 容器目录仅可用于临时构建/处理；若以后附件规模不适合 PostgreSQL，再评估 [Railway Storage Bucket](https://docs.railway.com/storage-buckets)。不为 V0.1 先添 Volume 或对象存储。
+
+2026-10-19 用户追加要求节省开销：仅为本应用保留的 production/web 开启 Railway Serverless（`sleepApplication=true`），并将同一 CI 通过的提交按当前配置发布；已确认新部署成功且实际部署 manifest 带上休眠。单纯更新开关或复用旧配置快照的 redeploy 不足以证明运行容器生效。无出站流量后通常约 5–10 分钟休眠，首次访问可能有冷启动等待或需重试；访问、runner 轮询及后台通信会延后休眠，不能据此保证费用归零。当前无运行中后台任务或启用的定时预设；以后要求可靠定时执行时，先重新评估休眠设置。本次已实测约 7 分钟后进入 SLEEPING，首次唤醒请求约 1.8 秒返回成功，原浏览器会话/事实可读；没有留下保活。完整静置/唤醒验收与 T32 下载边界见 [维护记录](T32_MAINTENANCE.md)、[Railway Serverless](https://docs.railway.com/deployments/serverless)。
 
 ## 需要的环境变量
 
