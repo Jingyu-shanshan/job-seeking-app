@@ -1,6 +1,6 @@
 # 开发 Tasks
 
-状态：基础功能与 T12 生产发布已完成；`[x]` 表示相应范围已完成，实际验证与限制见各项记录。2026-10-13 新增 T22–T32 为后续改善任务；截至 2026-10-19，T22–T31 已完成，T32 仍待实施，远端清理尚未执行。按 [技术决策](DEVELOPMENT.md) 实施；[原始方案](PRODUCT_PLAN.md) 的本地优先/SQLite 路线已由云端主数据决策覆盖。
+状态：基础功能与 T12 生产发布已完成；`[x]` 表示相应范围已完成，实际验证与限制见各项记录。2026-10-13 新增 T22–T32 为后续改善任务；截至 2026-10-19，T22–T31 已完成，T32.1 清点已完成，T32.2 已获批准并执行删除请求，Railway 排定 10 月 21 日 15:40（赫尔辛基）清除；实际 ZIP 内容已验证完整，最终清除核验仍待完成。按 [技术决策](DEVELOPMENT.md) 实施；[原始方案](PRODUCT_PLAN.md) 的本地优先/SQLite 路线已由云端主数据决策覆盖。
 
 2026-09-30 调整了顺序：先用一次性脚本验证核心回路（S0），再搭骨架；骨架完成后做一次不含个人数据的预部署（T03a），把云端风险提前暴露。既有编号不重排，S0 与 T03a 是插入项。
 
@@ -511,7 +511,7 @@
 ## 部署整理（2026-10-13 新决定）
 
 - [ ] **T32 Railway 项目整理与按需环境隔离**（P0；独立于 UI 改造，可先执行）：保留 `job-seeking-app-production`，清理旧 `job-seeking-app-staging`；如后续云端验收确有需要，仅在保留项目中创建 `staging` environment。没有需要就不新建，不为 UI/PDF 功能另建 Railway project。依赖：完成下列身份核对、故障调查及资源引用保全；若发现旧 staging 有仍被依赖的数据、域名或服务，先迁移依赖并验证，再删除。官方说明：[Railway Environments](https://docs.railway.com/environments)、[Railway Projects](https://docs.railway.com/projects)。
-  - **已核实的当前状态（只读）**：`job-seeking-app-production` 中的 `production` environment 有成功的运行部署，GitHub 来源为本仓库；旧 `job-seeking-app-staging` project 仍存在，内部 environment 名也为 `production`，当前无 active deployment，服务已停止但未删除，控制台仍可显示历史失败。最近保留的失败日志是 pre-deploy 的认证迁移遇到 `relation "user" already exists`（SQLSTATE `42P07`），随后回滚尝试中的迁移；它与 T03a 的故障库演练吻合，仍需核对失败时数据库指向。此轮未执行远端清理、创建环境或数据库操作。
+  - **2026-10-19 进展**：T32.1 已完成，失败部署变量快照证实连接 T03a 独立故障库。生产配置、本机客户端地址、main/Wait for CI 均无旧 staging 依赖。用户明确批准后，T32.2 精确旧项目的删除请求成功；Railway 将删除时间设为 10 月 21 日 15:40（赫尔辛基），旧 project 仍可列出，尚未最终清除。本应用只有原 production project 没有删除标记。删除请求前后生产身份、服务、变量、域名、部署和触发器一致，健康与原账户退出/重新登录通过；43 张业务表及 6 个附件的导出文件逐字节一致。冻结简历浏览器下载哈希通过；实查当日浏览器下载的 ZIP 共 11 文件，包含 43 张业务表、2 个 PDF、4 个 PNG，清单与冻结 PDF 哈希均通过，业务 JSON/附件字节与整理前一致。PDF 位于 files/document_pdf/ 子目录，已解出易读名称，导出未缺文件；独立求职信链接自动化仍为边界。同日用户追加要求节费，production/web 已开启闲置休眠并用同一 CI 通过的提交按当前配置发布，新部署 manifest 已核对 true；健康、认证边界及 43 表/6 附件比对再次通过，静置约 7 分钟后实测 SLEEPING，首次访问约 1.8 秒唤醒成功，原登录会话/事实可读。不改业务代码、不加保活。未新建环境，独立 Neon 演练资源保留。T32 保持未完成，等待平台最终清除核验；完整结论见 [维护记录](T32_MAINTENANCE.md)。
   - **T32.1 核实故障与保全依赖**：私下核对两项目及 environment/service 的准确身份、旧 staging 失败部署当时的数据库指向和迁移记录，区分演练残留、数据库 schema/迁移记录不一致及配置错误；保留必要的无密钥失败摘要。清点 GitHub 发布触发器、服务变量与引用、域名、执行器和桌面客户端地址、Neon 连接、Volume/Bucket 及其他依赖，确认 production 不依赖旧 staging，旧 staging 没有须保留的真实资料。不要为消除历史错误而在 production 执行 reset、删表或破坏性 down migration。
   - **T32.2 删除旧 staging project**：检查当前 production 恢复状态并留存维护记录，固定待删除对象为 `job-seeking-app-staging`，保留 production 的服务、域名、GitHub `main` 触发器与 Wait for CI。项目删除不可撤销，会删除其中的服务、环境和部署，故仅在 T32.1 清点完成后执行；删除完成后核实本应用只剩保留项目。Neon 项目和数据库不随之自动清理，任何发现的独立资源在维护记录中注明是否仍有用途。
   - **T32.3 可选：在保留项目中创建 staging environment**：仅当下一项工作需要云端验收时创建，优先从 Empty environment 配置单个 web 服务。若复制 production，注意 Railway 会一并复制变量和配置，首次部署前必须检查并换成独立数据库、`BETTER_AUTH_SECRET`、账户和 HTTPS `BETTER_AUTH_URL`；production 的数据库连接不能出现在 staging 引用中。只放编造资料，不从生产库复制个人数据；复用已有干净演练库须先确认其不再指向故障演练库。`NODE_ENV` 仍为 `production`，保持 HTTPS、Secure Cookie、Origin 校验、TLS `verify-full`、生产构建与迁移路径；不要设置为 `staging` 绕过现有保护。沿用 Node 24、根目录构建、`npm run build`、`npm start`、pre-deploy `npm run db:migrate`、300 秒迁移/健康检查超时与 `/health/ready`。默认手动发布已通过 CI 的分支或提交，不新增长期分支、PR 自动环境或不必要的定时运行/模型预算。
