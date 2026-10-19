@@ -50,7 +50,7 @@ TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/postgres npm run 
 | runs `/runs` | 通过 | 无预设/运行通过 / — | 原样保存/加载重试通过 | 保存/启动分开、停止/恢复通过 | 默认零预算、未知用量保留通过 / 冻结设置通过 | `runs.spec.ts`、runs 服务端测试、T30 |
 | draft `/drafts/:id` | 通过 | 空/被排除陈述通过 / — | 读取/编辑重试通过 | 编辑/排除/恢复与焦点通过 | 无证据/校验失败不入文档通过 / 过期通过 | `draft-page.spec.ts`、T28、发布脚本 |
 | document `/drafts/:id/document` | 通过 | 无保存文件通过 / — | 加载/上传重试通过 | 上传中/保存当前文件通过 | 缺姓名、空/超限/不符 PDF 拦截通过 / 文件过期通过 | `document-page.spec.ts`、T28、发布脚本、content |
-| applications `/applications` | 通过 | 无申请通过 / — | 通过 | 三种真实状态通过 / — | 未知结果只去核实通过 / — | `applications.spec.ts`、T29、发布脚本 |
+| applications `/applications` | 通过 | 无申请通过 / — | 通过 | 三种真实状态通过 / — | 未知结果只去核实通过 / — | `application-page.spec.ts` 的 Applications 用例、T29、发布脚本 |
 | application `/applications/:id` | 通过 | 缺文件/来源/回执通过 / — | 通过 | 冻结文件下载通过 / — | 缺历史引用说明通过 / 当前与历史区别通过 | `application-page.spec.ts`、T29、发布脚本 |
 | interview `/applications/:id/interview` | 通过 | 未生成/STAR 缺项通过 / — | 生成/笔记重试通过 | 不重复生成/保存笔记通过 | 非 Applied/无许可/摘录校验通过 / 使用冻结来源通过 | `interview-page.spec.ts`、interviews 服务端测试、发布脚本 |
 | profile `/profile` | 通过 | 空资料通过 / — | 原样保存重试通过 | 未改/未存/保存中/已存通过 | 无效邮箱/链接通过 / — | `profile.spec.ts`、T30、发布脚本 |
