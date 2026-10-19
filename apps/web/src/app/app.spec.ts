@@ -58,6 +58,35 @@ describe('App', () => {
     expect(TestBed.inject(Router).url).toBe('/login?next=%2F');
   });
 
+  it.each([
+    '/',
+    '/runs',
+    '/jobs',
+    '/jobs/paste',
+    '/jobs/alerts',
+    '/jobs/sample',
+    '/applications',
+    '/applications/sample',
+    '/applications/sample/interview',
+    '/drafts/sample',
+    '/drafts/sample/document',
+    '/profile',
+    '/answers',
+    '/facts',
+    '/criteria',
+    '/sources',
+    '/export',
+    '/runner',
+  ])('protects the deep link %s and preserves its query and fragment for sign-in', async (path) => {
+    const next = `${path}?run=sample#review`;
+    const harness = await RouterTestingHarness.create(next);
+
+    expect(heading(harness)).toBe('Sign in');
+    const router = TestBed.inject(Router);
+    expect(router.parseUrl(router.url).queryParams['next']).toBe(next);
+    TestBed.inject(HttpTestingController).expectNone((request) => request.url.startsWith('/api/'));
+  });
+
   it('shows the start page to the signed-in user', async () => {
     user.set({ id: 'account-1', email: 'owner@example.com' });
     const harness = await RouterTestingHarness.create('/');

@@ -49,4 +49,6 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
+      - name: Check the UI workflow with isolated sample data
+        run: node scripts/ui-acceptance.mjs
       - run: npm run db:restore-drill

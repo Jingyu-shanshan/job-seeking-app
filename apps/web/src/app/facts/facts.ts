@@ -47,8 +47,8 @@ const kinds = Object.keys(kindLabels) as FactKind[];
         @if (addForm.body().touched() && addForm.body().errors().length) {
           <p class="error" role="alert">{{ addForm.body().errors()[0].message }}</p>
         }
-        @for (error of addForm().errors(); track $index) {
-          <p class="error" role="alert">{{ error.message }}</p>
+        @if (addFailure()) {
+          <p class="error" role="alert">{{ addFailure() }}</p>
         }
         <button type="submit" [disabled]="addForm().submitting()">Add</button>
       </form>
@@ -56,7 +56,7 @@ const kinds = Object.keys(kindLabels) as FactKind[];
 
     <p role="status" tabindex="-1" #feedback>{{ operationResult() }}</p>
     <app-fact-import
-      [facts]="data.value()?.facts ?? []"
+      [facts]="data.hasValue() ? data.value().facts : []"
       (saved)="imported($event, feedback)"
       (viewFact)="showFact($event)"
     />
@@ -135,6 +135,7 @@ const kinds = Object.keys(kindLabels) as FactKind[];
       <p role="status">Loading facts…</p>
     } @else {
       <p class="error" role="alert">The facts could not be loaded. {{ loadError() }}</p>
+      <button type="button" (click)="data.reload()">Try again</button>
     }
   `,
   styles: `
@@ -197,6 +198,7 @@ export class Facts {
   protected readonly statusFilter = signal('all');
   protected readonly kindFilter = signal('all');
   protected readonly operationResult = signal('');
+  protected readonly addFailure = signal('');
   private readonly sorted = computed(() =>
     [...(this.data.value()?.facts ?? [])].sort(
       (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
@@ -258,13 +260,19 @@ export class Facts {
     {
       submission: {
         action: async (f) => {
+          this.addFailure.set('');
           const { kind, body } = f().value();
           try {
             const fact = await this.api.add(kind, body.trim());
-            this.data.update((d) => d && { facts: [...d.facts, fact] });
+            if (this.data.hasValue()) {
+              this.data.update((d) => d && { facts: [...d.facts, fact] });
+            } else {
+              this.data.reload();
+            }
             this.showToConfirm();
           } catch (error) {
-            return { kind: 'server', message: errorMessage(error) };
+            this.addFailure.set(errorMessage(error));
+            return undefined;
           }
           f().reset({ kind, body: '' });
           return undefined;
