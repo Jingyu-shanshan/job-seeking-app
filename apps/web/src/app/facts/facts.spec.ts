@@ -78,6 +78,64 @@ describe('Facts', () => {
 
   afterEach(() => http.verify());
 
+  it('shows a failed load and retries without reading the failed resource value', async () => {
+    http
+      .expectOne('/api/facts')
+      .flush({ message: 'Offline' }, { status: 503, statusText: 'Offline' });
+    await fixture.whenStable();
+    expect(text(page().querySelector('[role=alert]'))).toContain('Offline');
+
+    button('Try again')!.click();
+    await settle();
+    await load([fact()]);
+
+    expect(activeCards()).toHaveLength(1);
+    expect(page().querySelector('[role=alert]')).toBeNull();
+  });
+
+  it('keeps a failed new fact and retries the same text', async () => {
+    await load([]);
+    page().querySelector<HTMLDetailsElement>('details')!.open = true;
+    const input = page().querySelector<HTMLTextAreaElement>('form textarea')!;
+    input.value = 'TypeScript';
+    input.dispatchEvent(new Event('input'));
+    button('Add')!.click();
+    await settle();
+    http
+      .expectOne('/api/facts')
+      .flush({ message: 'Offline' }, { status: 503, statusText: 'Offline' });
+    await settle();
+    expect(input.value).toBe('TypeScript');
+    expect(text(page().querySelector('[role=alert]'))).toContain('Offline');
+
+    button('Add')!.click();
+    await settle();
+    http.expectOne('/api/facts').flush(fact());
+    await settle();
+
+    expect(activeCards()).toHaveLength(1);
+    expect(input.value).toBe('');
+    expect(page().querySelector('[role=alert]')).toBeNull();
+  });
+
+  it('reloads the list when adding a fact after its initial load failed', async () => {
+    http.expectOne('/api/facts').flush({}, { status: 503, statusText: 'Offline' });
+    await settle();
+    page().querySelector<HTMLDetailsElement>('details')!.open = true;
+    const input = page().querySelector<HTMLTextAreaElement>('form textarea')!;
+    input.value = 'TypeScript';
+    input.dispatchEvent(new Event('input'));
+    button('Add')!.click();
+    await settle();
+    const added = fact();
+    http.expectOne('/api/facts').flush(added);
+    await settle();
+    await load([added]);
+
+    expect(activeCards()).toHaveLength(1);
+    expect(page().querySelector('[role=alert]')).toBeNull();
+  });
+
   it('groups by current status before kind and explains eligibility and sensitive content', async () => {
     const confirmed = fact(
       { kind: 'experience', usableInMaterials: true },

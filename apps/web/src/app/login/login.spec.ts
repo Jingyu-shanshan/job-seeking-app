@@ -80,6 +80,37 @@ describe('Login', () => {
     expect(TestBed.inject(Router).url).toMatch(/^\/login/);
   });
 
+  it('retries the same credentials after a temporary sign-in failure', async () => {
+    signIn.mockRejectedValueOnce(new HttpErrorResponse({ status: 503 }));
+    await submit('owner@example.com', 'a password');
+    expect(alertText()).toBe('Signing in failed. Try again.');
+
+    await submit('owner@example.com', 'a password');
+
+    expect(signIn).toHaveBeenCalledTimes(2);
+    expect(TestBed.inject(Router).url).toBe('/jobs/1?tab=match');
+  });
+
+  it('shows signing in and prevents a second request while waiting', async () => {
+    let finish!: () => void;
+    signIn.mockImplementation(() => new Promise<void>((resolve) => (finish = resolve)));
+    const pending = submit('owner@example.com', 'a password');
+    await new Promise((resolve) => setTimeout(resolve));
+    const button = page().querySelector('button')!;
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toContain('Signing in…');
+    page()
+      .querySelector('form')!
+      .dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(signIn).toHaveBeenCalledTimes(1);
+
+    finish();
+    await pending;
+    await new Promise((resolve) => setTimeout(resolve));
+    await harness.fixture.whenStable();
+    expect(TestBed.inject(Router).url).toBe('/jobs/1?tab=match');
+  });
+
   it('ignores a return address outside the app', async () => {
     await harness.navigateByUrl('/login?next=https%3A%2F%2Fevil.example');
     signIn.mockResolvedValue(undefined);

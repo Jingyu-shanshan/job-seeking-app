@@ -38,7 +38,7 @@ import { Session } from '../auth/session';
       <button type="submit" [disabled]="loginForm().submitting()">
         {{ loginForm().submitting() ? 'Signing in…' : 'Sign in' }}
       </button>
-      <p class="error" role="alert">{{ loginForm().errors()[0]?.message }}</p>
+      <p class="error" role="alert">{{ failure() }}</p>
     </form>
   `,
 })
@@ -48,6 +48,7 @@ export class Login {
   private readonly route = inject(ActivatedRoute);
 
   protected readonly credentials = signal({ email: '', password: '' });
+  protected readonly failure = signal('');
   protected readonly loginForm = form(
     this.credentials,
     (path) => {
@@ -58,11 +59,13 @@ export class Login {
     {
       submission: {
         action: async (fields) => {
+          this.failure.set('');
           const { email, password } = fields().value();
           try {
             await this.session.signIn(email, password);
           } catch (error) {
-            return { kind: 'sign-in', message: signInFailure(error) };
+            this.failure.set(signInFailure(error));
+            return undefined;
           }
           // Back to the page that sent the user here. Only a path inside the app: the router
           // cannot leave the site anyway.
