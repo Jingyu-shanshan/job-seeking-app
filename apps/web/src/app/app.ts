@@ -45,9 +45,16 @@ import { QuickGuide } from './home/quick-guide';
                 <a
                   [routerLink]="link.path"
                   [class.active]="section() === link.path"
+                  [class.guide-target]="guide()?.targetPath() === link.path"
                   [attr.aria-current]="section() === link.path ? 'page' : null"
-                  >{{ link.label }}</a
-                >
+                  [attr.aria-describedby]="
+                    guide()?.targetPath() === link.path ? 'guide-title' : null
+                  "
+                  >{{ link.label }}
+                  @if (guide()?.targetPath() === link.path) {
+                    <span class="guide-marker" aria-hidden="true">Guide</span>
+                  }
+                </a>
               }
             </nav>
           }

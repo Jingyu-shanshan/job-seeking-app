@@ -37,7 +37,11 @@ describe('QuickGuide', () => {
 
   it('offers three optional steps, previous, finish and replay without business requests', async () => {
     expect(text()).toContain('Step 1 of 3');
-    expect(page().querySelector<HTMLButtonElement>('button')?.disabled).toBe(true);
+    expect(
+      Array.from(page().querySelectorAll('button')).find(
+        (b) => b.textContent?.trim() === 'Previous',
+      )?.disabled,
+    ).toBe(true);
     expect(page().querySelector('a')?.getAttribute('href')).toBe('/facts');
     await click('Continue');
     expect(text()).toContain('Step 2 of 3');
@@ -68,6 +72,36 @@ describe('QuickGuide', () => {
     fixture.destroy();
     await mount();
     expect(page().querySelector('section')).toBeNull();
+  });
+
+  it('jumps between steps, remembers the selection and highlights its real destination', async () => {
+    const steps = () => page().querySelectorAll<HTMLButtonElement>('ol button');
+    expect(steps()[0].getAttribute('aria-current')).toBe('step');
+    expect(fixture.componentInstance.targetPath()).toBe('/facts');
+    steps()[2].click();
+    await fixture.whenStable();
+    expect(text()).toContain('Step 3 of 3');
+    expect(steps()[2].getAttribute('aria-current')).toBe('step');
+    expect(steps()[0].hasAttribute('aria-current')).toBe(false);
+    expect(document.activeElement?.id).toBe('guide-title');
+    expect(fixture.componentInstance.targetPath()).toBe('/jobs');
+    expect(JSON.parse(localStorage.getItem(key())!)).toBe(2);
+    await click('Previous');
+    expect(text()).toContain('Step 2 of 3');
+    expect(page().querySelector('a')?.getAttribute('href')).toBe('/jobs/paste');
+  });
+
+  it('dismisses with Escape and removes the highlighted destination', async () => {
+    const closed = vi.fn();
+    fixture.componentInstance.closed.subscribe(closed);
+    page()
+      .querySelector('button')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await fixture.whenStable();
+    expect(page().querySelector('section')).toBeNull();
+    expect(fixture.componentInstance.targetPath()).toBeNull();
+    expect(closed).toHaveBeenCalledOnce();
+    expect(JSON.parse(localStorage.getItem(key())!)).toBe('skipped');
   });
 
   it('uses stable IDs, preserves progress after an email change and isolates another account', async () => {
