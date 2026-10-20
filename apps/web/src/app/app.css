@@ -68,6 +68,26 @@ nav a.active {
   font-weight: 650;
 }
 
+nav a.guide-target {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  outline: 2px solid var(--action);
+  outline-offset: -2px;
+  color: var(--info-text);
+  background: var(--info-bg);
+}
+
+nav a.guide-target:focus-visible {
+  outline-offset: 3px;
+}
+
+.guide-marker {
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .nav-group {
   border-top: 1px solid var(--line);
   padding-top: 16px;

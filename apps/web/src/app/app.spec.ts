@@ -172,7 +172,7 @@ describe('App', () => {
 
     await TestBed.inject(Router).navigateByUrl('/unknown');
     await fixture.whenStable();
-    expect(root.querySelector('[aria-current]')).toBeNull();
+    expect(root.querySelector('nav [aria-current="page"]')).toBeNull();
     expect(root.querySelector('h1')?.textContent).toBe('Page not found');
   });
 
@@ -202,18 +202,31 @@ describe('App', () => {
       Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === label)!;
     const target = '/jobs/paste?run=sample#description';
     expect(guide().textContent).toContain('Step 1 of 3');
+    expect(root.querySelector('nav a.guide-target')?.getAttribute('href')).toBe('/facts');
+    expect(root.querySelector('nav a.guide-target')?.getAttribute('aria-describedby')).toBe(
+      'guide-title',
+    );
     button('Continue').click();
     await fixture.whenStable();
+    expect(root.querySelector('nav a.guide-target')?.getAttribute('href')).toBe('/jobs');
     expect(router.url).toBe(target);
     button('Skip guide').click();
     await fixture.whenStable();
     expect(guide().querySelector('section')).toBeNull();
+    expect(root.querySelector('nav a.guide-target')).toBeNull();
     expect(document.activeElement).toBe(button('Quick guide'));
     button('Quick guide').click();
     await fixture.whenStable();
     expect(guide().textContent).toContain('Step 1 of 3');
     expect(document.activeElement?.id).toBe('guide-title');
     expect(router.url).toBe(target);
+    guide()
+      .querySelector('button')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(button('Quick guide'));
+    button('Quick guide').click();
+    await fixture.whenStable();
     button('Sign out').click();
     await fixture.whenStable();
     expect(root.querySelector('app-quick-guide')).toBeNull();
