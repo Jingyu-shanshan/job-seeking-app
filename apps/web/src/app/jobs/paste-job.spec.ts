@@ -28,7 +28,7 @@ describe('PasteJob', () => {
   const alerts = () =>
     [...page().querySelectorAll('[role=alert]')].map((el) => el.textContent?.trim());
   const submit = async () => {
-    page().querySelector<HTMLButtonElement>('button[type=submit]')!.click();
+    page().querySelector<HTMLButtonElement>('form:has(textarea) button[type=submit]')!.click();
     await settle();
   };
 
@@ -54,25 +54,28 @@ describe('PasteJob', () => {
     ]);
   });
 
-  it('saves the job and opens it', async () => {
-    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
-    fill('Job title', ' Billing Engineer ');
-    fill('Location', 'Helsinki');
-    fill('Link to the job page', 'https://careers.example.com/jobs/1');
-    fill('Job text', 'You keep invoices correct.');
-    await submit();
+  it.each(['https://careers.example.com/jobs/1', 'https://www.linkedin.com/jobs/view/123'])(
+    'saves manually pasted text from %s and opens it',
+    async (url) => {
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      fill('Job title', ' Billing Engineer ');
+      fill('Location', 'Helsinki');
+      fill('Link to the job page', url);
+      fill('Job text', 'You keep invoices correct.');
+      await submit();
 
-    const request = http.expectOne('/api/jobs');
-    expect(request.request.body).toEqual({
-      title: 'Billing Engineer',
-      url: 'https://careers.example.com/jobs/1',
-      text: 'You keep invoices correct.',
-      location: 'Helsinki',
-    });
-    request.flush({ id: '00000000-0000-4000-8000-000000000001' } as JobDetail);
-    await settle();
-    expect(navigate).toHaveBeenCalledWith(['/jobs', '00000000-0000-4000-8000-000000000001']);
-  });
+      const request = http.expectOne('/api/jobs');
+      expect(request.request.body).toEqual({
+        title: 'Billing Engineer',
+        url,
+        text: 'You keep invoices correct.',
+        location: 'Helsinki',
+      });
+      request.flush({ id: '00000000-0000-4000-8000-000000000001' } as JobDetail);
+      await settle();
+      expect(navigate).toHaveBeenCalledWith(['/jobs', '00000000-0000-4000-8000-000000000001']);
+    },
+  );
 
   it('shows the server’s reason when saving fails', async () => {
     fill('Job title', 'Engineer');

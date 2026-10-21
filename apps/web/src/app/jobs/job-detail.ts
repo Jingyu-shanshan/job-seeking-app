@@ -531,7 +531,7 @@ export class JobDetailPage {
   protected readonly listing = computed(() => {
     const job = this.data.value();
     if (!job) return '';
-    const saved = 'You saved this job in the desktop app.';
+    const saved = 'You saved this job.';
     if (job.sources.length) {
       const listed = `Listed by ${job.sources.map((s) => s.param).join(', ')}.`;
       return job.saved ? `${listed} ${saved}` : listed;

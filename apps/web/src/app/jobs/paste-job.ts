@@ -3,15 +3,18 @@ import { FormField, FormRoot, form, maxLength, pattern, required } from '@angula
 import { Router, RouterLink } from '@angular/router';
 import { errorMessage } from '../sources/sources-api';
 import { JobsApi } from './jobs-api';
+import { ImportJobLink } from './import-job-link';
 
 const maxTextLength = 100_000;
 
 @Component({
   selector: 'app-paste-job',
-  imports: [FormField, FormRoot, RouterLink],
+  imports: [FormField, FormRoot, RouterLink, ImportJobLink],
   template: `
     <p><a routerLink="/jobs">All jobs</a></p>
     <h1>Paste a job</h1>
+    <app-import-job-link />
+    <h2>Or paste the original job text</h2>
     <p>
       For a job from any site, including sites the app does not read, such as LinkedIn. Copy the
       job’s link and its text from the page. The text is saved as it is and never changed.
