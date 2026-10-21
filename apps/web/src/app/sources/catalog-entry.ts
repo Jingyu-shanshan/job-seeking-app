@@ -50,7 +50,9 @@ const accessLabels: Record<AccessMethod, string> = {
                   [disabled]="busy() || addForm().submitting()"
                   (change)="setEnabled(source, enabled)"
                 />
-                Use <strong>{{ source.param }}</strong>
+                <span
+                  >Use <strong>{{ source.param }}</strong></span
+                >
               </label>
               <button
                 type="button"
