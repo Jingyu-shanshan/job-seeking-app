@@ -366,6 +366,39 @@ try {
   check(
     `${paths.length} populated routes × five widths × light/dark; focus, deep links, reduced motion and overflow`,
   );
+  const sources = await api('GET', '/api/sources');
+  const longBoardName = 'sampleboard'.repeat(18);
+  await page.route(origin + '/api/sources', (route) =>
+    route.fulfill({
+      json: {
+        ...sources,
+        sources: sources.sources.map((source) => ({ ...source, param: longBoardName })),
+      },
+    }),
+  );
+  for (const width of [320, 360, 900, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await go('/sources');
+    const label = page.locator('app-catalog-entry label').filter({ hasText: longBoardName });
+    await label.waitFor();
+    const fits = await label.evaluate((el) => {
+      const texts = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      while (texts.nextNode()) {
+        const node = texts.currentNode;
+        const start = node.textContent.indexOf('Use');
+        if (start === -1) continue;
+        const word = document.createRange();
+        word.setStart(node, start);
+        word.setEnd(node, start + 3);
+        return word.getBoundingClientRect().height <= parseFloat(getComputedStyle(el).lineHeight);
+      }
+      return false;
+    });
+    assert(fits, `${width}px: the source label must not squeeze “Use” into a vertical column`);
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  }
+  await page.unroute(origin + '/api/sources');
+  check('Long board names wrap without squeezing the checkbox label, at four widths');
   const resources = [
     ['/', '/api/facts'],
     ['/facts', '/api/facts'],
