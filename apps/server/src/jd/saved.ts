@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import {
   SavePageRequestSchema,
+  type SavePageRequest,
+  type SavePageResponse,
   SavePageResponseSchema,
   SaveResultsRequestSchema,
   SaveResultsResponseSchema,
@@ -76,50 +78,57 @@ async function withSameJobs<E extends { title: string; company: string | null }>
   });
 }
 
+/** Saves a user-selected page, sharing address matching and immutable snapshots across imports. */
+export async function saveJobPage(
+  pool: Pool,
+  page: SavePageRequest,
+  catalogId: 'desktop_save' | 'greenhouse_board' | 'ashby_board',
+): Promise<SavePageResponse> {
+  const { url, title, company, location, text } = page;
+  const entry = {
+    url: addressOf(url),
+    title: title.trim(),
+    company: optional(company),
+    location: location?.trim() ?? '',
+    new_id: randomUUID(),
+  };
+  const body = checkJobText(text, 'The page has no text to save.');
+  const { rows } = await pool.query<{
+    job_id: string;
+    new_job: boolean;
+    had_text: boolean;
+    new_text: boolean;
+  }>(
+    `with input as (select * from jsonb_to_recordset($1::jsonb) as ${inputColumns}),
+     ${saveEntries},
+     snapshot as (
+       insert into job_snapshot (job_id, body, catalog_id, title, company, location, source_url)
+       select s.job_id, $2, $3, i.title, i.company, i.location, i.url
+       from saved s join input i using (url)
+       on conflict (job_id, body_sha256) do update set last_captured_at = now()
+       returning (xmax = 0) as inserted
+     )
+     -- The texts the job had before this statement; the new one is not visible here.
+     select s.job_id, m.job_id is null as new_job, n.inserted as new_text,
+       exists (select 1 from job_snapshot o where o.job_id = s.job_id) as had_text
+     from saved s, matched m, snapshot n`,
+    [JSON.stringify(await withSameJobs(pool, [entry])), body, catalogId],
+  );
+  const row = rows[0]!;
+  return {
+    jobId: row.job_id,
+    title: entry.title,
+    newJob: row.new_job,
+    text: !row.new_text ? 'same' : row.had_text ? 'new' : 'first',
+  } as const;
+}
+
 export const savedRoutes: FastifyPluginAsyncTypebox<SavedRoutesOptions> = async (app, { pool }) => {
   // One job page and its text. Saving the same text again only marks it as read again.
   app.post(
     '/saved-pages',
     { schema: { body: SavePageRequestSchema, response: { 200: SavePageResponseSchema } } },
-    async (request) => {
-      const { url, title, company, location, text } = request.body;
-      const entry = {
-        url: addressOf(url),
-        title: title.trim(),
-        company: optional(company),
-        location: location?.trim() ?? '',
-        new_id: randomUUID(),
-      };
-      const body = checkJobText(text, 'The page has no text to save.');
-      const { rows } = await pool.query<{
-        job_id: string;
-        new_job: boolean;
-        had_text: boolean;
-        new_text: boolean;
-      }>(
-        `with input as (select * from jsonb_to_recordset($1::jsonb) as ${inputColumns}),
-         ${saveEntries},
-         snapshot as (
-           insert into job_snapshot (job_id, body, catalog_id, title, company, location, source_url)
-           select s.job_id, $2, 'desktop_save', i.title, i.company, i.location, i.url
-           from saved s join input i using (url)
-           on conflict (job_id, body_sha256) do update set last_captured_at = now()
-           returning (xmax = 0) as inserted
-         )
-         -- The texts the job had before this statement; the new one is not visible here.
-         select s.job_id, m.job_id is null as new_job, n.inserted as new_text,
-           exists (select 1 from job_snapshot o where o.job_id = s.job_id) as had_text
-         from saved s, matched m, snapshot n`,
-        [JSON.stringify(await withSameJobs(pool, [entry])), body],
-      );
-      const row = rows[0]!;
-      return {
-        jobId: row.job_id,
-        title: entry.title,
-        newJob: row.new_job,
-        text: !row.new_text ? 'same' : row.had_text ? 'new' : 'first',
-      } as const;
-    },
+    async (request) => saveJobPage(pool, request.body, 'desktop_save'),
   );
 
   // The job entries a results page showed: list information only, no job text. Entries for the

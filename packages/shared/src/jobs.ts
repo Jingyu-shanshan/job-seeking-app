@@ -23,7 +23,7 @@ export const JobSourceSchema = Type.Object({
 export type JobSource = Static<typeof JobSourceSchema>;
 
 /**
- * How a job came into the app: found by a discovery run, saved from a page in the desktop app
+ * How a job came into the app: found by a discovery run, saved from a page or job link,
  * (T21), read from a job-alert email (T20), or pasted. A job that came in several ways appears
  * once, as the first of these.
  */

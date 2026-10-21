@@ -119,7 +119,7 @@ export const JobDetailSchema = Type.Object({
   url: Type.Union([Type.String(), Type.Null()]),
   sources: Type.Array(JobSourceSchema),
   canImport: Type.Boolean(),
-  /** Whether the user saved the job from a page in the desktop app. */
+  /** Whether the user saved the page in the desktop app or imported its link. */
   saved: Type.Boolean(),
   /** The job-alert emails of sources in use that listed the job (T20). */
   alerts: Type.Array(AlertListingSchema),

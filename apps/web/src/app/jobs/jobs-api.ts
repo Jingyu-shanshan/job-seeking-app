@@ -18,6 +18,10 @@ export class JobsApi {
     return firstValueFrom(this.http.post<JobDetail>('/api/jobs', job));
   }
 
+  importLink(url: string): Promise<JobDetail> {
+    return firstValueFrom(this.http.post<JobDetail>('/api/jobs/import-link', { url }));
+  }
+
   /** `url` is the job page the text came from; needed when the job has no address. */
   pasteText(jobId: string, text: string, url?: string): Promise<JobDetail> {
     return firstValueFrom(

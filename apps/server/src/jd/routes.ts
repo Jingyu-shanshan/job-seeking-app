@@ -15,6 +15,7 @@ import {
 } from '@jsa/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Pool } from 'pg';
+import { jobLinkImportProblem } from '@jsa/shared/job-link-import';
 import Type from 'typebox';
 import { DiscoveryError, type JobText } from '../discovery/adapter.ts';
 import { allAdapters, type RateLimiter } from '../discovery/run.ts';
@@ -31,9 +32,11 @@ import { matchSnapshot } from '../matching/match.ts';
 import { matchOutdated } from '../rules/match.ts';
 import { quoteFinder } from '../rules/quote.ts';
 import { sourcesToRequest } from '../rules/sources.ts';
+import { jobLink } from '../rules/job-link.ts';
 import { catalog, findCatalogEntry } from '../sources/catalog.ts';
 import { checkJobText } from './job-text.ts';
 import { summariseSnapshot } from './summarise.ts';
+import { saveJobPage } from './saved.ts';
 
 export interface JdRoutesOptions {
   pool: Pool;
@@ -129,7 +132,7 @@ export function importSources(postings: PostingRow[]) {
 
 export async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetail | undefined> {
   const postings = await postingsOf(pool, jobId);
-  // The latest save from the desktop app, for a job no posting describes.
+  // The latest saved or imported page, for a job no posting describes.
   const saves = await pool.query<SavedRow>(
     `select title, company, location, url from saved_job where job_id = $1
      order by last_saved_at desc limit 1`,
@@ -366,6 +369,45 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
 ) => {
   const summarising = new Set<string>();
   const matching = new Set<string>();
+
+  app.post(
+    '/jobs/import-link',
+    {
+      schema: {
+        body: Type.Object({ url: Type.String({ pattern: '^https://\\S+$', maxLength: 2000 }) }),
+        response: { 200: JobDetailSchema },
+      },
+    },
+    async (request) => {
+      const link = jobLink(request.body.url);
+      if (!link)
+        throw httpError(
+          400,
+          jobLinkImportProblem(request.body.url) ??
+            'Use a Greenhouse or Ashby job link. For other sites, open the page in the desktop app and choose Save this job, or paste its text below.',
+        );
+      const entry = findCatalogEntry(link.catalogId)!;
+      if (entry.rateLimit) await limiter.wait(entry.id, entry.rateLimit);
+      let job: JobText;
+      try {
+        job = await allAdapters[link.catalogId]!.readJob(link.board, link.id, (input, init) =>
+          fetch(input, { ...init, redirect: 'error' }),
+        );
+      } catch (error) {
+        if (error instanceof DiscoveryError) throw httpError(502, error.message);
+        throw error;
+      }
+      const saved = await saveJobPage(
+        pool,
+        {
+          ...job,
+          company: job.company ?? undefined,
+        },
+        link.catalogId,
+      );
+      return detailAfterChange(pool, saved.jobId);
+    },
+  );
 
   app.get(
     '/jobs/:id',

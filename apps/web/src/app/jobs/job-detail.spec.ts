@@ -344,7 +344,7 @@ describe('JobDetailPage', () => {
         earlierSnapshots: 0,
       }),
     );
-    expect(text()).toContain('Listed by acme. You saved this job in the desktop app.');
+    expect(text()).toContain('Listed by acme. You saved this job.');
     expect(text(section('Job text')!)).toContain(
       'Saved from its page in the desktop app 2 Oct 2026.',
     );
@@ -352,7 +352,7 @@ describe('JobDetailPage', () => {
 
   it('takes pasted text for a job saved from a results page, then offers a summary', async () => {
     await load(detail({ sources: [], canImport: false, saved: true }));
-    expect(text()).toContain('You saved this job in the desktop app.');
+    expect(text()).toContain('You saved this job.');
     expect(text(section('Job text')!)).toContain(
       'The app has only what a results page showed about this job',
     );

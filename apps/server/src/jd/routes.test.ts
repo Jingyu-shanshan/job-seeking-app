@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import type { JobDetail, JobsResponse, ModelUsage, Source } from '@jsa/shared';
+import { jobLinkImportProblem } from '@jsa/shared/job-link-import';
 import type { InjectOptions } from 'fastify';
 import { Pool } from 'pg';
 import { buildApp } from '../app.ts';
@@ -121,6 +122,7 @@ describe('JD import and summary', needsDatabase, () => {
     for (const [method, url] of [
       ['GET', `/api/jobs/${uuid}`],
       ['POST', '/api/jobs'],
+      ['POST', '/api/jobs/import-link'],
       ['POST', `/api/jobs/${uuid}/snapshots`],
       ['POST', `/api/snapshots/${uuid}/summary`],
       ['POST', `/api/snapshots/${uuid}/requirements`],
@@ -442,5 +444,73 @@ describe('JD import and summary', needsDatabase, () => {
       rows.map((r) => r.body),
       ['Finnish', 'Kubernetes'],
     );
+  });
+  test('imports a single board link with its provenance, deduplicates it and reuses summary', async () => {
+    boards['link-import'] = [
+      {
+        id: 701,
+        title: 'Linked Billing Engineer',
+        company_name: 'Link Import Co',
+        content: `<p>${pastedText}</p>`,
+      },
+    ];
+    const callsBefore = deepseek.requests.length;
+    const sourcesBefore = (await pool.query('select count(*)::int as n from source')).rows[0].n;
+    const importLink = () =>
+      call({
+        method: 'POST',
+        url: '/api/jobs/import-link',
+        payload: { url: 'https://job-boards.greenhouse.io/link-import/jobs/701?utm_source=alert' },
+      });
+    const imported = await importLink();
+    assert.equal(imported.statusCode, 200, imported.body);
+    const job = imported.json<JobDetail>();
+    assert.equal(job.snapshot?.catalogId, 'greenhouse_board');
+    assert.match(job.snapshot!.text, /keep our invoices correct/);
+    assert.equal(job.snapshot?.summary, null);
+    assert.equal(deepseek.requests.length, callsBefore);
+    assert.equal(
+      (await pool.query('select count(*)::int as n from source')).rows[0].n,
+      sourcesBefore,
+    );
+    const again = (await importLink()).json<JobDetail>();
+    assert.equal(again.id, job.id);
+    assert.equal(again.snapshot?.id, job.snapshot?.id);
+    answer = async () => chatCompletion(JSON.stringify(goodAnswer));
+    const analysed = await summarise(job.snapshot!.id);
+    assert.equal(analysed.statusCode, 200, analysed.body);
+    assert.ok(analysed.json<JobDetail>().snapshot?.summary);
+    assert.equal(deepseek.requests.length, callsBefore + 1);
+  });
+
+  test('rejects unsupported links without requesting them or calling the model', async () => {
+    const requestsBefore = greenhouse.requested.length;
+    const callsBefore = deepseek.requests.length;
+    for (const url of [
+      'https://www.linkedin.com/jobs/view/123',
+      'https://duunitori.fi/tyopaikat/tyo/example',
+      'https://www.jobly.fi/tyopaikka/example',
+      'https://127.0.0.1/private',
+      'https://boards.greenhouse.io.evil.test/acme/jobs/1',
+    ]) {
+      const response = await call({
+        method: 'POST',
+        url: '/api/jobs/import-link',
+        payload: { url },
+      });
+      assert.equal(response.statusCode, 400, response.body);
+      const reason = jobLinkImportProblem(url);
+      if (reason) assert.equal(response.json().message, reason);
+    }
+    assert.equal(greenhouse.requested.length, requestsBefore);
+    assert.equal(deepseek.requests.length, callsBefore);
+    boards['link-unavailable'] = 503;
+    const failed = await call({
+      method: 'POST',
+      url: '/api/jobs/import-link',
+      payload: { url: 'https://boards.greenhouse.io/link-unavailable/jobs/702' },
+    });
+    assert.equal(failed.statusCode, 502, failed.body);
+    assert.equal(deepseek.requests.length, callsBefore);
   });
 });

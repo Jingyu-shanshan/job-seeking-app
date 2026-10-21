@@ -12,6 +12,10 @@
       "types": "./dist/fact-import.d.ts",
       "default": "./dist/fact-import.js"
     },
+    "./job-link-import": {
+      "types": "./dist/job-link-import.d.ts",
+      "default": "./dist/job-link-import.js"
+    },
     "./limits": {
       "types": "./dist/limits.d.ts",
       "default": "./dist/limits.js"
