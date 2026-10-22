@@ -1,8 +1,8 @@
 import Type, { type Static } from 'typebox';
+import { SearchScopeSchema } from './sources.ts';
 
 /**
- * How much a criterion counts: `hard` decides whether a job is eligible, `preference` is only
- * shown, `off` is not checked.
+ * How much a criterion counts: `hard` decides whether a job is eligible, `preference` helps rank jobs without changing eligibility, `off` is not checked.
  */
 export const CriterionStrengthSchema = Type.Union([
   Type.Literal('hard'),
@@ -43,12 +43,7 @@ export const CriteriaSchema = Type.Object({
   location: Type.Object({
     strength: CriterionStrengthSchema,
     ifUnknown: IfUnknownSchema,
-    area: Type.Union([
-      Type.Literal('helsinki'),
-      Type.Literal('finland'),
-      Type.Literal('worldwide'),
-    ]),
-    includeRemote: Type.Boolean(),
+    ...SearchScopeSchema.properties,
   }),
   /** Words the title should have, any of them. The title is always known. */
   title: Type.Object({ strength: CriterionStrengthSchema, words: Words }),

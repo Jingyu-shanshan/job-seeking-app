@@ -61,6 +61,8 @@ export const JobSchema = Type.Object({
   /** The names of the job-alert sources in use whose emails listed the job (T20). */
   alerts: Type.Array(Type.String()),
   origin: JobOriginSchema,
+  /** Also true for a board job the user saved, pasted or imported from an enabled alert source. */
+  imported: Type.Optional(Type.Boolean()),
   /**
    * True when the app has only the job's entry on a results page or in an alert email, no job
    * text, and no source it can read the text from. Such a job is not summarised or matched until

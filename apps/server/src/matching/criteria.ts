@@ -10,6 +10,7 @@ import { languageOf } from '../rules/criteria.ts';
 interface CriteriaRow {
   area: Criteria['location']['area'];
   include_remote: boolean;
+  location_places: string[];
   location_strength: Criteria['location']['strength'];
   location_if_unknown: Criteria['location']['ifUnknown'];
   title_strength: Criteria['title']['strength'];
@@ -37,6 +38,7 @@ export async function loadCriteria(pool: Pool | PoolClient): Promise<Criteria> {
       ifUnknown: row.location_if_unknown,
       area: row.area,
       includeRemote: row.include_remote,
+      ...(row.area === 'custom' ? { places: row.location_places } : {}),
     },
     title: { strength: row.title_strength, words: row.title_words },
     avoidInTitle: { strength: row.avoid_strength, words: row.avoid_words },
@@ -72,6 +74,12 @@ export function tidyCriteria(criteria: Criteria): Criteria {
   }
   const tidy: Criteria = {
     ...criteria,
+    location: {
+      ...criteria.location,
+      ...(criteria.location.area === 'custom'
+        ? { places: distinct(criteria.location.places ?? []) }
+        : {}),
+    },
     title: { ...criteria.title, words: distinct(criteria.title.words) },
     avoidInTitle: { ...criteria.avoidInTitle, words: distinct(criteria.avoidInTitle.words) },
     languages: {
@@ -83,6 +91,9 @@ export function tidyCriteria(criteria: Criteria): Criteria {
       types: [...new Set(criteria.employmentType.types)],
     },
   };
+  if (tidy.location.area === 'custom' && !tidy.location.places?.length) {
+    throw httpError(400, 'Add at least one location, or choose Anywhere.');
+  }
   const empty: [boolean, string][] = [
     [tidy.title.strength !== 'off' && tidy.title.words.length === 0, 'words for the job title'],
     [
@@ -124,7 +135,7 @@ export const criteriaRoutes: FastifyPluginAsyncTypebox<CriteriaRoutesOptions> = 
            title_strength = $5, title_words = $6, avoid_strength = $7, avoid_words = $8,
            language_strength = $9, language_if_unknown = $10, languages = $11,
            employment_strength = $12, employment_if_unknown = $13, employment_types = $14,
-           must_have_strength = $15, must_have_if_unknown = $16, updated_at = now()`,
+           must_have_strength = $15, must_have_if_unknown = $16, location_places = $17, updated_at = now()`,
         [
           c.location.area,
           c.location.includeRemote,
@@ -142,6 +153,7 @@ export const criteriaRoutes: FastifyPluginAsyncTypebox<CriteriaRoutesOptions> = 
           c.employmentType.types,
           c.mustHaves.strength,
           c.mustHaves.ifUnknown,
+          c.location.area === 'custom' ? c.location.places : [],
         ],
       );
       return loadCriteria(pool);

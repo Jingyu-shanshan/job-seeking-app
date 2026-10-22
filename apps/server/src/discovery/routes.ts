@@ -6,6 +6,7 @@ import { checkJobs } from '../matching/check.ts';
 import { loadCriteria } from '../matching/criteria.ts';
 import { findCatalogEntry } from '../sources/catalog.ts';
 import { type RateLimiter, runDiscovery } from './run.ts';
+import { compareJobs } from '../rules/job-ranking.ts';
 
 // Discovery (T13): a run reads the user's sources, and the job list shows what they list now.
 // Like every /api route, these need a session and, for writes, a trusted Origin (app.ts).
@@ -53,7 +54,8 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
 
   app.get('/jobs', { schema: { response: { 200: JobsResponseSchema } } }, async () => {
     const criteria = await loadCriteria(pool);
-    const scope = { area: criteria.location.area, includeRemote: criteria.location.includeRemote };
+    const { area, includeRemote, places } = criteria.location;
+    const scope = { area, includeRemote, ...(places ? { places } : {}) };
 
     // Open postings of sources in use. Postings of a disabled source come back when it is
     // enabled again; a source whose entry left the catalog is never shown.
@@ -68,7 +70,11 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
     // One entry per job, however many sources list it, described by the first posting found. The
     // verdict and criteria are filled in at the end.
     const jobs = new Map<string, Job>();
-    const unchecked = (): Pick<Job, 'verdict' | 'criteria' | 'alerts' | 'application'> => ({
+    const unchecked = (): Pick<
+      Job,
+      'verdict' | 'criteria' | 'alerts' | 'application' | 'imported'
+    > => ({
+      imported: false,
       verdict: 'eligible',
       criteria: [],
       alerts: [],
@@ -115,7 +121,11 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
        order by s.job_id, s.last_saved_at desc`,
     );
     for (const row of saved.rows) {
-      if (jobs.has(row.job_id)) continue;
+      const existing = jobs.get(row.job_id);
+      if (existing) {
+        existing.imported = true;
+        continue;
+      }
       jobs.set(row.job_id, {
         id: row.job_id,
         title: row.title,
@@ -128,6 +138,7 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
         origin: 'saved',
         needsText: !row.has_text,
         ...unchecked(),
+        imported: true,
       });
     }
 
@@ -152,7 +163,11 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
        order by a.job_id, a.last_seen_at desc`,
     );
     for (const row of alerted.rows) {
-      if (jobs.has(row.job_id)) continue;
+      const existing = jobs.get(row.job_id);
+      if (existing) {
+        existing.imported = true;
+        continue;
+      }
       jobs.set(row.job_id, {
         id: row.job_id,
         title: row.title,
@@ -165,6 +180,7 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
         origin: 'alert',
         needsText: !row.has_text,
         ...unchecked(),
+        imported: true,
       });
     }
 
@@ -182,7 +198,11 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
        order by job_id, last_captured_at desc, captured_at desc`,
     );
     for (const row of pasted.rows) {
-      if (jobs.has(row.job_id)) continue;
+      const existing = jobs.get(row.job_id);
+      if (existing) {
+        existing.imported = true;
+        continue;
+      }
       jobs.set(row.job_id, {
         id: row.job_id,
         title: row.title,
@@ -195,6 +215,7 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
         origin: 'pasted',
         needsText: false,
         ...unchecked(),
+        imported: true,
       });
     }
 
@@ -219,6 +240,11 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
       if (job) job.application = row.status;
     }
 
+    const removed = await pool.query<{ id: string }>(
+      'select id from job where deleted_at is not null',
+    );
+    for (const row of removed.rows) jobs.delete(row.id);
+
     const checks = await checkJobs(pool, [...jobs.values()], criteria);
     for (const job of jobs.values()) {
       const { verdict, criteria: results } = checks.get(job.id)!;
@@ -226,11 +252,7 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
       job.criteria = results;
     }
 
-    // Newest first; jobs without a publication date last.
-    const sorted = [...jobs.values()].sort(
-      (a, b) =>
-        (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '') || a.title.localeCompare(b.title),
-    );
+    const sorted = [...jobs.values()].sort(compareJobs);
     return { scope, jobs: sorted };
   });
 };

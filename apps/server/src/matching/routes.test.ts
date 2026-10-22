@@ -273,6 +273,52 @@ describe('criteria and evidence matching', needsDatabase, () => {
     assert.deepEqual((await call({ method: 'GET', url: '/api/criteria' })).json(), tidy);
   });
 
+  test('saves custom locations, ranks matching roles first and marks imported jobs', async () => {
+    const criteria: Criteria = {
+      ...defaults,
+      location: {
+        ...defaults.location,
+        area: 'custom',
+        places: [' Berlin ', 'Canada', 'berlin'],
+        includeRemote: true,
+      },
+      title: { strength: 'preference', words: ['Platform Engineer', 'Backend Engineer'] },
+    };
+    const response = await putCriteria(criteria);
+    assert.equal(response.statusCode, 200, response.body);
+    assert.deepEqual(response.json<Criteria>().location.places, ['Berlin', 'Canada']);
+    const relevant = await paste('Backend Engineer', 'Berlin, Germany');
+    const other = await paste('Sales Manager', 'Berlin, Germany');
+    const remote = await paste('Platform Engineer', 'Remote - Canada');
+    const outside = await paste('Platform Engineer', 'Helsinki, Finland');
+    const list = (await call({ method: 'GET', url: '/api/jobs' })).json<JobsResponse>();
+    assert.equal(list.scope.area, 'custom');
+    assert.deepEqual(list.scope.places, ['Berlin', 'Canada']);
+    const ids = new Set([relevant.id, other.id, remote.id, outside.id]);
+    const jobs = list.jobs.filter((job) => ids.has(job.id));
+    assert(
+      jobs.indexOf(jobs.find((job) => job.id === relevant.id)!) <
+        jobs.indexOf(jobs.find((job) => job.id === other.id)!),
+    );
+    assert.equal(jobs.find((job) => job.id === remote.id)!.verdict, 'eligible');
+    assert.equal(jobs.find((job) => job.id === outside.id)!.verdict, 'ineligible');
+    assert(jobs.every((job) => job.imported));
+    const empty = await putCriteria({
+      ...criteria,
+      location: { ...criteria.location, places: ['  '] },
+    });
+    assert.equal(empty.statusCode, 400);
+    const oversized = await putCriteria({
+      ...criteria,
+      location: { ...criteria.location, places: ['a'.repeat(101)] },
+    });
+    assert.equal(oversized.statusCode, 400);
+    assert.deepEqual(
+      (await call({ method: 'GET', url: '/api/criteria' })).json<Criteria>().location.places,
+      ['Berlin', 'Canada'],
+    );
+  });
+
   test('sorts jobs by the hard criteria, with the reason for each, in the list and the job', async () => {
     const backend = await paste('Backend Engineer');
     const senior = await paste('Senior Backend Engineer');

@@ -1,17 +1,28 @@
 import { HttpClient, httpResource } from '@angular/common/http';
-import { Component, computed, inject, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  Injector,
+  afterNextRender,
+  computed,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { FormField, FormRoot, form, min, validate } from '@angular/forms/signals';
 import { RouterLink } from '@angular/router';
-import type { DiscoveryRun, JobsResponse, SearchScope } from '@jsa/shared';
+import type { DiscoveryRun, Job, JobsResponse, SearchScope } from '@jsa/shared';
 import { firstValueFrom } from 'rxjs';
 import { errorMessage } from '../sources/sources-api';
 import { JobList } from './job-list';
+import { JobsApi } from './jobs-api';
 import { RunSummary } from './run-summary';
 
 const areaLabels: Record<SearchScope['area'], string> = {
   helsinki: 'Helsinki and Espoo',
   finland: 'Finland',
   worldwide: 'anywhere',
+  custom: 'selected locations',
 };
 
 /** The jobs the user's sources list now, grouped by the user's criteria, and a way to look again. */
@@ -20,11 +31,91 @@ const areaLabels: Record<SearchScope['area'], string> = {
   imports: [FormField, FormRoot, JobList, RouterLink, RunSummary],
   template: `
     <h1>Jobs</h1>
-    <p>Jobs from your sources, grouped by your hard <a routerLink="/criteria">criteria</a>.</p>
-    <div class="actions">
-      <a class="button primary" routerLink="/jobs/paste">Paste a job</a>
-      <a class="button" routerLink="/jobs/alerts">Import job-alert emails</a>
-    </div>
+    <p>
+      Matching roles first, grouped by your hard <a routerLink="/criteria">criteria</a>. Job title
+      matches lead each group, followed by your other preferences.
+    </p>
+    @if (data.hasValue() && data.value().jobs.length) {
+      <section class="filters" aria-label="Job filters">
+        <label>
+          Status
+          <select #statusFilter [value]="status()" (change)="status.set(statusFilter.value)">
+            <option value="all">All statuses</option>
+            <option value="eligible">Eligible</option>
+            <option value="to_confirm">To confirm</option>
+            <option value="ineligible">Ruled out</option>
+            <option value="submitted">Applied</option>
+            <option value="to_verify">Application result unknown</option>
+            <option value="not_applied">Not applied</option>
+            <option value="needs_text">Needs job text</option>
+          </select>
+        </label>
+        <label>
+          Added from
+          <input #from type="date" [value]="addedFrom()" (change)="addedFrom.set(from.value)" />
+        </label>
+        <label>
+          Added through
+          <input #until type="date" [value]="addedUntil()" (change)="addedUntil.set(until.value)" />
+        </label>
+        <label>
+          Sort by
+          <select #sortBy [value]="sort()" (change)="sort.set(sortBy.value)">
+            <option value="relevance">Best matches</option>
+            <option value="newest">Added: newest first</option>
+            <option value="oldest">Added: oldest first</option>
+            <option value="posted">Posted: newest first</option>
+            <option value="title">Job title: A to Z</option>
+            <option value="company">Company: A to Z</option>
+            <option value="status">Status</option>
+          </select>
+        </label>
+        <div class="filter-result">
+          <span class="meta" aria-live="polite">
+            {{ visibleJobs().length }} of {{ data.value().jobs.length }} jobs
+          </span>
+          @if (status() !== 'all' || addedFrom() || addedUntil() || sort() !== 'relevance') {
+            <button type="button" (click)="resetFilters()">Reset filters</button>
+          }
+        </div>
+      </section>
+      @if (addedFrom() && addedUntil() && addedFrom() > addedUntil()) {
+        <p class="error" role="alert">Choose an end date on or after the start date.</p>
+      } @else if (!visibleJobs().length) {
+        <p role="status">No jobs match these filters. Change the status or date range.</p>
+      }
+    }
+    <p role="status" tabindex="-1" #deleteNotice>{{ deletionNotice() }}</p>
+    <section aria-labelledby="imported-heading">
+      <h2 id="imported-heading">
+        Your imported jobs{{ data.hasValue() ? ' (' + imported().length + ')' : '' }}
+      </h2>
+      <p>
+        Jobs you pasted, added by link, saved, or imported from job-alert emails stay together here.
+      </p>
+      <div class="actions">
+        <a class="button primary" routerLink="/jobs/paste">Add text or link</a>
+        <a class="button" routerLink="/jobs/alerts">Import job-alert emails</a>
+      </div>
+      @if (data.hasValue()) {
+        @if (imported().length) {
+          <app-job-list
+            [jobs]="imported()"
+            [busy]="deleting()"
+            [failure]="deleteFailure()"
+            (deleteRequested)="removeJob($event)"
+          />
+        } @else {
+          <p class="hint">
+            {{
+              hasFilters()
+                ? 'No imported jobs match these filters.'
+                : 'No imported jobs yet. Add a job’s text or link, or import an alert email.'
+            }}
+          </p>
+        }
+      }
+    </section>
     <details>
       <summary>Save a job in the desktop app</summary>
       <p>
@@ -84,11 +175,20 @@ const areaLabels: Record<SearchScope['area'], string> = {
           app, or enable a supported board on <a routerLink="/sources">Sources</a> and choose Find
           jobs.
         </p>
-      } @else {
+      } @else if (
+        groups().eligible.length + groups().toConfirm.length + groups().ineligible.length
+      ) {
         <section aria-labelledby="eligible-heading">
           <h2 id="eligible-heading">Eligible ({{ groups().eligible.length }})</h2>
           @if (groups().eligible.length) {
-            <app-job-list [jobs]="groups().eligible" />
+            <app-job-list
+              [jobs]="groups().eligible"
+              [busy]="deleting()"
+              [failure]="deleteFailure()"
+              (deleteRequested)="removeJob($event)"
+            />
+          } @else if (hasFilters()) {
+            <p class="hint">No eligible jobs match these filters.</p>
           } @else {
             <p class="warning">
               No jobs currently meet all your hard criteria. Read To confirm or expand Ruled out to
@@ -104,7 +204,12 @@ const areaLabels: Record<SearchScope['area'], string> = {
               The job does not say enough for a hard criterion, so it is not ruled out. Summarise
               it, match it with your facts, or check the job page.
             </p>
-            <app-job-list [jobs]="groups().toConfirm" />
+            <app-job-list
+              [jobs]="groups().toConfirm"
+              [busy]="deleting()"
+              [failure]="deleteFailure()"
+              (deleteRequested)="removeJob($event)"
+            />
           </section>
         }
         @if (groups().ineligible.length) {
@@ -113,7 +218,12 @@ const areaLabels: Record<SearchScope['area'], string> = {
               <h2>Ruled out ({{ groups().ineligible.length }})</h2>
             </summary>
             <p>Each says which hard criterion ruled it out.</p>
-            <app-job-list [jobs]="groups().ineligible" />
+            <app-job-list
+              [jobs]="groups().ineligible"
+              [busy]="deleting()"
+              [failure]="deleteFailure()"
+              (deleteRequested)="removeJob($event)"
+            />
           </details>
         }
       }
@@ -136,11 +246,60 @@ const areaLabels: Record<SearchScope['area'], string> = {
     summary h2 {
       display: inline;
     }
+    .filters {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px 16px;
+      padding: 20px 0;
+      border-block: 1px solid var(--line);
+      margin: 24px 0;
+    }
+    .filters label {
+      display: grid;
+      align-content: start;
+      gap: 6px;
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .filters select {
+      width: 100%;
+    }
+    .filter-result {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    @media (max-width: 1100px) {
+      .filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 480px) {
+      .filters {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
   `,
 })
 export class Jobs {
   private readonly http = inject(HttpClient);
+  private readonly api = inject(JobsApi);
+  private readonly injector = inject(Injector);
+  private readonly deleteNotice = viewChild.required<ElementRef<HTMLElement>>('deleteNotice');
   protected readonly failure = signal('');
+  protected readonly status = signal('all');
+  protected readonly sort = signal('relevance');
+  protected readonly addedFrom = signal('');
+  protected readonly addedUntil = signal('');
+  protected readonly deletionNotice = signal('');
+  protected readonly deleting = signal(false);
+  protected readonly deleteFailure = signal<{ id: string; message: string } | null>(null);
+  protected readonly hasFilters = computed(
+    () => this.status() !== 'all' || !!this.addedFrom() || !!this.addedUntil(),
+  );
 
   protected readonly data = httpResource<JobsResponse>(() => '/api/jobs');
   protected readonly loadError = computed(() => errorMessage(this.data.error()));
@@ -154,11 +313,89 @@ export class Jobs {
     if (!scope) return '';
     if (scope.area === 'worldwide') return 'anywhere, remote jobs included';
     const remote = scope.includeRemote ? 'remote jobs included' : 'remote jobs not included';
-    return `${areaLabels[scope.area]}, ${remote}`;
+    return `${scope.area === 'custom' ? scope.places?.join(', ') || 'no locations selected' : areaLabels[scope.area]}, ${remote}`;
   });
 
+  protected readonly visibleJobs = computed(() => {
+    const status = this.status();
+    const from = this.addedFrom() ? new Date(`${this.addedFrom()}T00:00:00`).getTime() : -Infinity;
+    const until = this.addedUntil()
+      ? new Date(`${this.addedUntil()}T00:00:00`).getTime()
+      : Infinity;
+    const jobs = (this.data.value()?.jobs ?? []).filter((job) => {
+      const added = new Date(job.firstSeenAt);
+      added.setHours(0, 0, 0, 0);
+      return (
+        added.getTime() >= from &&
+        added.getTime() <= until &&
+        (status === 'all' ||
+          job.verdict === status ||
+          job.application === status ||
+          (status === 'not_applied' && job.application === null) ||
+          (status === 'needs_text' && job.needsText))
+      );
+    });
+    switch (this.sort()) {
+      case 'newest':
+        return jobs.sort((a, b) => Date.parse(b.firstSeenAt) - Date.parse(a.firstSeenAt));
+      case 'oldest':
+        return jobs.sort((a, b) => Date.parse(a.firstSeenAt) - Date.parse(b.firstSeenAt));
+      case 'posted':
+        return jobs.sort(
+          (a, b) =>
+            (b.publishedAt ? Date.parse(b.publishedAt) : -Infinity) -
+            (a.publishedAt ? Date.parse(a.publishedAt) : -Infinity),
+        );
+      case 'title':
+        return jobs.sort((a, b) => a.title.localeCompare(b.title));
+      case 'company':
+        return jobs.sort((a, b) =>
+          (a.company ?? a.sources[0]?.param ?? '').localeCompare(
+            b.company ?? b.sources[0]?.param ?? '',
+          ),
+        );
+      case 'status':
+        return jobs.sort((a, b) =>
+          (a.application ?? a.verdict).localeCompare(b.application ?? b.verdict),
+        );
+      default:
+        return jobs;
+    }
+  });
+
+  protected readonly imported = computed(() =>
+    this.visibleJobs().filter((job) => job.imported || job.origin !== 'discovered'),
+  );
+
+  protected resetFilters() {
+    this.status.set('all');
+    this.addedFrom.set('');
+    this.addedUntil.set('');
+    this.sort.set('relevance');
+  }
+
+  protected async removeJob(job: Job) {
+    if (this.deleting()) return;
+    this.deleting.set(true);
+    this.deleteFailure.set(null);
+    try {
+      await this.api.remove(job.id);
+      this.data.update(
+        (data) => data && { ...data, jobs: data.jobs.filter((j) => j.id !== job.id) },
+      );
+      this.deletionNotice.set(
+        `${job.title} deleted from the job list. Saved text, drafts and application history are kept.`,
+      );
+      afterNextRender(() => this.deleteNotice().nativeElement.focus(), { injector: this.injector });
+    } catch (error) {
+      this.deleteFailure.set({ id: job.id, message: errorMessage(error) });
+    } finally {
+      this.deleting.set(false);
+    }
+  }
+
   protected readonly groups = computed(() => {
-    const jobs = this.data.value()?.jobs ?? [];
+    const jobs = this.visibleJobs().filter((job) => !job.imported && job.origin === 'discovered');
     return {
       eligible: jobs.filter((job) => job.verdict === 'eligible'),
       toConfirm: jobs.filter((job) => job.verdict === 'to_confirm'),
@@ -167,11 +404,11 @@ export class Jobs {
   });
 
   protected readonly counts = computed(() => {
-    const { eligible, toConfirm, ineligible } = this.groups();
+    const jobs = this.data.value()?.jobs ?? [];
     return {
-      eligible: eligible.length,
-      toConfirm: toConfirm.length,
-      ineligible: ineligible.length,
+      eligible: jobs.filter((job) => job.verdict === 'eligible').length,
+      toConfirm: jobs.filter((job) => job.verdict === 'to_confirm').length,
+      ineligible: jobs.filter((job) => job.verdict === 'ineligible').length,
     };
   });
 

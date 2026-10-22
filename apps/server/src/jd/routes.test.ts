@@ -121,6 +121,7 @@ describe('JD import and summary', needsDatabase, () => {
   test('refuses every request without a session, and writes from another site', async () => {
     for (const [method, url] of [
       ['GET', `/api/jobs/${uuid}`],
+      ['DELETE', `/api/jobs/${uuid}`],
       ['POST', '/api/jobs'],
       ['POST', '/api/jobs/import-link'],
       ['POST', `/api/jobs/${uuid}/snapshots`],
@@ -138,6 +139,29 @@ describe('JD import and summary', needsDatabase, () => {
     }
     assert.deepEqual(deepseek.requests, []);
     assert.deepEqual(greenhouse.requested, []);
+  });
+
+  test('deletes only the selected duplicate from the list and keeps its text and application history', async () => {
+    const first = await paste({ title: 'Duplicate to remove' });
+    const second = await paste({ title: 'Duplicate to keep' });
+    await pool.query(
+      `insert into application (job_id, job_snapshot_id, status, submitted_at, method)
+       values ($1, $2, 'submitted', now(), 'manual')`,
+      [first.id, first.snapshot!.id],
+    );
+    const remove = () => call({ method: 'DELETE', url: `/api/jobs/${first.id}` });
+    assert.equal((await remove()).statusCode, 204);
+    assert.equal((await remove()).statusCode, 204);
+    const list = (await call({ method: 'GET', url: '/api/jobs' })).json<JobsResponse>().jobs;
+    assert(!list.some((job) => job.id === first.id));
+    assert(list.some((job) => job.id === second.id));
+    assert.equal((await detail(first.id)).snapshot!.id, first.snapshot!.id);
+    assert.equal(
+      (await pool.query('select id from application where job_id = $1', [first.id])).rowCount,
+      1,
+    );
+    assert.equal((await call({ method: 'DELETE', url: `/api/jobs/${uuid}` })).statusCode, 404);
+    assert.equal((await call({ method: 'DELETE', url: '/api/jobs/invalid' })).statusCode, 400);
   });
 
   test('saves a pasted job as its first snapshot and lists it', async () => {

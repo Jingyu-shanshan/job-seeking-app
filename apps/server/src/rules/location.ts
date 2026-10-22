@@ -95,7 +95,7 @@ function placeOf(text: string): Place {
   return namesElsewhere(text) ? 'elsewhere' : 'unclear';
 }
 
-const areaNames: Record<Exclude<SearchScope['area'], 'worldwide'>, string> = {
+const areaNames: Record<'helsinki' | 'finland', string> = {
   helsinki: 'Helsinki or Espoo',
   finland: 'Finland',
 };
@@ -107,8 +107,10 @@ const areaNames: Record<Exclude<SearchScope['area'], 'worldwide'>, string> = {
  */
 export function classifyLocation(
   location: string,
-  { area, includeRemote }: SearchScope,
+  scope: SearchScope,
 ): { verdict: LocationVerdict; reason: string } {
+  const { area, includeRemote } = scope;
+  if (area === 'custom') return classifyCustomLocation(location, scope);
   if (area === 'worldwide') return { verdict: 'in_scope', reason: '' };
   const places = location
     .split(';')
@@ -135,4 +137,116 @@ export function classifyLocation(
   if (isRemote && !includeRemote) reason += '; remote jobs are not in the scope';
   else if (places.includes('remote_from_elsewhere')) reason += '; remote only from elsewhere';
   return { verdict: 'out_of_scope', reason: `${reason}.` };
+}
+
+const normalise = (text: string) =>
+  text.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().trim().replace(/\s+/g, ' ');
+const countryNames = new Map<string, string>();
+{
+  const names = new Intl.DisplayNames(['en'], { type: 'region', fallback: 'none' });
+  for (const a of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+    for (const b of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+      const code = a + b;
+      const name = names.of(code);
+      if (name && !['EU', 'EZ', 'UN', 'QO', 'XA', 'XB', 'ZZ'].includes(code)) {
+        countryNames.set(normalise(name), new Intl.Locale(`und-${code}`).region!);
+      }
+    }
+  }
+  for (const [code, aliases] of Object.entries({
+    US: ['USA', 'US', 'United States of America'],
+    GB: ['UK', 'U.K.', 'Great Britain', 'England', 'Scotland', 'Wales', 'Northern Ireland'],
+    FI: ['Suomi'],
+    DE: ['Deutschland'],
+    NL: ['Holland', 'The Netherlands'],
+    CZ: ['Czech Republic'],
+    TR: ['Turkey'],
+    AE: ['UAE'],
+  }))
+    for (const alias of aliases) countryNames.set(normalise(alias), code);
+}
+
+const eu = 'AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE'.split(
+  ' ',
+);
+const europe = [...eu, ...'AL AD BY BA GB IS LI MD MC ME MK NO RS RU SM CH UA VA'.split(' ')];
+const regionCountries: Record<string, readonly string[]> = {
+  eu,
+  'european union': eu,
+  eea: [...eu, 'IS', 'LI', 'NO'],
+  'european economic area': [...eu, 'IS', 'LI', 'NO'],
+  europe,
+  nordics: ['DK', 'FI', 'IS', 'NO', 'SE'],
+  nordic: ['DK', 'FI', 'IS', 'NO', 'SE'],
+};
+
+const placePattern = (place: string) => {
+  const escaped = place.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(
+    `(?<![\\p{L}\\p{N}])${escaped.replace(/\s+/g, '\\s+')}(?![\\p{L}\\p{N}])`,
+    'iu',
+  );
+};
+const containsPlace = (text: string, place: string) => placePattern(place).test(text);
+const countryPattern = new RegExp(
+  [...countryNames]
+    .sort(([a], [b]) => b.length - a.length)
+    .map(([name]) => placePattern(name).source)
+    .join('|'),
+  'giu',
+);
+const countriesIn = (text: string) =>
+  [...text.matchAll(countryPattern)].map(([name]) => countryNames.get(name.replace(/\s+/g, ' '))!);
+
+/** Custom locations match stated city/region/country names, without guessing a city's country. */
+function classifyCustomLocation(
+  location: string,
+  scope: SearchScope,
+): { verdict: LocationVerdict; reason: string } {
+  const selected = (scope.places ?? []).map(normalise);
+  if (!selected.length) return { verdict: 'to_confirm', reason: 'No locations selected.' };
+  const parts = location.split(';').map(normalise).filter(Boolean);
+  if (!parts.length) return { verdict: 'to_confirm', reason: 'No location given.' };
+  const wantedCountries = selected.flatMap(
+    (place) => countryNames.get(place) ?? regionCountries[place] ?? [],
+  );
+  let unclear = false;
+  for (const part of parts) {
+    const isRemote = remote.test(part);
+    if (isRemote && !scope.includeRemote) continue;
+    const countries = countriesIn(part);
+    if (isRemote && anyWord('except', 'excluding', 'not available', 'not including').test(part)) {
+      unclear = true;
+      continue;
+    }
+    const direct = selected.some(
+      (place) =>
+        !countryNames.has(place) &&
+        containsPlace(part, place) &&
+        (!isRemote || !countries.length || !regionCountries[place]),
+    );
+    const countryMatch = countries.some((code) => wantedCountries.includes(code));
+    const remoteWorldwide =
+      isRemote && !countries.length && anyWord('worldwide', 'global(?:ly)?', 'anywhere').test(part);
+    const remoteRegion =
+      isRemote &&
+      !countries.length &&
+      Object.entries(regionCountries).some(
+        ([name, codes]) =>
+          containsPlace(part, name) && wantedCountries.some((code) => codes.includes(code)),
+      );
+    if (direct || countryMatch || remoteWorldwide || remoteRegion)
+      return { verdict: 'in_scope', reason: '' };
+    // shortcut: city-to-country inference needs a gazetteer; until then broad remote regions stay unknown for city-only selections.
+    if (!countries.length || (isRemote && !wantedCountries.length)) unclear = true;
+  }
+  return unclear
+    ? {
+        verdict: 'to_confirm',
+        reason: 'The location or remote eligibility needs checking against your selected places.',
+      }
+    : {
+        verdict: 'out_of_scope',
+        reason: `Not in your selected locations${scope.includeRemote ? '' : '; remote jobs are not included'}.`,
+      };
 }
