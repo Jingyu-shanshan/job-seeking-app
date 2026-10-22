@@ -437,6 +437,14 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
     },
   );
 
+  app.delete('/jobs/:id', { schema: { params: IdParamsSchema } }, async (request, reply) => {
+    const { rowCount } = await pool.query('update job set deleted_at = now() where id = $1', [
+      request.params.id,
+    ]);
+    if (!rowCount) throw httpError(404, 'There is no such job.');
+    return reply.code(204).send();
+  });
+
   // Text the user pasted for a job the app already has, e.g. one saved from a results page.
   app.post(
     '/jobs/:id/text',

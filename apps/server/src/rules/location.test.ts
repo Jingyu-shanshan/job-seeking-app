@@ -135,3 +135,58 @@ test('anywhere means every job, remote or not, with or without a location', () =
     assert.deepEqual(classifyLocation(location, worldwide), { verdict: 'in_scope', reason: '' });
   }
 });
+
+test('custom locations accept any selected city, region or country worldwide', () => {
+  const selected: SearchScope = {
+    area: 'custom',
+    places: ['Berlin', 'Sweden', 'São Paulo'],
+    includeRemote: false,
+  };
+  assertVerdicts(selected, {
+    'Berlin, Germany': 'in_scope',
+    'Stockholm, Sweden': 'in_scope',
+    'Sao Paulo, Brazil': 'in_scope',
+    'Helsinki, Finland; Berlin, Germany': 'in_scope',
+    'New Berlinville, Germany': 'out_of_scope',
+    'Helsinki, Finland': 'out_of_scope',
+    '': 'to_confirm',
+    'Unlisted city': 'to_confirm',
+    'Helsinki, Finland; …': 'to_confirm',
+    'Remote - Berlin, Germany': 'out_of_scope',
+  });
+  assert.equal(verdict('New York, USA', { ...selected, places: ['United States'] }), 'in_scope');
+  assert.equal(verdict('Paris, France', { ...selected, places: ['EU'] }), 'in_scope');
+  assert.equal(
+    verdict('Northern Ireland, UK', { ...selected, places: ['Ireland'] }),
+    'out_of_scope',
+  );
+  assert.equal(verdict('Equatorial Guinea', { ...selected, places: ['Guinea'] }), 'out_of_scope');
+  assert.equal(verdict('London, UK', { ...selected, places: ['EU'] }), 'out_of_scope');
+});
+
+test('custom remote scopes use selected countries rather than assuming Finland', () => {
+  const selected: SearchScope = {
+    area: 'custom',
+    places: ['Germany', 'Canada'],
+    includeRemote: true,
+  };
+  assertVerdicts(selected, {
+    'Remote - Canada': 'in_scope',
+    'Remote, Germany': 'in_scope',
+    'Remote - EU': 'in_scope',
+    'Remote - Europe': 'in_scope',
+    'Remote worldwide': 'in_scope',
+    'Remote - Finland': 'out_of_scope',
+    'Remote - United States': 'out_of_scope',
+    Remote: 'to_confirm',
+    'Remote - EMEA': 'to_confirm',
+    'Remote - Europe except Germany': 'to_confirm',
+  });
+  assert.equal(verdict('Remote - Europe', { ...selected, places: ['India'] }), 'to_confirm');
+  assert.equal(verdict('Remote - Germany', { ...selected, places: ['Berlin'] }), 'to_confirm');
+  assert.equal(
+    verdict('Remote - Europe (United States)', { ...selected, places: ['Europe'] }),
+    'out_of_scope',
+  );
+  assert.equal(verdict('Berlin, Germany', { ...selected, places: [] }), 'to_confirm');
+});

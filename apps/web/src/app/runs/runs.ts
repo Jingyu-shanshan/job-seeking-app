@@ -250,8 +250,12 @@ const defaults: RunConfig = {
               <dl class="criteria-snapshot">
                 <dt>Location</dt>
                 <dd>
-                  {{ areaLabels[r.criteria.location.area] }} ·
-                  {{ strengthLabels[r.criteria.location.strength] }} ·
+                  {{
+                    r.criteria.location.area === 'custom'
+                      ? r.criteria.location.places?.join(', ')
+                      : areaLabels[r.criteria.location.area]
+                  }}
+                  · {{ strengthLabels[r.criteria.location.strength] }} ·
                   {{
                     r.criteria.location.area === 'worldwide' || r.criteria.location.includeRemote
                       ? 'Also remote jobs'
@@ -422,6 +426,7 @@ export class Runs {
     helsinki: 'Helsinki and Espoo',
     finland: 'Finland',
     worldwide: 'Anywhere',
+    custom: 'Selected locations',
   };
   protected readonly employmentLabels = employmentLabels;
   protected readonly busy = signal(false);

@@ -149,12 +149,21 @@ export const UpdateSourceRequestSchema = Type.Object({
 export type UpdateSourceRequest = Static<typeof UpdateSourceRequestSchema>;
 
 /**
- * Which jobs count as in scope, by location. It only filters discovered jobs and never changes
- * which sources are used. `helsinki` means Helsinki and Espoo, not Vantaa (user decision,
+ * Which jobs count as in scope, by location. It never changes which sources are used.
+ * Custom scopes match any selected city, region or country; older scopes remain valid. `helsinki` means Helsinki and Espoo, not Vantaa (user decision,
  * 2026-10-01). `worldwide` includes remote jobs, whatever `includeRemote` says.
  */
 export const SearchScopeSchema = Type.Object({
-  area: Type.Union([Type.Literal('helsinki'), Type.Literal('finland'), Type.Literal('worldwide')]),
+  area: Type.Union([
+    Type.Literal('helsinki'),
+    Type.Literal('finland'),
+    Type.Literal('worldwide'),
+    Type.Literal('custom'),
+  ]),
+  /** City, region or country options. Used only when area is custom; absent in older run snapshots. */
+  places: Type.Optional(
+    Type.Array(Type.String({ pattern: '\\S', maxLength: 100 }), { maxItems: 50 }),
+  ),
   includeRemote: Type.Boolean(),
 });
 

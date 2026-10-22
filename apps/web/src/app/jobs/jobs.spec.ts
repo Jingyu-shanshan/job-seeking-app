@@ -117,10 +117,12 @@ describe('Jobs', () => {
   const text = (el: Element | null = page()) => el?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
   const section = (heading: string) =>
     [...page().querySelectorAll('section, details')].find((el) =>
-      el.querySelector('h2')?.textContent?.startsWith(heading),
+      el.querySelector('h2')?.textContent?.trim().startsWith(heading),
     ) as HTMLElement | undefined;
   const items = (heading: string) =>
-    [...(section(heading)?.querySelectorAll('app-job-list li') ?? [])].map((li) => text(li));
+    [
+      ...(section(heading)?.querySelectorAll('app-job-list tbody > tr:not(.confirmation)') ?? []),
+    ].map((li) => text(li));
 
   async function load(list?: Job[]) {
     http.expectOne('/api/jobs').flush(response(list));
@@ -137,6 +139,19 @@ describe('Jobs', () => {
     await settle();
   }
 
+  async function choose(label: string, value: string) {
+    const control = [...page().querySelectorAll('label')]
+      .find((el) => text(el).startsWith(label))!
+      .querySelector<HTMLInputElement | HTMLSelectElement>('input, select')!;
+    control.value = value;
+    control.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+  }
+
+  const titles = () => [...page().querySelectorAll('app-job-list .title')].map((el) => text(el));
+  const button = (name: string) =>
+    [...page().querySelectorAll('button')].find((el) => text(el) === name)!;
+
   beforeEach(() => {
     TestBed.configureTestingModule({
       imports: [Jobs],
@@ -149,24 +164,185 @@ describe('Jobs', () => {
 
   afterEach(() => http.verify());
 
+  it('filters all job groups by eligibility and application status, keeping unknown results distinct', async () => {
+    await load([
+      job({ title: 'Pasted', origin: 'pasted', verdict: 'to_confirm', application: 'submitted' }),
+      job({ title: 'Board', verdict: 'ineligible', application: 'to_verify' }),
+      job({ title: 'Needs text', needsText: true }),
+    ]);
+    await choose('Status', 'submitted');
+    expect(titles()).toEqual(['Pasted']);
+    await choose('Status', 'to_verify');
+    expect(titles()).toEqual(['Board']);
+    await choose('Status', 'not_applied');
+    expect(titles()).toEqual(['Needs text']);
+    await choose('Status', 'needs_text');
+    expect(titles()).toEqual(['Needs text']);
+    await choose('Status', 'to_confirm');
+    expect(titles()).toEqual(['Pasted']);
+    await choose('Status', 'eligible');
+    expect(titles()).toEqual(['Needs text']);
+    await choose('Status', 'ineligible');
+    expect(titles()).toEqual(['Board']);
+    button('Reset filters').click();
+    await fixture.whenStable();
+    expect(titles()).toHaveLength(3);
+  });
+
+  it('filters by inclusive local added dates, combines status, and explains invalid and empty ranges', async () => {
+    await load([
+      job({ title: 'Start', firstSeenAt: new Date(2026, 9, 1, 0, 0).toISOString() }),
+      job({ title: 'End', firstSeenAt: new Date(2026, 9, 2, 23, 59).toISOString() }),
+      job({ title: 'Outside', firstSeenAt: new Date(2026, 9, 3, 0, 0).toISOString() }),
+    ]);
+    await choose('Added from', '2026-10-01');
+    await choose('Added through', '2026-10-02');
+    expect(titles()).toEqual(['Start', 'End']);
+    await choose('Status', 'submitted');
+    expect(titles()).toEqual([]);
+    expect(text()).toContain('No jobs match these filters.');
+    await choose('Added from', '2026-10-03');
+    expect(text(page().querySelector('[role=alert]'))).toContain('Choose an end date');
+    button('Reset filters').click();
+    await fixture.whenStable();
+    expect(titles()).toHaveLength(3);
+  });
+
+  it('sorts within each group and keeps missing publication dates last', async () => {
+    await load([
+      job({
+        title: 'Cedar',
+        company: 'Aalto',
+        firstSeenAt: '2026-10-03T12:00:00Z',
+        publishedAt: null,
+        origin: 'pasted',
+        application: 'submitted',
+      }),
+      job({
+        title: 'Birch',
+        company: 'Virta',
+        firstSeenAt: '2026-10-01T12:00:00Z',
+        publishedAt: '2026-09-20T12:00:00Z',
+        origin: 'pasted',
+      }),
+      job({
+        title: 'Aspen',
+        company: 'Kide',
+        firstSeenAt: '2026-10-02T12:00:00Z',
+        publishedAt: '2026-09-21T12:00:00Z',
+        origin: 'pasted',
+        verdict: 'ineligible',
+      }),
+    ]);
+    for (const [sort, expected] of [
+      ['newest', ['Cedar', 'Aspen', 'Birch']],
+      ['oldest', ['Birch', 'Aspen', 'Cedar']],
+      ['posted', ['Aspen', 'Birch', 'Cedar']],
+      ['title', ['Aspen', 'Birch', 'Cedar']],
+      ['company', ['Cedar', 'Aspen', 'Birch']],
+      ['status', ['Birch', 'Aspen', 'Cedar']],
+      ['relevance', ['Cedar', 'Birch', 'Aspen']],
+    ] as const) {
+      await choose('Sort by', sort);
+      expect(titles()).toEqual(expected);
+    }
+  });
+
+  it('confirms deletion, supports cancel, and removes only the selected duplicate after success', async () => {
+    const first = job({ title: 'Duplicate', origin: 'pasted' });
+    const second = job({ title: 'Duplicate', origin: 'pasted' });
+    await load([first, second]);
+    const remove = page().querySelector<HTMLButtonElement>(`[data-delete-id="${first.id}"]`)!;
+    remove.click();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(button('Cancel'));
+    http.expectNone((req) => req.method === 'DELETE');
+    button('Cancel').click();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(remove);
+    remove.click();
+    await fixture.whenStable();
+    button('Confirm delete').click();
+    await settle();
+    const request = http.expectOne(`/api/jobs/${first.id}`);
+    expect(request.request.method).toBe('DELETE');
+    expect(button('Deleting…').disabled).toBe(true);
+    expect(titles()).toHaveLength(2);
+    request.flush(null, { status: 204, statusText: 'No Content' });
+    await settle();
+    await fixture.whenStable();
+    expect(titles()).toEqual(['Duplicate']);
+    expect(page().querySelector(`[data-delete-id="${second.id}"]`)).not.toBeNull();
+    expect(text()).toContain('Saved text, drafts and application history are kept.');
+    expect(document.activeElement?.getAttribute('role')).toBe('status');
+  });
+
+  it('keeps a job on deletion failure and lets the user retry, including deleting the last job', async () => {
+    const only = job({ title: 'Only pasted role', origin: 'pasted' });
+    await load([only]);
+    button('Delete').click();
+    await fixture.whenStable();
+    button('Confirm delete').click();
+    await settle();
+    http
+      .expectOne(`/api/jobs/${only.id}`)
+      .flush({ message: 'Service unavailable.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    await fixture.whenStable();
+    expect(titles()).toEqual(['Only pasted role']);
+    expect(text(page().querySelector('[role=alert]'))).toContain('Service unavailable. Try again.');
+    button('Confirm delete').click();
+    await settle();
+    http.expectOne(`/api/jobs/${only.id}`).flush(null, { status: 204, statusText: 'No Content' });
+    await settle();
+    await fixture.whenStable();
+    expect(text()).toContain('No jobs yet');
+    expect(titles()).toEqual([]);
+  });
+
+  it('finishes deletion even when filters hide the table during the request', async () => {
+    const first = job({ title: 'Hidden while deleting', origin: 'pasted' });
+    await load([first, job({ title: 'Remaining', verdict: 'to_confirm' })]);
+    button('Delete').click();
+    await fixture.whenStable();
+    button('Confirm delete').click();
+    await settle();
+    const request = http.expectOne(`/api/jobs/${first.id}`);
+    await choose('Status', 'to_confirm');
+    request.flush(null, { status: 204, statusText: 'No Content' });
+    await settle();
+    button('Reset filters').click();
+    await fixture.whenStable();
+    expect(titles()).toEqual(['Remaining']);
+  });
+
   it('groups the jobs by the hard criteria and says which criterion decided', async () => {
     await load();
 
     expect(text()).toContain('Location: Helsinki and Espoo, remote jobs not included.');
     expect(page().querySelector('a[href="/criteria"]')).not.toBeNull();
-    expect(items('Eligible (1)')).toEqual([
-      'Backend Engineer Eligible Acme · Helsinki, Finland · Job page Posted 20 Sep 2026 · Found 1 Oct 2026 Title (preference): The title has none of “platform”.',
-    ]);
-    expect(items('To confirm (1)')).toEqual([
-      'Designer To confirm Acme · No location given · Job page Posted 20 Sep 2026 · Found 1 Oct 2026 · Listed by 2 of your sources Location unknown: No location given.',
-    ]);
-    // Ruled out is collapsed, and names the board when the source gives no company.
+    const eligible = section('Eligible (1)')!;
+    expect(text(eligible.querySelector('.title'))).toBe('Backend Engineer');
+    expect(text(eligible.querySelector('.company'))).toBe('Acme');
+    expect(text(eligible.querySelector('.state'))).toContain('Eligible');
+    expect(text(eligible.querySelector('.reason'))).toBe(
+      'Title (preference): The title has none of “platform”.',
+    );
+    expect(text(eligible.querySelector('.dates'))).toContain('1 Oct 2026');
+    const confirm = section('To confirm (1)')!;
+    expect(text(confirm.querySelector('.title'))).toBe('Designer');
+    expect(text(confirm.querySelector('.reason'))).toBe('Location unknown: No location given.');
+    expect(text(confirm)).toContain('No location given');
+    expect(text(confirm)).toContain('Listed by 2 of your sources');
     const out = section('Ruled out (1)')!;
     expect(out.tagName).toBe('DETAILS');
     expect(out.hasAttribute('open')).toBe(false);
-    expect(items('Ruled out (1)')).toEqual([
-      'Sales Lead Ruled out acme · Berlin, Germany · Job page Found 1 Oct 2026 Location: Not in Helsinki or Espoo.Working language unknown, and you rule out unknowns: Summarise the job to find its working language.',
-    ]);
+    expect(text(out.querySelector('.title'))).toBe('Sales Lead');
+    expect(text(out.querySelector('.company'))).toBe('acme');
+    expect(text(out)).toContain('Location: Not in Helsinki or Espoo.');
+    expect(text(out)).toContain(
+      'Working language unknown, and you rule out unknowns: Summarise the job to find its working language.',
+    );
 
     const [title, external] = section('Eligible')!.querySelectorAll('a');
     expect(title!.getAttribute('href')).toBe(`/jobs/${jobs[0]!.id}`);
@@ -186,10 +362,45 @@ describe('Jobs', () => {
       }),
     ]);
 
-    expect(items('Eligible (1)')).toEqual([
-      'Pasted Engineer Eligible Company not given · Helsinki, Finland · Job page Pasted 1 Oct 2026',
-    ]);
+    const imported = section('Your imported jobs (1)')!;
+    expect(text(imported.querySelector('.title'))).toBe('Pasted Engineer');
+    expect(text(imported.querySelector('.company'))).toBe('Company not given');
+    expect(text(imported.querySelector('.dates'))).toContain('Pasted');
+    expect(text(imported.querySelector('time'))).toBe('1 Oct 2026');
+    expect(imported.querySelector('table')).not.toBeNull();
+    expect(imported.querySelector('details')).toBeNull();
     expect(page().querySelector('a[href="/jobs/paste"]')).not.toBeNull();
+  });
+
+  it('keeps all user-added jobs together, including board jobs also imported by the user', async () => {
+    await load([
+      job({ title: 'Pasted role', origin: 'pasted', sources: [] }),
+      job({ title: 'Email role', origin: 'alert', sources: [], verdict: 'to_confirm' }),
+      job({ title: 'Linked role', origin: 'saved', sources: [], verdict: 'ineligible' }),
+      job({ title: 'Also imported', imported: true }),
+      job({ title: 'Board role' }),
+    ]);
+    expect(items('Your imported jobs (4)')).toHaveLength(4);
+    expect(items('Eligible (1)')[0]).toContain('Board role');
+    expect(items('Eligible (1)')[0]).not.toContain('Also imported');
+    expect(page().querySelectorAll('app-job-list tbody > tr:not(.confirmation)')).toHaveLength(5);
+    expect(text(section('Your imported jobs')!.querySelectorAll('.state')[2]!)).toBe('Ruled out');
+  });
+
+  it('labels a matching role without treating a hard failure as recommended', async () => {
+    await load([
+      job({
+        title: 'Relevant role',
+        criteria: [result({ criterion: 'title', strength: 'preference' })],
+      }),
+      job({
+        title: 'Ruled out role',
+        verdict: 'ineligible',
+        criteria: [result({ criterion: 'title' })],
+      }),
+    ]);
+    expect(items('Eligible (1)')[0]).toContain('Role match');
+    expect(items('Ruled out (1)')[0]).not.toContain('Role match');
   });
 
   it('marks a job applied to, and one whose application’s result is unknown', async () => {
@@ -198,11 +409,9 @@ describe('Jobs', () => {
       job({ title: 'Pending Engineer', application: 'to_verify', publishedAt: null }),
       job({ title: 'Other Engineer', publishedAt: null }),
     ]);
-    expect(items('Eligible (3)').map((item) => item.split(' Acme')[0])).toEqual([
-      'Applied Engineer Eligible Applied',
-      'Pending Engineer Eligible Application result unknown',
-      'Other Engineer Eligible',
-    ]);
+    expect(
+      [...section('Eligible (3)')!.querySelectorAll('.state')].map((cell) => text(cell)),
+    ).toEqual(['Eligible Applied', 'Eligible Application result unknown', 'Eligible']);
   });
 
   it('marks a saved job, and one that still needs its text', async () => {
@@ -212,10 +421,17 @@ describe('Jobs', () => {
       job({ ...saved, title: 'Listed Engineer', needsText: true }),
     ]);
 
-    expect(items('Eligible (2)')).toEqual([
-      'Saved Engineer Eligible Acme · Helsinki, Finland · Job page Saved 1 Oct 2026',
-      'Listed Engineer Eligible Acme · Helsinki, Finland · Job page Saved 1 Oct 2026 Needs the job text: paste it, or save its page.',
+    const imported = section('Your imported jobs (2)')!;
+    expect([...imported.querySelectorAll('.title')].map((el) => text(el))).toEqual([
+      'Saved Engineer',
+      'Listed Engineer',
     ]);
+    expect([...imported.querySelectorAll('.dates')].every((el) => text(el).includes('Saved'))).toBe(
+      true,
+    );
+    expect(text(imported.querySelector('.reason'))).toBe(
+      'Needs the job text: paste it, or save its page.',
+    );
   });
 
   it('marks a job from an alert email and says which alerts listed it', async () => {
@@ -230,15 +446,19 @@ describe('Jobs', () => {
       }),
       job({
         title: 'Board Engineer',
+        imported: true,
         alerts: ['LinkedIn'],
         publishedAt: '2026-10-01T10:00:00.000Z',
       }),
     ]);
 
-    expect(items('Eligible (2)')).toEqual([
-      'Alert Engineer Eligible Acme · Helsinki, Finland · Job page From an alert email 1 Oct 2026 · In alert emails from LinkedIn, Duunitori Needs the job text: paste it, or save its page.',
-      'Board Engineer Eligible Acme · Helsinki, Finland · Job page Posted 1 Oct 2026 · Found 1 Oct 2026 · In alert emails from LinkedIn',
-    ]);
+    const imported = section('Your imported jobs (2)')!;
+    expect(text(imported)).toContain('In alert emails from LinkedIn, Duunitori');
+    expect(text(imported.querySelector('.dates'))).toContain('From an alert email');
+    expect(text(imported.querySelectorAll('.dates')[1]!)).toContain('Posted 1 Oct 2026');
+    expect(text(imported.querySelector('.reason'))).toBe(
+      'Needs the job text: paste it, or save its page.',
+    );
   });
 
   it('shows no job page link for a job the app has no address for', async () => {
@@ -253,10 +473,12 @@ describe('Jobs', () => {
         url: null,
       }),
     ]);
-    const item = section('Eligible (1)')!.querySelector('app-job-list li')!;
+    const item = section('Your imported jobs (1)')!.querySelector(
+      'app-job-list tbody > tr:not(.confirmation)',
+    )!;
     expect(item.querySelector('a[target=_blank]')).toBeNull();
     expect(text(item)).toContain(
-      'Odoo Consultant Eligible Acme · Helsinki, Finland From an alert email',
+      'Needs the job text and link: open the job from the email, then paste its text or save its page.',
     );
   });
 
@@ -278,7 +500,7 @@ describe('Jobs', () => {
 
     const request = http.expectOne('/api/discovery-runs');
     expect(request.request.method).toBe('POST');
-    expect(text(page().querySelector('[role=status]'))).toBe(
+    expect(text(page().querySelector('form [role=status]'))).toBe(
       'Reading your job boards. This can take a minute.',
     );
     request.flush({

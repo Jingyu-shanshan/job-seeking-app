@@ -56,7 +56,11 @@ describe('CriteriaPage', () => {
     expect(radio('Location', 'helsinki').checked).toBe(true);
     expect(radio('Location', 'hard').checked).toBe(true);
     expect(radio('Location', 'to_confirm').checked).toBe(true);
-    expect(textInput('Job title').value).toBe('backend, platform engineer');
+    expect([...section('Job title').querySelectorAll('li span')].map((s) => text(s))).toEqual([
+      'backend',
+      'platform engineer',
+    ]);
+    expect(textInput('Job title').value).toBe('');
     expect(radio('Job title', 'hard').checked).toBe(true);
     expect(radio('Words to avoid in the title', 'off').checked).toBe(true);
     const types =
@@ -108,7 +112,11 @@ describe('CriteriaPage', () => {
     expect(text(section('Working language'))).toContain(
       'Add at least one language, or turn this criterion off.',
     );
-    await type(textInput('Job title'), ' , ');
+    while (section('Job title').querySelector('li button')) {
+      section('Job title').querySelector<HTMLButtonElement>('li button')!.click();
+      await fixture.whenStable();
+    }
+    await fixture.whenStable();
     expect(text(section('Job title'))).toContain(
       'Add at least one word, or turn this criterion off.',
     );
@@ -142,7 +150,15 @@ describe('CriteriaPage', () => {
     expect(save().disabled).toBe(false);
   });
   it('locks pending edits and retries the same criteria after a failed save', async () => {
+    while (section('Job title').querySelector('li button')) {
+      section('Job title').querySelector<HTMLButtonElement>('li button')!.click();
+      await fixture.whenStable();
+    }
     await type(textInput('Job title'), 'platform');
+    section('Job title')
+      .querySelector<HTMLButtonElement>('app-options-field .entry button')!
+      .click();
+    await fixture.whenStable();
     save().click();
     const request = http.expectOne('/api/criteria');
     TestBed.tick();
@@ -151,7 +167,7 @@ describe('CriteriaPage', () => {
     request.flush({ message: 'Sample save failed.' }, { status: 503, statusText: 'Unavailable' });
     await new Promise((resolve) => setTimeout(resolve));
     await fixture.whenStable();
-    expect(textInput('Job title').value).toBe('platform');
+    expect(text(section('Job title').querySelector('li span'))).toBe('platform');
     expect(text()).toContain('Sample save failed.');
     save().click();
     const retry = http.expectOne('/api/criteria');
@@ -160,6 +176,121 @@ describe('CriteriaPage', () => {
     retry.flush({ ...saved, title: { strength: 'hard', words: ['platform'] } });
     await fixture.whenStable();
     expect(text()).toContain('Saved.');
+  });
+
+  it('adds multiple titles and locations as alternatives and saves their arrays', async () => {
+    await click(radio('Location', 'custom'));
+    for (const place of ['Berlin', 'Stockholm', 'berlin']) {
+      await type(textInput('Location'), place);
+      section('Location')
+        .querySelector<HTMLButtonElement>('app-options-field .entry button')!
+        .click();
+      await fixture.whenStable();
+    }
+    for (const title of ['Product Designer', 'Data Analyst']) {
+      await type(textInput('Job title'), title);
+      textInput('Job title').dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+      await fixture.whenStable();
+    }
+    expect([...section('Location').querySelectorAll('li span')].map((s) => text(s))).toEqual([
+      'Berlin',
+      'Stockholm',
+    ]);
+    section('Job title')
+      .querySelector<HTMLButtonElement>('button[aria-label="Remove backend"]')!
+      .click();
+    await fixture.whenStable();
+    save().click();
+    const request = http.expectOne('/api/criteria');
+    expect(request.request.body.location).toEqual({
+      ...saved.location,
+      area: 'custom',
+      places: ['Berlin', 'Stockholm'],
+    });
+    expect(request.request.body.title.words).toEqual([
+      'platform engineer',
+      'Product Designer',
+      'Data Analyst',
+    ]);
+    request.flush(request.request.body);
+    await fixture.whenStable();
+    expect(save().disabled).toBe(true);
+  });
+
+  it('enables title preferences when adding a role to an off criterion', async () => {
+    await click(radio('Job title', 'off'));
+    await type(textInput('Job title'), 'Researcher');
+    section('Job title')
+      .querySelector<HTMLButtonElement>('app-options-field .entry button')!
+      .click();
+    await fixture.whenStable();
+    expect(radio('Job title', 'preference').checked).toBe(true);
+  });
+
+  it('requires a custom location and keeps the form unchanged when geolocation is denied', async () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, 'geolocation');
+    const getCurrentPosition = vi.fn((_success, failure) => failure({ code: 1 }));
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+    try {
+      const locate = [...section('Location').querySelectorAll('button')].find(
+        (b) => text(b) === 'Use current location',
+      )!;
+      expect(getCurrentPosition).not.toHaveBeenCalled();
+      locate.click();
+      await fixture.whenStable();
+      expect(text(section('Location'))).toContain('Location permission was denied.');
+      expect(save().disabled).toBe(true);
+      http.expectNone((r) => r.url.includes('bigdatacloud'));
+      await click(radio('Location', 'custom'));
+      expect(text(section('Location'))).toContain('Add at least one location, or choose Anywhere.');
+    } finally {
+      if (original) Object.defineProperty(navigator, 'geolocation', original);
+      else Reflect.deleteProperty(navigator, 'geolocation');
+    }
+  });
+
+  it('suggests the detected city and country without silently applying them', async () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, 'geolocation');
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        getCurrentPosition: (success: PositionCallback) =>
+          success({ coords: { latitude: 52.52, longitude: 13.4 } } as GeolocationPosition),
+      },
+    });
+    try {
+      [...section('Location').querySelectorAll('button')]
+        .find((b) => text(b) === 'Use current location')!
+        .click();
+      await new Promise((resolve) => setTimeout(resolve));
+      const request = http.expectOne((r) => r.url.includes('bigdatacloud'));
+      expect(request.request.params.get('latitude')).toBe('52.52');
+      request.flush({ city: 'Berlin', countryName: 'Germany' });
+      await new Promise((resolve) => setTimeout(resolve));
+      await fixture.whenStable();
+      expect(save().disabled).toBe(true);
+      [...section('Location').querySelectorAll('button')]
+        .find((b) => text(b) === 'Add Berlin')!
+        .click();
+      await fixture.whenStable();
+      save().click();
+      const put = http.expectOne('/api/criteria');
+      expect(put.request.body.location).toEqual({
+        ...saved.location,
+        area: 'custom',
+        places: ['Helsinki', 'Espoo', 'Berlin'],
+      });
+      put.flush(put.request.body);
+      await fixture.whenStable();
+    } finally {
+      if (original) Object.defineProperty(navigator, 'geolocation', original);
+      else Reflect.deleteProperty(navigator, 'geolocation');
+    }
   });
 
   it('shows a load error and can retry without interpreting missing criteria as a pass', async () => {

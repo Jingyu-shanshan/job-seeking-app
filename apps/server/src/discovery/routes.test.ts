@@ -197,6 +197,7 @@ describe('/api/discovery-runs and /api/jobs', needsDatabase, () => {
         sources: undefined,
         alerts: [],
         origin: 'discovered',
+        imported: false,
         needsText: false,
         verdict: 'eligible',
         application: null,
@@ -257,6 +258,47 @@ describe('/api/discovery-runs and /api/jobs', needsDatabase, () => {
     assert.deepEqual(
       (await listJobs()).jobs.map((j) => j.title),
       ['Backend Engineer'],
+    );
+  });
+
+  test('a board job also imported by link stays one job and appears in the user list', async () => {
+    const before = (await listJobs()).jobs;
+    const existing = before[0]!;
+    boards['acme'] = [
+      {
+        id: 1,
+        title: 'Backend Engineer',
+        location: 'Espoo, Finland',
+        content: '<p>Build backend services.</p>',
+      },
+    ];
+    const imported = await call({
+      method: 'POST',
+      url: '/api/jobs/import-link',
+      payload: {
+        url: 'https://job-boards.greenhouse.io/acme/jobs/1',
+      },
+    });
+    assert.equal(imported.statusCode, 200, imported.body);
+    const jobs = (await listJobs()).jobs;
+    assert.equal(jobs.length, before.length);
+    assert.equal(jobs[0]!.id, existing.id);
+    assert.equal(jobs[0]!.origin, 'discovered');
+    assert.equal(jobs[0]!.imported, true);
+    assert.deepEqual(jobs[0]!.sources, existing.sources);
+  });
+
+  test('deletion stays effective across every list origin and later discovery runs', async () => {
+    const job = (await listJobs()).jobs[0]!;
+    assert(job.sources.length && job.imported);
+    const removed = await call({ method: 'DELETE', url: `/api/jobs/${job.id}` });
+    assert.equal(removed.statusCode, 204);
+    assert.deepEqual((await listJobs()).jobs, []);
+    assert.equal((await runDiscovery()).statusCode, 200);
+    assert.deepEqual((await listJobs()).jobs, []);
+    assert.equal(
+      (await pool.query('select id from job_snapshot where job_id = $1', [job.id])).rowCount,
+      1,
     );
   });
 });

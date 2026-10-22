@@ -18,6 +18,10 @@ export class JobsApi {
     return firstValueFrom(this.http.post<JobDetail>('/api/jobs', job));
   }
 
+  remove(jobId: string): Promise<void> {
+    return firstValueFrom(this.http.delete<void>(`/api/jobs/${jobId}`));
+  }
+
   importLink(url: string): Promise<JobDetail> {
     return firstValueFrom(this.http.post<JobDetail>('/api/jobs/import-link', { url }));
   }
