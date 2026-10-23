@@ -82,7 +82,7 @@ async function withSameJobs<E extends { title: string; company: string | null }>
 export async function saveJobPage(
   pool: Pool,
   page: SavePageRequest,
-  catalogId: 'desktop_save' | 'greenhouse_board' | 'ashby_board',
+  catalogId: 'desktop_save' | 'greenhouse_board' | 'ashby_board' | 'company_page',
 ): Promise<SavePageResponse> {
   const { url, title, company, location, text } = page;
   const entry = {

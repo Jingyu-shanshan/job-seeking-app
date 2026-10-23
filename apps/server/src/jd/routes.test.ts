@@ -1,4 +1,8 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import https, { type RequestOptions } from 'node:https';
+import type { IncomingMessage } from 'node:http';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
@@ -507,6 +511,63 @@ describe('JD import and summary', needsDatabase, () => {
     assert.equal(deepseek.requests.length, callsBefore + 1);
   });
 
+  test('imports a company page, preserves provenance and deduplicates its snapshot', async (t) => {
+    t.mock.method(
+      https,
+      'get',
+      (_url: URL, _options: RequestOptions, callback: (response: IncomingMessage) => void) => {
+        const request = new EventEmitter();
+        queueMicrotask(() => {
+          const response = Object.assign(new EventEmitter(), {
+            statusCode: 200,
+            headers: { 'content-type': 'text/html' },
+          });
+          callback(response as IncomingMessage);
+          response.emit(
+            'data',
+            Buffer.from(
+              `<script type="application/ld+json">${JSON.stringify({
+                '@type': 'JobPosting',
+                title: 'Company Billing Engineer',
+                description: pastedText,
+                hiringOrganization: { name: 'Company Import Co' },
+              })}</script>`,
+            ),
+          );
+          response.emit('end');
+        });
+        return request;
+      },
+    );
+    syncBuiltinESMExports();
+    t.after(() => {
+      t.mock.restoreAll();
+      syncBuiltinESMExports();
+    });
+    const callsBefore = deepseek.requests.length;
+    const importPage = () =>
+      call({
+        method: 'POST',
+        url: '/api/jobs/import-link',
+        payload: { url: 'https://careers.example.com/jobs/billing' },
+      });
+    const response = await importPage();
+    assert.equal(response.statusCode, 200, response.body);
+    const job = response.json<JobDetail>();
+    assert.equal(job.snapshot?.catalogId, 'company_page');
+    assert.equal(job.snapshot?.company, 'Company Import Co');
+    assert.equal(job.snapshot?.url, 'https://careers.example.com/jobs/billing');
+    assert.match(job.snapshot!.text, /keep our invoices correct/);
+    assert.equal(job.snapshot?.summary, null);
+    const again = (await importPage()).json<JobDetail>();
+    assert.equal(again.id, job.id);
+    assert.equal(again.snapshot?.id, job.snapshot?.id);
+    assert.equal(deepseek.requests.length, callsBefore);
+    const analysed = await summarise(job.snapshot!.id);
+    assert.equal(analysed.statusCode, 200, analysed.body);
+    assert.ok(analysed.json<JobDetail>().snapshot?.summary);
+  });
+
   test('rejects unsupported links without requesting them or calling the model', async () => {
     const requestsBefore = greenhouse.requested.length;
     const callsBefore = deepseek.requests.length;
@@ -515,7 +576,7 @@ describe('JD import and summary', needsDatabase, () => {
       'https://duunitori.fi/tyopaikat/tyo/example',
       'https://www.jobly.fi/tyopaikka/example',
       'https://127.0.0.1/private',
-      'https://boards.greenhouse.io.evil.test/acme/jobs/1',
+      'https://user:password@careers.example.com/jobs/1',
     ]) {
       const response = await call({
         method: 'POST',

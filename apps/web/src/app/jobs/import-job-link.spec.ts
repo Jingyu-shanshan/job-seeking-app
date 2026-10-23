@@ -87,11 +87,12 @@ describe('ImportJobLink', () => {
 
   it('imports the original text, then analyses only that snapshot and opens the saved job', async () => {
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
-    await fill('https://boards.greenhouse.io/acme/jobs/1');
+    await fill('https://careers.example.com/jobs/1');
     await submit();
+    expect(page().textContent).toContain('public company job page');
     expect(page().querySelector('fieldset')!.disabled).toBe(true);
     const imported = http.expectOne('/api/jobs/import-link');
-    expect(imported.request.body).toEqual({ url: 'https://boards.greenhouse.io/acme/jobs/1' });
+    expect(imported.request.body).toEqual({ url: 'https://careers.example.com/jobs/1' });
     imported.flush(job);
     await settle();
     const analysis = http.expectOne('/api/snapshots/snapshot-1/summary');
