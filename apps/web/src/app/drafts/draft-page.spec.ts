@@ -103,7 +103,11 @@ describe('DraftPage', () => {
     fixture.detectChanges();
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => {
+    http.verify();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
 
   const item = (startsWith: string) =>
     [...page().querySelectorAll('app-statement-review')].find((el) =>
@@ -127,6 +131,11 @@ describe('DraftPage', () => {
     expect(headings()).toEqual(['Headline', 'Summary', 'Experience', 'Skills']);
     const links = [...page().querySelectorAll('a')].map((a) => a.getAttribute('href'));
     expect(links).toEqual([
+      '#draft-overview',
+      '#draft-headline',
+      '#draft-summary',
+      '#draft-experience',
+      '#draft-skills',
       `/jobs/${jobId}?run=sample-run`,
       `/drafts/${draftId}/document?run=sample-run`,
     ]);
@@ -151,6 +160,138 @@ describe('DraftPage', () => {
       'APIs',
       '.',
     ]);
+  });
+
+  it('links only to existing sections and moves keyboard focus to the heading', async () => {
+    await load(resume());
+    const nav = page().querySelector('nav[aria-label="Draft sections"]')!;
+    const links = [...nav.querySelectorAll('a')];
+    expect(links.map((link) => text(link))).toEqual([
+      'Overview',
+      'Headline',
+      'Summary',
+      'Experience',
+      'Skills',
+    ]);
+    for (const link of links) {
+      expect(page().querySelector(link.hash)).not.toBeNull();
+    }
+    const target = page().querySelector<HTMLElement>('#draft-experience')!;
+    const scroll = vi.fn();
+    target.scrollIntoView = scroll;
+    links.find((link) => text(link) === 'Experience')!.click();
+    await fixture.whenStable();
+    expect(document.activeElement).toBe(target.querySelector('h2'));
+    expect(scroll).toHaveBeenCalledWith({ behavior: 'instant', block: 'start' });
+    expect(text(nav.querySelector('[aria-current="location"]'))).toBe('Experience');
+  });
+
+  it('tracks the visible section and disconnects the observer on exit', async () => {
+    let notify!: IntersectionObserverCallback;
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          notify = callback;
+        }
+        observe = observe;
+        disconnect = disconnect;
+      },
+    );
+    await load(resume());
+    expect(observe).toHaveBeenCalledTimes(5);
+    const summary = page().querySelector('#draft-summary')!;
+    vi.spyOn(summary, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 128, 300, 200));
+    notify(
+      [{ target: summary, isIntersecting: true }] as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    );
+    await fixture.whenStable();
+    expect(text(page().querySelector('.outline [aria-current]'))).toBe('Summary');
+    const headline = page().querySelector('#draft-headline')!;
+    vi.spyOn(headline, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 128.1));
+    notify(
+      [{ target: headline, isIntersecting: true }] as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    );
+    await fixture.whenStable();
+    expect(text(page().querySelector('.outline [aria-current]'))).toBe('Summary');
+    const removeListener = vi.spyOn(document, 'removeEventListener');
+    fixture.destroy();
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(removeListener).toHaveBeenCalledWith('scrollend', expect.any(Function));
+  });
+
+  it('omits the outline when there are no statements', async () => {
+    await load(resume({ statements: [] }));
+    expect(page().querySelector('nav[aria-label="Draft sections"]')).toBeNull();
+    expect(text()).toContain('DeepSeek wrote no statements.');
+  });
+
+  it('selects a short last section at page end and restores overview at the top', async () => {
+    let notify!: IntersectionObserverCallback;
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          notify = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    await load(resume());
+    const scroller = document.scrollingElement ?? document.documentElement;
+    const top = vi.spyOn(scroller, 'scrollTop', 'get').mockReturnValue(1000);
+    vi.spyOn(scroller, 'clientHeight', 'get').mockReturnValue(900);
+    vi.spyOn(scroller, 'scrollHeight', 'get').mockReturnValue(1900);
+    const overview = page().querySelector('#draft-overview')!;
+    const summary = page().querySelector('#draft-summary')!;
+    vi.spyOn(overview, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 200));
+    vi.spyOn(summary, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 128, 300, 200));
+    notify(
+      [{ target: summary, isIntersecting: true }] as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    );
+    await fixture.whenStable();
+    expect(text(page().querySelector('.outline [aria-current]'))).toBe('Skills');
+
+    top.mockReturnValue(500);
+    document.dispatchEvent(new Event('scrollend'));
+    await fixture.whenStable();
+    expect(text(page().querySelector('.outline [aria-current]'))).toBe('Summary');
+
+    top.mockReturnValue(1000);
+    document.dispatchEvent(new Event('scrollend'));
+    await fixture.whenStable();
+    expect(text(page().querySelector('.outline [aria-current]'))).toBe('Skills');
+
+    top.mockReturnValue(0);
+    notify(
+      [
+        { target: summary, isIntersecting: false },
+        { target: overview, isIntersecting: true },
+      ] as IntersectionObserverEntry[],
+      {} as IntersectionObserver,
+    );
+    await fixture.whenStable();
+    expect(text(page().querySelector('.outline [aria-current]'))).toBe('Overview');
+  });
+
+  it('reveals an offscreen current label by scrolling only the outline horizontally', async () => {
+    await load(resume());
+    const strip = page().querySelector<HTMLElement>('.outline-links')!;
+    const link = strip.querySelector<HTMLAnchorElement>('a[href="#draft-skills"]')!;
+    vi.spyOn(strip, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 44));
+    vi.spyOn(link, 'getBoundingClientRect').mockReturnValue(new DOMRect(700, 0, 80, 44));
+    strip.scrollBy = vi.fn();
+    page().querySelector<HTMLElement>('#draft-skills')!.scrollIntoView = vi.fn();
+    link.click();
+    await fixture.whenStable();
+    expect(strip.scrollBy).toHaveBeenCalledWith({ left: 480, behavior: 'instant' });
+    expect(document.activeElement).toBe(page().querySelector('#heading-skills'));
   });
 
   it('edits a statement, and shows the draft as the server checked it again', async () => {
