@@ -37,6 +37,7 @@ import { catalog, findCatalogEntry } from '../sources/catalog.ts';
 import { checkJobText } from './job-text.ts';
 import { summariseSnapshot } from './summarise.ts';
 import { saveJobPage } from './saved.ts';
+import { readCompanyPage } from './company-page.ts';
 
 export interface JdRoutesOptions {
   pool: Pool;
@@ -380,19 +381,19 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
     },
     async (request) => {
       const link = jobLink(request.body.url);
-      if (!link)
-        throw httpError(
-          400,
-          jobLinkImportProblem(request.body.url) ??
-            'Use a Greenhouse or Ashby job link. For other sites, open the page in the desktop app and choose Save this job, or paste its text below.',
-        );
-      const entry = findCatalogEntry(link.catalogId)!;
-      if (entry.rateLimit) await limiter.wait(entry.id, entry.rateLimit);
+      const problem = jobLinkImportProblem(request.body.url);
+      if (problem) throw httpError(400, problem);
+      if (link) {
+        const entry = findCatalogEntry(link.catalogId)!;
+        if (entry.rateLimit) await limiter.wait(entry.id, entry.rateLimit);
+      }
       let job: JobText;
       try {
-        job = await allAdapters[link.catalogId]!.readJob(link.board, link.id, (input, init) =>
-          fetch(input, { ...init, redirect: 'error' }),
-        );
+        job = link
+          ? await allAdapters[link.catalogId]!.readJob(link.board, link.id, (input, init) =>
+              fetch(input, { ...init, redirect: 'error' }),
+            )
+          : await readCompanyPage(request.body.url);
       } catch (error) {
         if (error instanceof DiscoveryError) throw httpError(502, error.message);
         throw error;
@@ -403,7 +404,7 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
           ...job,
           company: job.company ?? undefined,
         },
-        link.catalogId,
+        link?.catalogId ?? 'company_page',
       );
       return detailAfterChange(pool, saved.jobId);
     },

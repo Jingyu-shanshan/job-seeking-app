@@ -27,6 +27,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 const textOrigins: Record<string, string> = {
   paste: 'Pasted',
+  company_page: 'Imported from the company website',
   desktop_save: 'Saved from its page in the desktop app',
 };
 

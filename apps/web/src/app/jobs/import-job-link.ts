@@ -21,7 +21,7 @@ import { JobsApi } from './jobs-api';
     <section aria-labelledby="link-import-title">
       <h2 id="link-import-title">Have a job link?</h2>
       <p>
-        Import a Greenhouse or Ashby job without copying its text, then analyse its requirements.
+        Import a public company job page, Greenhouse or Ashby link, then analyse its requirements.
       </p>
       <form [formRoot]="linkForm" [attr.aria-busy]="linkForm().submitting()">
         <fieldset class="form-fields" [disabled]="linkForm().submitting()">
@@ -69,11 +69,12 @@ import { JobsApi } from './jobs-api';
         </p>
       }
       <details>
-        <summary>Using LinkedIn, Duunitori, Jobly or another site?</summary>
+        <summary>Page needs a login, or cannot be imported?</summary>
         <p>
           Open the job in the desktop app’s browser and choose Save this job, then analyse it on its
-          job page. You can also paste the text below. These sites are not read from a link here; a
-          login page or incomplete text cannot be analysed as a job description.
+          job page. You can also paste the text below. Company pages that require JavaScript, a
+          login or a CAPTCHA may need this approach. LinkedIn, Duunitori and Jobly links are not
+          fetched here.
         </p>
       </details>
     </section>
