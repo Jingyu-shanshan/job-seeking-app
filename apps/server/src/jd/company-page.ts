@@ -1,7 +1,7 @@
 import { lookup } from 'node:dns';
 import { get } from 'node:https';
 import { BlockList, isIP } from 'node:net';
-import { Parser } from 'htmlparser2';
+import { DomUtils, Parser, parseDocument } from 'htmlparser2';
 import { decodeHTML } from 'entities';
 import { jobLinkImportProblem } from '@jsa/shared/job-link-import';
 import { checkJobText, DiscoveryError, type JobText } from '../discovery/adapter.ts';
@@ -193,16 +193,49 @@ export function companyJob(html: string, url: string): JobText {
   parser.end(html);
   if (postings.length > 1) throw new DiscoveryError(`Use a single job detail link. ${manual}`);
   const posting = postings[0];
+  let microdata: { title: string; text: string } | undefined;
+  if (!posting) {
+    // shortcut: Microdata supplies title/text only; add scoped organization/location fields when a verified source needs them.
+    const scopes = DomUtils.findAll(
+      (node) =>
+        'itemscope' in node.attribs &&
+        (node.attribs.itemtype ?? '')
+          .split(/\s+/)
+          .some((type) => /^https?:\/\/schema\.org\/JobPosting\/?$/.test(type)),
+      parseDocument(html).children,
+    );
+    if (scopes.length > 1) throw new DiscoveryError(`Use a single job detail link. ${manual}`);
+    const scope = scopes[0];
+    if (scope) {
+      const fields = DomUtils.findAll((node) => {
+        if ('itemscope' in node.attribs || !node.attribs.itemprop) return false;
+        for (let parent = node.parent; parent; parent = parent.parent) {
+          if ('attribs' in parent && 'itemscope' in parent.attribs) return parent === scope;
+        }
+        return false;
+      }, scope.children);
+      const property = (name: string) => {
+        const field = fields.find((node) => node.attribs.itemprop!.split(/\s+/).includes(name));
+        return field ? htmlToText(field.attribs.content ?? DomUtils.getInnerHTML(field)) : '';
+      };
+      const title = property('title'),
+        text = property('description');
+      if (title && text) microdata = { title, text };
+    }
+  }
   const string = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
-  const title = string(posting?.title) || heading.trim();
+  const title = string(posting?.title) || microdata?.title || heading.trim();
   const description = string(posting?.description);
-  const text = htmlToText(description ? decodeHTML(description) : main);
+  const text = description
+    ? htmlToText(decodeHTML(description))
+    : (microdata?.text ?? htmlToText(main));
   // shortcut: static HTML only; add browser rendering when real company pages require it.
   if (
     !title ||
     title.length > 1000 ||
     text.length < 100 ||
     (!posting &&
+      !microdata &&
       !/responsibilit|qualifications?|requirements?|apply|työtehtäv|vaatimuk|职责|要求/i.test(text))
   ) {
     throw new DiscoveryError(`No complete single-job description was found. ${manual}`);
