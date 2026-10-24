@@ -41,7 +41,7 @@ export function publicAddress(address: string): boolean {
 
 const manual = 'Open the job in the desktop app and choose Save this job, or paste its text.';
 
-function pageUrl(address: string): URL {
+export function pageUrl(address: string): URL {
   let url: URL;
   try {
     url = new URL(address);

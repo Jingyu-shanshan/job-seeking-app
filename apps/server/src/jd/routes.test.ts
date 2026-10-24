@@ -16,6 +16,9 @@ import { loadConfig } from '../config.ts';
 import { summaryFieldKeys } from '../rules/job-summary.ts';
 import { createTestDatabase, needsDatabase, type TestDatabase } from '../testing/database.ts';
 import { chatCompletion, fakeDeepSeek } from '../testing/deepseek.ts';
+import { saveJobPage } from './saved.ts';
+import { exportArchive } from '../export/export.ts';
+import { unzip } from '../testing/zip.ts';
 import { fakeGreenhouse, type FakeJob } from '../testing/greenhouse.ts';
 
 const { appUrl, trustedOrigins } = loadConfig({});
@@ -190,6 +193,7 @@ describe('JD import and summary', needsDatabase, () => {
           id: undefined,
           capturedAt: undefined,
           catalogId: 'paste',
+          readings: [],
           title: 'Billing Engineer',
           company: 'Acme',
           location: 'Helsinki, Finland',
@@ -488,7 +492,10 @@ describe('JD import and summary', needsDatabase, () => {
       call({
         method: 'POST',
         url: '/api/jobs/import-link',
-        payload: { url: 'https://job-boards.greenhouse.io/link-import/jobs/701?utm_source=alert' },
+        payload: {
+          url: 'https://job-boards.greenhouse.io/link-import/jobs/701?utm_source=alert',
+          method: 'direct',
+        },
       });
     const imported = await importLink();
     assert.equal(imported.statusCode, 200, imported.body);
@@ -496,6 +503,19 @@ describe('JD import and summary', needsDatabase, () => {
     assert.equal(job.snapshot?.catalogId, 'greenhouse_board');
     assert.match(job.snapshot!.text, /keep our invoices correct/);
     assert.equal(job.snapshot?.summary, null);
+    assert.deepEqual(
+      job.snapshot?.readings?.map(({ readAt, ...reading }) => {
+        assert.ok(Number.isFinite(Date.parse(readAt)));
+        return reading;
+      }),
+      [
+        {
+          requestedUrl: 'https://job-boards.greenhouse.io/link-import/jobs/701?utm_source=alert',
+          resolvedUrl: 'https://job-boards.greenhouse.io/acme/jobs/701',
+          method: 'greenhouse_board',
+        },
+      ],
+    );
     assert.equal(deepseek.requests.length, callsBefore);
     assert.equal(
       (await pool.query('select count(*)::int as n from source')).rows[0].n,
@@ -504,6 +524,31 @@ describe('JD import and summary', needsDatabase, () => {
     const again = (await importLink()).json<JobDetail>();
     assert.equal(again.id, job.id);
     assert.equal(again.snapshot?.id, job.snapshot?.id);
+    assert.equal(again.snapshot?.readings?.length, 2);
+    const readings = (
+      await pool.query('select * from job_reading where job_snapshot_id=$1', [job.snapshot!.id])
+    ).rows;
+    assert.equal(readings.length, 2);
+    assert.notEqual(readings[0].id, readings[1].id);
+    await assert.rejects(
+      pool.query("update job_reading set requested_url='https://other.example/job' where id=$1", [
+        readings[0].id,
+      ]),
+      /immutable/,
+    );
+    await assert.rejects(
+      pool.query('delete from job_reading where id=$1', [readings[0].id]),
+      /cannot be deleted/,
+    );
+    const archive = unzip(await exportArchive(pool));
+    const exported = JSON.parse(archive.get('data.json')!.toString());
+    assert.deepEqual(
+      exported.job_reading
+        .filter((r: { job_snapshot_id: string }) => r.job_snapshot_id === job.snapshot!.id)
+        .map((r: { id: string }) => r.id)
+        .sort(),
+      readings.map((r) => r.id).sort(),
+    );
     answer = async () => chatCompletion(JSON.stringify(goodAnswer));
     const analysed = await summarise(job.snapshot!.id);
     assert.equal(analysed.statusCode, 200, analysed.body);
@@ -556,6 +601,15 @@ describe('JD import and summary', needsDatabase, () => {
     const job = response.json<JobDetail>();
     assert.equal(job.snapshot?.catalogId, 'company_page');
     assert.equal(job.snapshot?.company, 'Company Import Co');
+    assert.equal(job.snapshot?.readings?.[0]?.method, 'company_page');
+    assert.equal(
+      job.snapshot?.readings?.[0]?.requestedUrl,
+      'https://careers.example.com/jobs/billing',
+    );
+    assert.equal(
+      job.snapshot?.readings?.[0]?.resolvedUrl,
+      'https://careers.example.com/jobs/billing',
+    );
     assert.equal(job.snapshot?.url, 'https://careers.example.com/jobs/billing');
     assert.match(job.snapshot!.text, /keep our invoices correct/);
     assert.equal(job.snapshot?.summary, null);
@@ -566,6 +620,62 @@ describe('JD import and summary', needsDatabase, () => {
     const analysed = await summarise(job.snapshot!.id);
     assert.equal(analysed.statusCode, 200, analysed.body);
     assert.ok(analysed.json<JobDetail>().snapshot?.summary);
+  });
+
+  test('Fetch import stays disabled before any network, fee reservation or data mutation', async () => {
+    const requests = greenhouse.requested.length;
+    const models = deepseek.requests.length;
+    const before = (
+      await pool.query(`select (select count(*) from job_reading) as readings,
+      (select count(*) from tool_call) as calls,(select count(*) from job_snapshot) as texts`)
+    ).rows;
+    for (const url of [
+      'https://boards.greenhouse.io/link-import/jobs/701',
+      'https://www.linkedin.com/jobs/view/123',
+      'https://127.0.0.1/private',
+    ]) {
+      const res = await call({
+        method: 'POST',
+        url: '/api/jobs/import-link',
+        payload: { url, method: 'deepseek_fetch' },
+      });
+      assert.equal(res.statusCode, 409, res.body);
+      assert.match(res.json().message, /disabled.*final target URL/);
+      assert.match(res.json().message, /No paid Fetch request was sent/);
+    }
+    assert.equal(greenhouse.requested.length, requests);
+    assert.equal(deepseek.requests.length, models);
+    assert.deepEqual(
+      (
+        await pool.query(`select (select count(*) from job_reading) as readings,
+      (select count(*) from tool_call) as calls,(select count(*) from job_snapshot) as texts`)
+      ).rows,
+      before,
+    );
+  });
+
+  test('invalid provenance rolls back the saved page and snapshot together', async () => {
+    const counts = async () =>
+      (
+        await pool.query(`select (select count(*) from job) as jobs,
+      (select count(*) from saved_job) as pages,(select count(*) from job_snapshot) as texts,
+      (select count(*) from job_reading) as readings`)
+      ).rows;
+    const before = await counts();
+    await assert.rejects(
+      saveJobPage(
+        pool,
+        {
+          url: 'https://careers.example.com/atomic-test',
+          title: 'Atomic provenance test',
+          text: pastedText,
+        },
+        'company_page',
+        'http://invalid.example',
+      ),
+      { code: '23514' },
+    );
+    assert.deepEqual(await counts(), before);
   });
 
   test('rejects unsupported links without requesting them or calling the model', async () => {

@@ -10,6 +10,7 @@ import { applicationRoutes } from './applications/routes.ts';
 import { type Auth, createAuth } from './auth.ts';
 import type { Config } from './config.ts';
 import { checkDatabase, createPool } from './db/pool.ts';
+import { jobSearchRoutes } from './discovery/search.ts';
 import { discoveryRoutes } from './discovery/routes.ts';
 import { RateLimiter } from './discovery/run.ts';
 import { documentRoutes } from './documents/routes.ts';
@@ -27,6 +28,7 @@ import { runnerApiRoutes } from './runner/api.ts';
 import { fillRoutes } from './runner/fills.ts';
 import { runnerTokenId, runnerTokenRoutes } from './runner/tokens.ts';
 import { runRoutes } from './runs/routes.ts';
+import { toolRoutes } from './tools/routes.ts';
 import { sourceRoutes } from './sources/routes.ts';
 
 export type AppOptions = Pick<Config, 'webRoot' | 'appUrl' | 'trustedOrigins'> &
@@ -146,9 +148,11 @@ export function buildApp({
   if (pool) {
     const limiter = new RateLimiter();
     app.register(runRoutes, { prefix: '/api', pool, fetch, limiter, deepseekApiKey });
+    app.register(toolRoutes, { prefix: '/api', pool, fetch, deepseekApiKey });
     app.register(sourceRoutes, { prefix: '/api', pool });
     app.register(factRoutes, { prefix: '/api', pool });
     app.register(criteriaRoutes, { prefix: '/api', pool });
+    app.register(jobSearchRoutes, { prefix: '/api', pool, fetch, deepseekApiKey });
     app.register(discoveryRoutes, { prefix: '/api', pool, fetch, limiter });
     app.register(jdRoutes, { prefix: '/api', pool, fetch, limiter, deepseekApiKey });
     app.register(draftRoutes, { prefix: '/api', pool, fetch, deepseekApiKey });

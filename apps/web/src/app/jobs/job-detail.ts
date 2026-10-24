@@ -163,6 +163,20 @@ const verdictLines: Record<JobVerdict, string> = {
               {{ plural(job.earlierSnapshots, 'earlier version') }} kept.
             }
           </p>
+          @if (snapshot.readings?.length) {
+            <details>
+              <summary>Successful link reads (up to 20 most recent)</summary>
+              @for (reading of snapshot.readings; track $index) {
+                <p>{{ readingMethods[reading.method] }} · {{ reading.readAt | date: 'medium' }}</p>
+                <p class="reading-url">Requested link: {{ reading.requestedUrl }}</p>
+                <p class="reading-url">Source page: {{ reading.resolvedUrl }}</p>
+              }
+              <p class="hint">
+                Each successful read is kept separately. Re-reading identical text reuses its saved
+                version.
+              </p>
+            </details>
+          }
           @if (job.canImport) {
             <button type="button" [disabled]="busy()" (click)="importText()">
               Check for a newer version
@@ -356,6 +370,9 @@ const verdictLines: Record<JobVerdict, string> = {
     }
   `,
   styles: `
+    .reading-url {
+      overflow-wrap: anywhere;
+    }
     .stages {
       display: flex;
       flex-wrap: wrap;
@@ -420,6 +437,11 @@ export class JobDetailPage {
   protected readonly plural = plural;
   protected readonly usd = usd;
   protected readonly textOrigins = textOrigins;
+  protected readonly readingMethods = {
+    greenhouse_board: 'Greenhouse official API',
+    ashby_board: 'Ashby official API',
+    company_page: 'Public company page',
+  };
   protected readonly verdictLines = verdictLines;
   protected readonly outcomeLabels = outcomeLabels;
   protected readonly describeResult = describeResult;

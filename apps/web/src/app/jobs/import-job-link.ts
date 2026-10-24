@@ -26,6 +26,22 @@ import { JobsApi } from './jobs-api';
       <form [formRoot]="linkForm" [attr.aria-busy]="linkForm().submitting()">
         <fieldset class="form-fields" [disabled]="linkForm().submitting()">
           <label>
+            <span id="job-reading-method-label">Reading method</span>
+            <select
+              [formField]="linkForm.method"
+              aria-labelledby="job-reading-method-label"
+              aria-describedby="reading-method-help"
+            >
+              <option value="direct">Official API / public company page</option>
+              <option value="deepseek_fetch" disabled>DeepSeek Fetch — unavailable</option>
+            </select>
+          </label>
+          <p id="reading-method-help" class="hint">
+            DeepSeek Fetch import is unavailable because the final destination cannot be verified.
+            No paid Fetch request is made here. If this method fails, paste the text or save the
+            page in the desktop app.
+          </p>
+          <label>
             Job link
             <input
               type="url"
@@ -45,7 +61,14 @@ import { JobsApi } from './jobs-api';
             job text is sent; your facts and contact details are not included. The call’s recorded
             cost appears on the job page.
           </p>
-          <button type="submit" class="primary" [disabled]="!!siteProblem()">
+          @if (linkForm.method().invalid()) {
+            <p role="alert">{{ linkForm.method().errors()[0].message }}</p>
+          }
+          <button
+            type="submit"
+            class="primary"
+            [disabled]="!!siteProblem() || linkForm.method().invalid()"
+          >
             {{
               linkForm().submitting()
                 ? phase()
@@ -96,20 +119,32 @@ import { JobsApi } from './jobs-api';
 export class ImportJobLink {
   private readonly api = inject(JobsApi);
   private readonly router = inject(Router);
-  private readonly model = signal({ url: '' });
+  private readonly model = signal<{ url: string; method: 'direct' | 'deepseek_fetch' }>({
+    url: '',
+    method: 'direct',
+  });
   protected readonly imported = linkedSignal({
-    source: () => this.model().url,
+    source: () => `${this.model().method}/${this.model().url}`,
     computation: (): JobDetail | null => null,
   });
   protected readonly siteProblem = computed(() => jobLinkImportProblem(this.model().url));
   protected readonly failure = linkedSignal({
-    source: () => this.model().url,
+    source: () => `${this.model().method}/${this.model().url}`,
     computation: () => '',
   });
   protected readonly phase = signal('Reading the job…');
   protected readonly linkForm = form(
     this.model,
     (s) => {
+      validate(s.method, ({ value }) =>
+        value() === 'direct'
+          ? undefined
+          : {
+              kind: 'unavailable',
+              message:
+                'DeepSeek Fetch import is disabled. Choose the official API / public page method, or paste the text.',
+            },
+      );
       required(s.url, { message: 'Paste a job link.' });
       pattern(s.url, /^https:\/\/\S+$/, { message: 'Enter an https link.' });
       maxLength(s.url, 2000, { message: 'Keep the link under 2000 characters.' });
@@ -126,7 +161,7 @@ export class ImportJobLink {
             let job = this.imported();
             if (!job) {
               this.phase.set('Reading the job…');
-              job = await this.api.importLink(f().value().url.trim());
+              job = await this.api.importLink(f().value().url.trim(), f().value().method);
               this.imported.set(job);
             }
             if (!job.snapshot) throw new Error('The imported job has no original text.');

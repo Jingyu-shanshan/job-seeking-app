@@ -92,10 +92,32 @@ export const MatchSchema = Type.Object({
 
 export type Match = Static<typeof MatchSchema>;
 
+export const ImportJobLinkRequestSchema = Type.Object(
+  {
+    url: Type.String({ pattern: '^https://\\S+$', maxLength: 2000 }),
+    method: Type.Optional(Type.Union([Type.Literal('direct'), Type.Literal('deepseek_fetch')])),
+  },
+  { additionalProperties: false },
+);
+export type ImportJobLinkRequest = Static<typeof ImportJobLinkRequestSchema>;
+
+export const JobReadingSchema = Type.Object({
+  requestedUrl: Type.String(),
+  resolvedUrl: Type.String(),
+  method: Type.Union([
+    Type.Literal('greenhouse_board'),
+    Type.Literal('ashby_board'),
+    Type.Literal('company_page'),
+  ]),
+  readAt: Type.String({ format: 'date-time' }),
+});
+export type JobReading = Static<typeof JobReadingSchema>;
+
 export const SnapshotSchema = Type.Object({
   id: Type.String({ format: 'uuid' }),
   capturedAt: Type.String({ format: 'date-time' }),
   catalogId: Type.String(),
+  readings: Type.Optional(Type.Array(JobReadingSchema, { maxItems: 20 })),
   title: Type.String(),
   company: Type.Union([Type.String(), Type.Null()]),
   location: Type.String(),

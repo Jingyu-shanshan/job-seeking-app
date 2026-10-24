@@ -163,6 +163,34 @@ describe('JobDetailPage', () => {
 
   afterEach(() => http.verify());
 
+  it('shows successful link provenance separately from immutable text and supports older snapshots', async () => {
+    await load(
+      detail({
+        snapshot: snapshot({
+          readings: [
+            {
+              requestedUrl: 'https://boards.greenhouse.io/acme/jobs/1?utm_source=alert',
+              resolvedUrl: 'https://careers.example.com/backend',
+              method: 'greenhouse_board',
+              readAt: '2026-10-23T09:00:00Z',
+            },
+          ],
+        }),
+      }),
+    );
+    const jobText = section('Job text')!;
+    expect(text(jobText)).toContain('Greenhouse official API');
+    expect(text(jobText)).toContain(
+      'Requested link: https://boards.greenhouse.io/acme/jobs/1?utm_source=alert',
+    );
+    expect(text(jobText)).toContain('Source page: https://careers.example.com/backend');
+    expect(text(jobText)).toContain('Oct 23, 2026');
+    expect(jobText.querySelector('pre')!.textContent).toBe(
+      'You will build APIs.\n- 5+ years of Python',
+    );
+    expect(jobText.querySelector('.reading-url a')).toBeNull();
+  });
+
   it('reads a discovered job’s text, then offers a summary with the cost so far', async () => {
     await load(detail());
     expect(text(page().querySelector('h1'))).toBe('Backend Engineer');

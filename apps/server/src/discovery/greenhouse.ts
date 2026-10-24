@@ -231,6 +231,9 @@ export const greenhouseBoard: Adapter = {
     if (!Value.Check(JobWithContentSchema, body)) {
       throw new DiscoveryError('Greenhouse answered with something other than a job.');
     }
+    if (String(body.id) !== externalId) {
+      throw new DiscoveryError('Greenhouse returned a different job than requested.');
+    }
     return {
       ...describe(name, body),
       text: checkJobText(htmlToText(decodeHTML(body.content)), 'Greenhouse'),
