@@ -31,6 +31,57 @@ test('extracts one structured job, including graph metadata, without navigation'
   assert.equal(companyJob(metadata([posting]), url).title, 'Engineer');
 });
 
+test('reads SuccessFactors-style Microdata without h1/main or JSON-LD and excludes surrounding UI', () => {
+  const job = companyJob(
+    `<header><span itemprop="title">Navigation title</span></header>
+    <div itemscope itemtype="http://schema.org/JobPosting">
+      <div itemscope itemtype="https://schema.org/Organization">
+        <span itemprop="title">Organization title</span><span itemprop="description">Organization description</span>
+      </div>
+      <span itemprop="title">Document Processing Developer</span>
+      <span itemprop="description"><div>${description}<p>Read &lt;document&gt; &amp; preserve it.</p><script>hidden()</script><style>.secret{}</style></div></span>
+      <aside>Apply now</aside>
+    </div><footer>Cookie preferences</footer>`,
+    url,
+  );
+  assert.equal(job.title, 'Document Processing Developer');
+  assert.equal(
+    job.text,
+    companyJob(metadata(posting), url).text + '\n\nRead <document> & preserve it.',
+  );
+  assert.equal(job.company, null);
+  assert.equal(job.location, '');
+  assert.doesNotMatch(job.text, /Navigation|Organization|Apply now|Cookie|hidden|secret/);
+});
+
+test('supports meta Microdata values and keeps valid JSON-LD preferred on dual-marked pages', () => {
+  const microdata = `<div itemscope itemtype="https://schema.org/JobPosting">
+    <meta itemprop="name title" content="Microdata Engineer">
+    <div itemprop="description">${description}</div></div>`;
+  assert.equal(companyJob(microdata, url).title, 'Microdata Engineer');
+  assert.equal(companyJob(metadata(posting) + microdata, url).title, 'Engineer');
+  assert.equal(
+    companyJob('<script type="application/ld+json">broken</script>' + microdata, url).title,
+    'Microdata Engineer',
+  );
+});
+
+test('Microdata must describe one complete job and retains the title/text size limits', () => {
+  const microdata = (title: string, text: string) =>
+    `<div itemscope itemtype="https://schema.org/JobPosting"><span itemprop="title">${title}</span><span itemprop="description">${text}</span></div>`;
+  for (const html of [
+    microdata('Engineer', description) + microdata('Other', description),
+    microdata('', description),
+    microdata('Engineer', ''),
+    microdata('Engineer', 'Please sign in'),
+    microdata('Engineer', 'x'.repeat(100_001)),
+    microdata('x'.repeat(1001), description),
+    `<div><span itemprop="title">Engineer</span><span itemprop="description">${description}</span></div>`,
+    `<div itemscope itemtype="https://evil.test/JobPosting"><span itemprop="title">Engineer</span><span itemprop="description">${description}</span></div>`,
+  ])
+    assert.throws(() => companyJob(html, url));
+});
+
 test('decodes entity-escaped job HTML used by Teamtailor company pages', () => {
   const encoded = description
     .replaceAll('&', '&amp;')
@@ -130,7 +181,11 @@ test('reads a bounded response and validates redirect targets before another con
         if (!redirect) {
           response.emit(
             'data',
-            Buffer.from(large ? 'x'.repeat(2 * 1024 * 1024 + 1) : metadata(posting)),
+            Buffer.from(
+              large
+                ? 'x'.repeat(2 * 1024 * 1024 + 1)
+                : `<div itemscope itemtype="https://schema.org/JobPosting"><span itemprop="title">Engineer</span><div itemprop="description">${description}</div></div>`,
+            ),
           );
           response.emit('end');
         }
