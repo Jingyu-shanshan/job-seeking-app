@@ -63,6 +63,10 @@ export {
   AddRequirementRequestSchema,
   EvidenceSchema,
   JobDetailSchema,
+  ImportJobLinkRequestSchema,
+  JobReadingSchema,
+  type ImportJobLinkRequest,
+  type JobReading,
   JobSummarySchema,
   MatchSchema,
   ModelUsageSchema,
@@ -316,3 +320,5 @@ export {
   maxFactImportCandidates,
 } from './limits.ts';
 export * from './runs.ts';
+export * from './tools.ts';
+export * from './job-search.ts';

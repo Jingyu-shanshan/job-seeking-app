@@ -2,6 +2,8 @@ import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import {
   AddRequirementRequestSchema,
   JobDetailSchema,
+  ImportJobLinkRequestSchema,
+  type JobReading,
   type AlertListing,
   ModelUsageSchema,
   PasteJobRequestSchema,
@@ -237,7 +239,7 @@ function evidenceOf(matched: MatchedRequirement | undefined, facts: FactState): 
 }
 
 async function loadSnapshot(pool: Pool, row: SnapshotRow, facts: FactState): Promise<Snapshot> {
-  const [summaries, requirements, matches, drafts] = await Promise.all([
+  const [summaries, requirements, matches, drafts, readings] = await Promise.all([
     pool.query<SummaryRow>(
       `select s.created_at, c.model, c.cost_usd, s.responsibilities, s.fields
        from job_summary s join model_call c on c.id = s.model_call_id
@@ -251,6 +253,12 @@ async function loadSnapshot(pool: Pool, row: SnapshotRow, facts: FactState): Pro
     ),
     latestMatches(pool, [row.id]),
     latestDrafts(pool, row.id),
+    pool.query<JobReading>(
+      `select requested_url as "requestedUrl",resolved_url as "resolvedUrl",
+      method,read_at as "readAt" from job_reading where job_snapshot_id=$1
+      order by read_at desc,id desc limit 20`,
+      [row.id],
+    ),
   ]);
   const summary = summaries.rows[0];
   const match = matches.get(row.id);
@@ -269,6 +277,7 @@ async function loadSnapshot(pool: Pool, row: SnapshotRow, facts: FactState): Pro
     id: row.id,
     capturedAt: row.captured_at.toISOString(),
     catalogId: row.catalog_id,
+    readings: readings.rows,
     title: row.title,
     company: row.company,
     location: row.location,
@@ -375,11 +384,17 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
     '/jobs/import-link',
     {
       schema: {
-        body: Type.Object({ url: Type.String({ pattern: '^https://\\S+$', maxLength: 2000 }) }),
+        body: ImportJobLinkRequestSchema,
         response: { 200: JobDetailSchema },
       },
     },
     async (request) => {
+      if (request.body.method === 'deepseek_fetch') {
+        throw httpError(
+          409,
+          'DeepSeek Fetch job import is disabled: the provider cannot enforce or report the final target URL. Use the official API / public page method, paste the text, or save it in the desktop app. No paid Fetch request was sent.',
+        );
+      }
       const link = jobLink(request.body.url);
       const problem = jobLinkImportProblem(request.body.url);
       if (problem) throw httpError(400, problem);
@@ -405,6 +420,7 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
           company: job.company ?? undefined,
         },
         link?.catalogId ?? 'company_page',
+        request.body.url.trim(),
       );
       return detailAfterChange(pool, saved.jobId);
     },

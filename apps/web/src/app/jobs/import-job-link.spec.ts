@@ -34,6 +34,17 @@ describe('ImportJobLink', () => {
   });
   afterEach(() => http.verify());
 
+  it('exposes the safe reading method and keeps Fetch visibly unavailable', async () => {
+    const select = page().querySelector('select')!;
+    expect(select.value).toBe('direct');
+    expect(
+      select.querySelector<HTMLOptionElement>('option[value="deepseek_fetch"]')!.disabled,
+    ).toBe(true);
+    expect(page().textContent).toContain('final destination cannot be verified');
+    expect(page().textContent).toContain('No paid Fetch request is made here');
+    http.expectNone(() => true);
+  });
+
   it('validates links before making requests', async () => {
     await fill('http://example.test/job');
     await submit();

@@ -5,7 +5,10 @@ import type {
   Draft,
   DraftKind,
   ImportAlertEmailResponse,
+  ImportJobLinkRequest,
   JobDetail,
+  JobSearchRequest,
+  JobSearchResponse,
   PasteJobRequest,
 } from '@jsa/shared';
 import { firstValueFrom } from 'rxjs';
@@ -22,8 +25,17 @@ export class JobsApi {
     return firstValueFrom(this.http.delete<void>(`/api/jobs/${jobId}`));
   }
 
-  importLink(url: string): Promise<JobDetail> {
-    return firstValueFrom(this.http.post<JobDetail>('/api/jobs/import-link', { url }));
+  search(request: JobSearchRequest): Promise<JobSearchResponse> {
+    return firstValueFrom(this.http.post<JobSearchResponse>('/api/job-searches', request));
+  }
+
+  importLink(url: string, method: ImportJobLinkRequest['method'] = 'direct'): Promise<JobDetail> {
+    return firstValueFrom(
+      this.http.post<JobDetail>('/api/jobs/import-link', {
+        url,
+        ...(method === 'direct' ? {} : { method }),
+      }),
+    );
   }
 
   /** `url` is the job page the text came from; needed when the job has no address. */

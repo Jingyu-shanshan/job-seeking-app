@@ -1,5 +1,6 @@
 import type { Pool } from 'pg';
 import { deepseek, estimateCost } from '../model/deepseek.ts';
+import { readToolResponse, toolCost, toolOf, toolPriceUsd } from '../tools/provider.ts';
 import { reserveModelCost } from '../rules/run-budget.ts';
 
 export class BudgetStop extends Error {}
@@ -10,8 +11,10 @@ export class RunBudget {
   constructor(privateOptions: { pool: Pool; id: string; fetch: typeof globalThis.fetch }) {
     const { pool, id, fetch } = privateOptions;
     this.fetch = async (input, init) => {
-      const model = String(input instanceof Request ? input.url : input) === deepseek.url;
-      const reserved = model ? reserveModelCost(String(init?.body)) : 0;
+      const url = String(input instanceof Request ? input.url : input);
+      const model = url === deepseek.url;
+      const tool = toolOf(url);
+      const reserved = model ? reserveModelCost(String(init?.body)) : tool ? toolPriceUsd : 0;
       if (this.controller.signal.aborted) throw new BudgetStop('The run was stopped.');
       const { rows } = await pool.query<{ id: string; remaining: number }>(
         `with charged as (
@@ -44,6 +47,27 @@ export class RunBudget {
           this.stopReason = 'The request was stopped or timed out; its reserved cost is kept.';
         throw err;
       }
+      const settle = async (cost: number) => {
+        await pool.query(
+          `with settled as (
+            update run_request set cost_usd=$2 where id=$1 and cost_usd is null returning run_id,reserved_usd
+          ) update search_run set cost_usd=greatest(0,cost_usd+$2-settled.reserved_usd) from settled
+            where search_run.id=settled.run_id`,
+          [attempt.id, cost],
+        );
+      };
+      if (tool) {
+        try {
+          const cost = toolCost(
+            tool,
+            response.status,
+            response.status === 200 ? await readToolResponse(response.clone()) : null,
+          );
+          if (cost !== undefined) await settle(cost);
+        } catch {
+          /* Unconfirmed tool outcomes keep their reservation. */
+        }
+      }
       if (model) {
         try {
           const parsed: unknown = await response.clone().json();
@@ -71,13 +95,7 @@ export class RunBudget {
                 u.prompt_tokens!,
               ),
             });
-            await pool.query(
-              `with settled as (
-              update run_request set cost_usd=$2 where id=$1 and cost_usd is null returning run_id,reserved_usd
-            ) update search_run set cost_usd=greatest(0,cost_usd+$2-settled.reserved_usd) from settled
-              where search_run.id=settled.run_id`,
-              [attempt.id, cost],
-            );
+            await settle(cost);
           }
         } catch {
           /* Unknown provider usage keeps the full reservation. */

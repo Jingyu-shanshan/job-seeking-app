@@ -83,6 +83,7 @@ export async function saveJobPage(
   pool: Pool,
   page: SavePageRequest,
   catalogId: 'desktop_save' | 'greenhouse_board' | 'ashby_board' | 'company_page',
+  requestedUrl?: string,
 ): Promise<SavePageResponse> {
   const { url, title, company, location, text } = page;
   const entry = {
@@ -106,13 +107,16 @@ export async function saveJobPage(
        select s.job_id, $2, $3, i.title, i.company, i.location, i.url
        from saved s join input i using (url)
        on conflict (job_id, body_sha256) do update set last_captured_at = now()
-       returning (xmax = 0) as inserted
+       returning id, (xmax = 0) as inserted
+     ), reading as (
+       insert into job_reading(job_snapshot_id,requested_url,resolved_url,method)
+       select id,$4,$5,$3 from snapshot where $4::text is not null
      )
      -- The texts the job had before this statement; the new one is not visible here.
      select s.job_id, m.job_id is null as new_job, n.inserted as new_text,
        exists (select 1 from job_snapshot o where o.job_id = s.job_id) as had_text
      from saved s, matched m, snapshot n`,
-    [JSON.stringify(await withSameJobs(pool, [entry])), body, catalogId],
+    [JSON.stringify(await withSameJobs(pool, [entry])), body, catalogId, requestedUrl ?? null, url],
   );
   const row = rows[0]!;
   return {

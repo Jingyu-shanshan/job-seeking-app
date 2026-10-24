@@ -10,6 +10,7 @@ import { buildApp } from '../apps/server/src/app.ts';
 import { createAccount } from '../apps/server/src/auth.ts';
 import { createTestDatabase } from '../apps/server/src/testing/database.ts';
 import { chatCompletion, fakeDeepSeek } from '../apps/server/src/testing/deepseek.ts';
+import { toolUrls } from '../apps/server/src/tools/provider.ts';
 import { fakeGreenhouse } from '../apps/server/src/testing/greenhouse.ts';
 import { resumeSystemPrompt, coverLetterSystemPrompt } from '../apps/server/src/drafts/write.ts';
 import { matchSystemPrompt } from '../apps/server/src/matching/match.ts';
@@ -88,6 +89,13 @@ const model = fakeDeepSeek(async () => {
   }
   return chatCompletion(JSON.stringify(answer));
 }, board.fetch);
+const searches = [];
+const searchResult = {
+  title: 'Unverified search title',
+  snippet: 'Search preview, not the job text',
+  summary: '',
+  content: '',
+};
 const db = await createTestDatabase();
 const pool = new Pool({ connectionString: db.url });
 const app = buildApp({
@@ -96,7 +104,20 @@ const app = buildApp({
   authSecret: secret,
   appUrl: origin,
   trustedOrigins: [origin],
-  fetch: model.fetch,
+  fetch: async (url, init) => {
+    if (String(url) === toolUrls.search) {
+      searches.push(JSON.parse(String(init.body)));
+      return Response.json({
+        results: [
+          { ...searchResult, url: 'https://boards.greenhouse.io/example/jobs/7?utm_source=test' },
+          { ...searchResult, url: 'https://job-boards.greenhouse.io/example/jobs/7' },
+          { ...searchResult, url: 'https://www.linkedin.com/jobs/view/7' },
+        ],
+      });
+    }
+    assert.notEqual(String(url), toolUrls.fetch, 'No paid Fetch may be sent by job import');
+    return model.fetch(url, init);
+  },
   deepseekApiKey: 'sk-made-up',
 });
 let browser;
@@ -320,6 +341,55 @@ try {
   assert.equal(model.requests.length, 5);
   assert(!JSON.stringify(model.requests).includes(account.email));
   assert(!JSON.stringify(model.requests).includes('Private sample note'));
+
+  const sourcesBeforeSearch = (await api('GET', '/api/sources')).sources;
+  await go('/jobs');
+  await page.getByRole('link', { name: 'Search for job links', exact: true }).click();
+  await page.getByLabel('Role', { exact: true }).fill('Engineer');
+  await page.getByLabel('Location', { exact: true }).fill('Helsinki');
+  const found = await action('Search with DeepSeek', '/api/job-searches');
+  assert.equal(found.candidates.length, 1);
+  assert.equal(found.ignored.length, 2);
+  assert.equal(found.costUsd, 0.00075);
+  assert.equal(searches.length, 1);
+  assert.deepEqual(Object.keys(searches[0]).sort(), ['count', 'need_content', 'query']);
+  assert(!JSON.stringify(searches).includes(account.email));
+  assert(!JSON.stringify(searches).includes('Private sample note'));
+  await page.getByText('Search snippet · not verified', { exact: true }).waitFor();
+  const verified = await action('Verify and save job', '/api/jobs/import-link');
+  assert.equal(verified.snapshot.text, jd);
+  assert.equal(verified.snapshot.readings[0].method, 'greenhouse_board');
+  assert.equal(verified.snapshot.readings[0].requestedUrl, found.candidates[0].url);
+  assert.deepEqual((await api('GET', '/api/sources')).sources, sourcesBeforeSearch);
+  await page.getByRole('link', { name: 'Open saved job and review criteria', exact: true }).click();
+  await page.getByText('Successful link reads (up to 20 most recent)', { exact: true }).click();
+  await page.getByText('Requested link: ' + found.candidates[0].url, { exact: true }).waitFor();
+  check(
+    'T33: manual paid search uses only explicit terms, merges aliases and rejects unselected domains; official verification saves original text and immutable provenance without changing sources',
+  );
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.screenshot({ path: `${output}/t33-provenance-${width}.png`, fullPage: true });
+  }
+  await go('/jobs/paste');
+  const method = page.getByLabel('Reading method', { exact: true });
+  assert.equal(await method.inputValue(), 'direct');
+  assert(
+    await method.locator('option[value="deepseek_fetch"]').evaluate((option) => option.disabled),
+  );
+  const disabledFetch = await page.request.post(origin + '/api/jobs/import-link', {
+    headers: { origin },
+    data: { url: found.candidates[0].url, method: 'deepseek_fetch' },
+  });
+  assert.equal(disabledFetch.status(), 409);
+  assert((await disabledFetch.json()).message.includes('No paid Fetch request was sent'));
+  assert.equal(Number((await pool.query('select count(*) as n from tool_call')).rows[0].n), 1);
+  assert.equal(model.requests.length, 5);
+  check(
+    'T33: unavailable Fetch is disabled in the real browser and rejected by the server without provider traffic or fee reservation',
+  );
+
   check(
     'Frozen application files retain SHA-256; interview uses frozen materials; private notes/contact excluded',
   );

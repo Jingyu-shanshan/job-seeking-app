@@ -23,6 +23,12 @@ export const routes: Routes = [
         title: 'Jobs',
       },
       {
+        path: 'jobs/search',
+        loadComponent: () => import('./jobs/search-jobs').then((m) => m.SearchJobs),
+        title: 'Search for job links',
+        data: { navigation: '/jobs' },
+      },
+      {
         path: 'jobs/paste',
         loadComponent: () => import('./jobs/paste-job').then((m) => m.PasteJob),
         title: 'Paste a job',
@@ -84,6 +90,12 @@ export const routes: Routes = [
         path: 'criteria',
         loadComponent: () => import('./criteria/criteria').then((m) => m.CriteriaPage),
         title: 'Criteria',
+      },
+      {
+        path: 'tools',
+        loadComponent: () => import('./tools/tools').then((m) => m.Tools),
+        title: 'Web tools',
+        data: { navigation: '/sources' },
       },
       {
         path: 'sources',

@@ -290,3 +290,16 @@ test('the runner opens the form Greenhouse hosts for embedding, never the compan
     'https://job-boards.greenhouse.io/embed/job_app?for=a%26b&token=7%23x',
   );
 });
+
+test('refuses official job text for a different ID', async () => {
+  await assert.rejects(
+    greenhouseBoard.readJob(
+      'acme',
+      '7',
+      fakeGreenhouse({
+        acme: async () => Response.json({ id: 8, title: 'Wrong job', content: '<p>Text</p>' }),
+      }).fetch,
+    ),
+    { message: 'Greenhouse returned a different job than requested.' },
+  );
+});

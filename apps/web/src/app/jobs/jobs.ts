@@ -94,6 +94,7 @@ const areaLabels: Record<SearchScope['area'], string> = {
         Jobs you pasted, added by link, saved, or imported from job-alert emails stay together here.
       </p>
       <div class="actions">
+        <a class="button" routerLink="/jobs/search">Search for job links</a>
         <a class="button primary" routerLink="/jobs/paste">Add text or link</a>
         <a class="button" routerLink="/jobs/alerts">Import job-alert emails</a>
       </div>

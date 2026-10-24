@@ -39,6 +39,7 @@ const alertSections: { section: AlertSection; title: string }[] = [
   imports: [AlertSource, CatalogEntryCard, RouterLink],
   template: `
     <h1>Sources</h1>
+    <p><a routerLink="/tools">Web tools: manual search and page reading</a></p>
     <p>
       Where the app finds jobs. Which locations count is one of your
       <a routerLink="/criteria">criteria</a>; it filters the jobs found and does not change which

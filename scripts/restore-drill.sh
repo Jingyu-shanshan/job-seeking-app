@@ -41,6 +41,14 @@ insert into job_snapshot (job_id, body, catalog_id, title, company, location, so
   values (:'job_id', 'Billing engineer (Helsinki). You keep invoices correct. Kehittäjä – 开发者.',
     'paste', 'Billing engineer', 'Example Oy', 'Helsinki, Finland', 'https://example.com/jobs/1')
   returning id as snapshot_id \gset
+insert into job_reading (job_snapshot_id, requested_url, resolved_url, method)
+  values (:'snapshot_id', 'https://example.com/jobs/1?utm_source=sample',
+    'https://example.com/jobs/1', 'company_page');
+insert into tool_call (id, tool, input, reserved_usd, cost_usd, result, message, finished_at)
+  values (gen_random_uuid(), 'search', 'Sample Engineer Helsinki site:jobs.ashbyhq.com',
+    0.00075, 0.00075,
+    '{"results":[{"title":"Sample Engineer","url":"https://jobs.ashbyhq.com/example/sample","snippet":"Sample","summary":"Sample","content":""}]}',
+    'Completed.', now());
 insert into job_requirement (job_snapshot_id, body, quote, quote_verified, kind, origin)
   values (:'snapshot_id', 'Invoice correctness', 'You keep invoices correct.', true, 'must', 'model')
   returning id as requirement_id \gset
@@ -197,6 +205,10 @@ empty=$(awk '$2 == 0 { print $1 }' "$work/source.txt")
 # The restored copy still enforces the rules and is up to date with the migrations.
 if psql "$restore_url" -q -c "update fact_version set body = 'changed'" 2>/dev/null; then
   echo 'the restored database lets a fact version change its text' >&2
+  exit 1
+fi
+if psql "$restore_url" -q -c "update job_reading set requested_url = 'https://example.com/changed'" 2>/dev/null; then
+  echo 'the restored database lets a reading record change its source' >&2
   exit 1
 fi
 hash=$(psql "$restore_url" -Atq -v ON_ERROR_STOP=1 -c "

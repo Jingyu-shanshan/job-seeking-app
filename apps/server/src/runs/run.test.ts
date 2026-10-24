@@ -7,6 +7,7 @@ import { RateLimiter } from '../discovery/run.ts';
 import { deepseek } from '../model/deepseek.ts';
 import { withModelLock } from '../model/lock.ts';
 import { reserveModelCost } from '../rules/run-budget.ts';
+import { toolPriceUsd, toolUrls } from '../tools/provider.ts';
 import { fakeDeepSeek } from '../testing/deepseek.ts';
 import { fakeGreenhouse } from '../testing/greenhouse.ts';
 import { createTestDatabase, needsDatabase, type TestDatabase } from '../testing/database.ts';
@@ -127,6 +128,101 @@ describe('persistent run budgets and checkpoints', needsDatabase, () => {
       body: JSON.stringify({ max_tokens: 8000 }),
     });
     assert.equal((await loadRun(pool, id)).costUsd, 0.001206);
+  });
+  test('Search and Fetch share atomic request, cost and time budgets and settle empty results', async () => {
+    for (const tool of ['search', 'fetch'] as const) {
+      let sent = 0;
+      const fetch: typeof globalThis.fetch = async () => {
+        sent++;
+        return Response.json(tool === 'search' ? { results: [] } : { title: '', content: '' });
+      };
+      const blocked = await newRun({ costLimitUsd: toolPriceUsd - 0.00001 });
+      await assert.rejects(
+        new RunBudget({ pool, id: blocked, fetch }).fetch(toolUrls[tool]),
+        BudgetStop,
+      );
+      assert.equal(sent, 0);
+      assert.equal((await loadRun(pool, blocked)).requests, 0);
+      const id = await newRun({ costLimitUsd: toolPriceUsd, requestLimit: 1 });
+      const outcomes = await Promise.allSettled(
+        [0, 1].map(() => new RunBudget({ pool, id, fetch }).fetch(toolUrls[tool])),
+      );
+      assert.equal(outcomes.filter((r) => r.status === 'fulfilled').length, 1);
+      assert.equal(sent, 1);
+      assert.equal((await loadRun(pool, id)).requests, 1);
+      assert.equal((await loadRun(pool, id)).costUsd, 0);
+      const expired = await newRun({ timeLimitSeconds: 1 });
+      await pool.query('update search_run set elapsed_ms=1001 where id=$1', [expired]);
+      await assert.rejects(
+        new RunBudget({ pool, id: expired, fetch }).fetch(toolUrls[tool]),
+        BudgetStop,
+      );
+      assert.equal(sent, 1);
+    }
+  });
+  test('tool success is billed, HTTP failures are free, and unknown reservations survive restart and resume', async () => {
+    const id = await newRun();
+    for (const [response, expected] of [
+      [Response.json({ title: '', content: 'Page' }), toolPriceUsd],
+      [new Response('limited', { status: 429 }), toolPriceUsd],
+      [Response.json({ invalid: true }), 2 * toolPriceUsd],
+    ] as const) {
+      await new RunBudget({ pool, id, fetch: async () => response }).fetch(toolUrls.fetch);
+      assert.equal((await loadRun(pool, id)).costUsd, expected);
+    }
+    await assert.rejects(
+      new RunBudget({
+        pool,
+        id,
+        fetch: async () => {
+          throw new Error('lost');
+        },
+      }).fetch(toolUrls.search),
+    );
+    await endRun(pool, id, 'paused', 'Stopped');
+    await pool.query("update search_run set status='running',active_since=now() where id=$1", [id]);
+    const resumed = await loadRun(pool, id);
+    assert.equal(resumed.costUsd, 0.00225);
+    assert.equal(resumed.requests, 4);
+    const budget = new RunBudget({
+      pool,
+      id,
+      fetch: async () => {
+        throw new Error('must not send');
+      },
+    });
+    budget.controller.abort();
+    await assert.rejects(budget.fetch(toolUrls.search), BudgetStop);
+    assert.equal((await loadRun(pool, id)).requests, 4);
+  });
+  test('stopping an in-flight tool keeps its charge and request count across a new budget', async () => {
+    const id = await newRun();
+    const started = Promise.withResolvers<void>();
+    const budget = new RunBudget({
+      pool,
+      id,
+      fetch: async (_url, init) => {
+        assert.equal((await loadRun(pool, id)).costUsd, toolPriceUsd);
+        started.resolve();
+        return new Promise((_resolve, reject) => {
+          init!.signal!.addEventListener('abort', () => reject(new Error('stopped')), {
+            once: true,
+          });
+        });
+      },
+    });
+    const pending = budget.fetch(toolUrls.search);
+    await started.promise;
+    budget.controller.abort();
+    await assert.rejects(pending);
+    await endRun(pool, id, 'paused', 'Stopped');
+    await pool.query("update search_run set status='running',active_since=now() where id=$1", [id]);
+    await new RunBudget({ pool, id, fetch: async () => Response.json({ results: [] }) }).fetch(
+      toolUrls.search,
+    );
+    const run = await loadRun(pool, id);
+    assert.equal(run.costUsd, toolPriceUsd);
+    assert.equal(run.requests, 2);
   });
   test('running time is cumulative and prevents sending after the deadline', async () => {
     const id = await newRun({ timeLimitSeconds: 1 });
