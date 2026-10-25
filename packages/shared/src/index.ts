@@ -322,3 +322,4 @@ export {
 export * from './runs.ts';
 export * from './tools.ts';
 export * from './job-search.ts';
+export * from './company-research.ts';

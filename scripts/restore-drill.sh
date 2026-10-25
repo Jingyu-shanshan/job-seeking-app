@@ -177,6 +177,19 @@ insert into interview_preparation (application_id, model_call_id, sources, answe
       "interviewer":[{"text":"What are the team priorities?","sources":["J1"]}]}')
   returning id as preparation_id \gset
 insert into interview_notes values (:'preparation_id', 'Private practice notes, still to confirm.');
+insert into tool_call (id, tool, input, reserved_usd, cost_usd, result, message, finished_at)
+  values (gen_random_uuid(), 'search', '"Example Oy" site:example.com products',
+    0.00075, 0.00075,
+    '{"results":[{"title":"Sample product","url":"https://example.com/products","snippet":"Sample","summary":"Sample","content":""}]}',
+    'Completed.', now())
+  returning id as research_call_id \gset
+insert into company_research (id, application_id, company, website, topic, query,
+    status, message, sources, finished_at)
+  values (:'research_call_id', :'application_id', 'Example Oy', 'https://example.com', 'products',
+    '"Example Oy" site:example.com products', 'completed', 'Official-site excerpts saved.',
+    '[{"url":"https://example.com/products","finalUrl":"https://example.com/products",
+       "title":"Sample product","readAt":"2026-10-25T10:00:00Z","method":"public_page",
+       "text":"Our public product helps teams maintain reliable invoice exports and billing services.","truncated":false}]', now());
 insert into submit_receipt (application_id, confirmed, page_url, page_text, note, screenshot)
   values (:'application_id', true,
     'https://job-boards.greenhouse.io/embed/job_app/confirmation?for=drill&token=1',
@@ -209,6 +222,10 @@ if psql "$restore_url" -q -c "update fact_version set body = 'changed'" 2>/dev/n
 fi
 if psql "$restore_url" -q -c "update job_reading set requested_url = 'https://example.com/changed'" 2>/dev/null; then
   echo 'the restored database lets a reading record change its source' >&2
+  exit 1
+fi
+if psql "$restore_url" -q -c "update company_research set sources = '[]'" 2>/dev/null; then
+  echo 'the restored database lets completed company research change its evidence' >&2
   exit 1
 fi
 hash=$(psql "$restore_url" -Atq -v ON_ERROR_STOP=1 -c "

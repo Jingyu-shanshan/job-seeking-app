@@ -1,8 +1,10 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { Component, input } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import type { InterviewState } from '@jsa/shared';
+import { CompanyResearchPanel } from './company-research';
 import { InterviewPage } from './interview-page';
 
 const id = '00000000-0000-4000-8000-000000000001';
@@ -68,6 +70,11 @@ const prepared: InterviewState = {
   },
 };
 
+@Component({ selector: 'app-company-research', template: '' })
+class ResearchStub {
+  readonly applicationId = input.required<string>();
+}
+
 describe('InterviewPage', () => {
   let fixture: ComponentFixture<InterviewPage>;
   let http: HttpTestingController;
@@ -92,6 +99,10 @@ describe('InterviewPage', () => {
     TestBed.configureTestingModule({
       imports: [InterviewPage],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+    });
+    TestBed.overrideComponent(InterviewPage, {
+      remove: { imports: [CompanyResearchPanel] },
+      add: { imports: [ResearchStub] },
     });
     fixture = TestBed.createComponent(InterviewPage);
     fixture.componentRef.setInput('id', id);
