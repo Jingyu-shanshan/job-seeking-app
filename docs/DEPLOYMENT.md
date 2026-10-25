@@ -2,7 +2,7 @@
 
 更新：2026-10-13。**生产服务已运行，数据库迁移、原账户登录/退出、历史投递/PDF 下载、导出、时间点隔离恢复、重部署、兼容构建回滚及恢复、本机执行器连接与令牌吊销均通过。T12 已完成 GitHub `main` 自动发布验收。** 用户已批准 Railway App 只新增本仓库访问，`main` 触发器已建立并启用等待 CI；实际推送已先等待 GitHub 检查，CI 通过后自动构建、执行迁移并发布成功。用户已选择自动发布并迁移现有本地资料和投递记录。T03a 的不含个人数据独立欧盟演练已先完成，演练服务现已停止。`npm ci`、`npm run build`、`npm start`、`npm run db:migrate` 和 `npm run auth:create-account` 已实现。
 
-2026-10-13 后续决定（**T32 已执行删除请求，待平台清除核验**）：只保留现有 `job-seeking-app-production` project。2026-10-19 完成 T32.1 清点并获用户明确批准后，对旧 `job-seeking-app-staging` 执行删除；Railway 返回的删除排期为 10 月 21 日 15:40（赫尔辛基），当前旧项目仍可列出，不能视为最终清除。删除请求前后 production 的配置、域名、部署、main/Wait for CI、43 张业务表和 6 个附件均一致，健康与原账户退出/重新登录通过。当前无云端演练需求，不新建 environment，独立 Neon 演练资源保留。实际下载 ZIP 已核验包含完整的两份冻结 PDF，最终清除核验及独立下载链接的自动化边界见 [T32 维护记录](T32_MAINTENANCE.md)，完整范围见 [整理任务](TASKS.md)。
+2026-10-13 后续决定（**T32 于 2026-10-25 最终验收通过**）：只保留现有 `job-seeking-app-production` project。2026-10-19 完成 T32.1 清点并获用户明确批准后，对旧 `job-seeking-app-staging` 执行删除；Railway 返回的删除排期为 10 月 21 日 15:40（赫尔辛基），2026-10-25 实时项目清单已无旧 staging，本应用只剩原 production；原 project/environment/service/域名、main/Wait for CI、休眠配置及健康复核通过。变量值本次不可读，连接串/密钥、原登录及数据完整性沿用 10 月 19 日证据。删除请求前后 production 的配置、域名、部署、main/Wait for CI、43 张业务表和 6 个附件均一致，健康与原账户退出/重新登录通过。当前无云端演练需求，不新建 environment，独立 Neon 演练资源保留。实际下载 ZIP 已核验包含完整的两份冻结 PDF，最终清除证据及独立下载链接的自动化边界见 [T32 维护记录](T32_MAINTENANCE.md)，完整范围见 [整理任务](TASKS.md)。
 
 ## 拓扑
 
