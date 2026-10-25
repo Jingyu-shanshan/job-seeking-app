@@ -69,16 +69,32 @@ export function pageUrl(address: string): URL {
 
 /** Pin the connection to the DNS answer we checked, including on every redirect. */
 export async function readCompanyPage(address: string, redirects = 0): Promise<JobText> {
+  const page = await readPublicHtml(address, redirects);
+  return companyJob(page.html, page.url);
+}
+
+/** Reuse the pinned public connection for research; every redirect stays on the chosen host. */
+export async function readPublicHtml(
+  address: string,
+  redirects = 0,
+  allowedHost?: string,
+  signal?: AbortSignal,
+): Promise<{ html: string; url: string }> {
   const url = pageUrl(address);
+  if (allowedHost && url.hostname !== allowedHost)
+    throw httpError(400, 'The page must stay on the selected official website.');
+  signal?.throwIfAborted();
   const result = await new Promise<{ html: string; redirect?: string }>((resolve, reject) => {
     const request = get(
       url,
       {
         agent: false,
-        signal: AbortSignal.timeout(15_000),
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+          : AbortSignal.timeout(15_000),
         headers: {
           accept: 'text/html',
-          'user-agent': 'JobSeekingApp/1.0 (user-requested job import)',
+          'user-agent': 'JobSeekingApp/1.0 (user-requested public page reading)',
         },
         lookup(hostname, options, callback) {
           lookup(hostname, { all: true }, (error, addresses) => {
@@ -131,9 +147,9 @@ export async function readCompanyPage(address: string, redirects = 0): Promise<J
   if (result.redirect) {
     if (redirects >= 3)
       throw new DiscoveryError(`The job link redirects too many times. ${manual}`);
-    return readCompanyPage(new URL(result.redirect, url).href, redirects + 1);
+    return readPublicHtml(new URL(result.redirect, url).href, redirects + 1, allowedHost, signal);
   }
-  return companyJob(result.html, url.href);
+  return { html: result.html, url: url.href };
 }
 
 /** Prefer a single JobPosting; a list of vacancies must never become one job. */

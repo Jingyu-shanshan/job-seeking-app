@@ -5,11 +5,12 @@ import { FormField, form, maxLength } from '@angular/forms/signals';
 import { RouterLink } from '@angular/router';
 import type { InterviewSource, InterviewState } from '@jsa/shared';
 import { errorMessage } from '../sources/sources-api';
+import { CompanyResearchPanel } from './company-research';
 import { InterviewsApi } from './interviews-api';
 
 @Component({
   selector: 'app-interview-page',
-  imports: [DatePipe, RouterLink, FormField],
+  imports: [DatePipe, RouterLink, FormField, CompanyResearchPanel],
   template: `
     <p><a [routerLink]="['/applications', id()]">Back to the application</a></p>
     <h1>Interview preparation</h1>
@@ -239,6 +240,7 @@ import { InterviewsApi } from './interviews-api';
           </section>
         }
       }
+      <app-company-research [applicationId]="id()" />
     } @else if (data.isLoading()) {
       <p role="status">Loading interview preparation…</p>
     } @else {
