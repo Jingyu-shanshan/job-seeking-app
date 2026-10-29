@@ -32,6 +32,43 @@ describe('migrations', needsDatabase, () => {
     assert.deepEqual(await migrate(db.url, quiet), []);
   });
 
+  test('adding draft language preserves existing immutable English content', async () => {
+    const oldDb = await createTestDatabase();
+    const pool = new Pool({ connectionString: oldDb.url });
+    try {
+      // Restore the schema immediately before the feature in this throwaway database.
+      await pool.query('alter table artifact drop column language');
+      await pool.query("delete from pgmigrations where name = '1793232000000_draft-language'");
+      const {
+        rows: [old],
+      } = await pool.query(`with j as (
+        insert into job default values returning id
+      ), s as (
+        insert into job_snapshot (job_id, body, catalog_id, title, source_url)
+        select id, 'Example job text.', 'paste', 'Engineer', 'https://example.com/jobs/old' from j returning id
+      ), c as (
+        insert into model_call (purpose, job_snapshot_id, model, started_at, duration_ms)
+        select 'draft', id, 'test-model', now(), 900 from s returning id, job_snapshot_id
+      ), a as (
+        insert into artifact (job_snapshot_id, kind, model_call_id)
+        select job_snapshot_id, 'resume', id from c returning id
+      ) insert into artifact_claim (artifact_id, position, body, section, block, line, about)
+        select id, 0, 'Built an invoice API.', 'summary', 0, 'sentence', 'me' from a returning artifact_id, body`);
+      await migrate(oldDb.url, quiet);
+      const {
+        rows: [restored],
+      } = await pool.query(
+        `select a.language, c.body from artifact a
+        join artifact_claim c on c.artifact_id = a.id where a.id = $1`,
+        [old.artifact_id],
+      );
+      assert.deepEqual(restored, { language: 'en', body: 'Built an invoice API.' });
+    } finally {
+      await pool.end();
+      await oldDb.drop();
+    }
+  });
+
   test('a later migration failure rolls back earlier files and keeps existing data', async () => {
     const failedDb = await createTestDatabase({ migrated: false });
     const pool = new Pool({ connectionString: failedDb.url });

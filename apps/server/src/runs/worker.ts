@@ -205,7 +205,7 @@ export async function prepareRun(options: WorkerOptions, id: string, budget: Run
               'select 1 from artifact where job_snapshot_id=$1 and kind=$2',
               [snapshotId, kind],
             );
-            if (!saved.rowCount) await writeDraft({ ...modelOptions, kind });
+            if (!saved.rowCount) await writeDraft({ ...modelOptions, kind, language: 'en' });
           });
         }
       }

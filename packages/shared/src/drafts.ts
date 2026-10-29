@@ -1,6 +1,18 @@
 import Type, { type Static } from 'typebox';
 import { CitedFactSchema } from './facts.ts';
 
+export const DraftLanguageSchema = Type.Union([
+  Type.Literal('en'),
+  Type.Literal('zh'),
+  Type.Literal('fi'),
+]);
+export type DraftLanguage = Static<typeof DraftLanguageSchema>;
+export const draftLanguageNames: Record<DraftLanguage, string> = {
+  en: 'English',
+  zh: '中文',
+  fi: 'Suomi',
+};
+
 export const DraftKindSchema = Type.Union([Type.Literal('resume'), Type.Literal('cover_letter')]);
 
 export type DraftKind = Static<typeof DraftKindSchema>;
@@ -101,6 +113,7 @@ export type DraftStatement = Static<typeof DraftStatementSchema>;
 export const DraftSchema = Type.Object({
   id: Type.String({ format: 'uuid' }),
   kind: DraftKindSchema,
+  language: DraftLanguageSchema,
   jobId: Type.String({ format: 'uuid' }),
   snapshotId: Type.String({ format: 'uuid' }),
   /** The job as its text was captured. */
@@ -124,6 +137,7 @@ export type Draft = Static<typeof DraftSchema>;
 export const DraftSummarySchema = Type.Object({
   id: Type.String({ format: 'uuid' }),
   kind: DraftKindSchema,
+  language: DraftLanguageSchema,
   createdAt: Type.String({ format: 'date-time' }),
   statements: Type.Integer({ minimum: 0 }),
   /** Statements that failed a check and are left out of the document. */
@@ -135,7 +149,10 @@ export const DraftSummarySchema = Type.Object({
 
 export type DraftSummary = Static<typeof DraftSummarySchema>;
 
-export const WriteDraftRequestSchema = Type.Object({ kind: DraftKindSchema });
+export const WriteDraftRequestSchema = Type.Object({
+  kind: DraftKindSchema,
+  language: Type.Optional(DraftLanguageSchema),
+});
 
 export type WriteDraftRequest = Static<typeof WriteDraftRequestSchema>;
 

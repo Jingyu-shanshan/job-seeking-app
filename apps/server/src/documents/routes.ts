@@ -67,6 +67,7 @@ async function documentState(pool: Pool, draftId: string) {
   const document: DraftDocument = {
     draftId,
     kind: draft.kind,
+    language: draft.language,
     jobId: draft.jobId,
     title: draft.title,
     company: draft.company,

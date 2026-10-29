@@ -699,6 +699,7 @@ describe('JobDetailPage', () => {
             {
               id: '00000000-0000-4000-8000-000000000020',
               kind: 'resume',
+              language: 'en',
               createdAt: '2026-10-05T08:00:00.000Z',
               statements: 12,
               rejected: 2,
@@ -822,6 +823,7 @@ describe('JobDetailPage', () => {
           drafts: ['resume', 'cover_letter'].map((kind, i) => ({
             id: `${jobId.slice(0, -1)}${i + 4}`,
             kind: kind as 'resume' | 'cover_letter',
+            language: 'en' as const,
             createdAt: '2026-10-18T08:00:00Z',
             statements: 2,
             rejected: 0,
@@ -850,6 +852,7 @@ describe('JobDetailPage', () => {
             {
               id: snapshotId,
               kind: 'resume',
+              language: 'en',
               createdAt: '2026-10-18T08:00:00Z',
               statements: 2,
               rejected: 0,

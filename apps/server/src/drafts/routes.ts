@@ -38,7 +38,7 @@ export const draftRoutes: FastifyPluginAsyncTypebox<DraftRoutesOptions> = async 
     },
     async (request, reply) => {
       const snapshotId = request.params.id;
-      const { kind } = request.body;
+      const { kind, language = 'en' } = request.body;
       const exists = await pool.query('select 1 from job_snapshot where id = $1', [snapshotId]);
       if (!exists.rowCount) throw httpError(404, 'There is no such job text.');
       if (!deepseekApiKey) {
@@ -61,6 +61,7 @@ export const draftRoutes: FastifyPluginAsyncTypebox<DraftRoutesOptions> = async 
           log: request.log,
           snapshotId,
           kind,
+          language,
         });
       } finally {
         writing.delete(key);

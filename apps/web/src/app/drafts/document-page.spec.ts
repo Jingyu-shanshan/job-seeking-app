@@ -29,6 +29,7 @@ async function settle() {
 const resume = (fields: Partial<DraftDocument> = {}): DraftDocument => ({
   draftId,
   kind: 'resume',
+  language: 'en',
   jobId: '00000000-0000-4000-8000-000000000002',
   title: 'Payments Engineer',
   company: 'Example Pay',
