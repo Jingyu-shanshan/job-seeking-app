@@ -308,3 +308,35 @@ test('Chinese text cannot hide invented tools or numbers and translated quotes r
   fails(me('联系test@example.com。', facts.role), 'sensitive');
   fails(me('约30%。'), 'uncited');
 });
+
+test('Chinese upper limits cannot be mistaken for an over claim', () => {
+  const upper = { body: '编写了不超过10个工具。' };
+  passes(me('Built up to 10 tools.', upper));
+  passes(me('编写了不超过10个工具。', { body: 'Built up to 10 tools.' }));
+  fails(me('Built over 10 tools.', upper), 'qualifier');
+  fails(me('编写了超过10个工具。', upper), 'qualifier');
+});
+
+test('equivalent unfinished states form one completion constraint', () => {
+  const statuses = [
+    'unfinished',
+    'incomplete',
+    'not completed',
+    '未完成',
+    '尚未完成',
+    'keskeneräinen',
+    'ei suoritettu',
+  ];
+  for (const source of statuses) {
+    for (const status of statuses) passes(me(`Go (${status})`, { body: `Go (${source})` }));
+    fails(me('Go', { body: `Go (${source})` }), 'status');
+  }
+});
+
+test('proficiency levels next to Han characters must survive translation', () => {
+  const chinese = { body: 'Finnish：基础A2' };
+  passes(me('Finnish: basic (A2)', chinese));
+  passes(me('Finnish：基础A2', facts.finnish));
+  fails(me('Finnish：基础', chinese), 'status', 'A2');
+  fails(me('Finnish: basic', chinese), 'status', 'A2');
+});

@@ -92,18 +92,19 @@ const qualifierBefore: [Exclude<Qualifier, 'none'>, RegExp][] = [
       '大约|约|大概',
     ),
   ],
-  [
-    'lower',
-    qualifier(
-      'over|more than|at least|above|upwards of|yli|vähintään|enemmän kuin|>',
-      '超过|至少|大于',
-    ),
-  ],
+  // 不超过 must match before its lower-bound suffix 超过.
   [
     'upper',
     qualifier(
       'up to|less than|fewer than|under|below|at most|enintään|alle|korkeintaan|<',
       '至多|最多|不超过|少于|小于',
+    ),
+  ],
+  [
+    'lower',
+    qualifier(
+      'over|more than|at least|above|upwards of|yli|vähintään|enemmän kuin|>',
+      '超过|至少|大于',
     ),
   ],
 ];
@@ -343,8 +344,6 @@ const statusWords = [
   'currently studying',
   'currently learning',
   'not completed',
-  'unfinished',
-  'incomplete',
   'basic',
   'beginner',
   'elementary',
@@ -366,9 +365,14 @@ const statusTranslations: Record<string, readonly string[]> = {
   pursuing: ['攻读中', 'suorittamassa'],
   'currently studying': ['在读', 'opiskelee parhaillaan'],
   'currently learning': ['正在学习', 'opettelee parhaillaan'],
-  'not completed': ['尚未完成', 'ei suoritettu'],
-  unfinished: ['未完成', 'keskeneräinen'],
-  incomplete: ['未完成', 'keskeneräinen'],
+  'not completed': [
+    'unfinished',
+    'incomplete',
+    '尚未完成',
+    '未完成',
+    'ei suoritettu',
+    'keskeneräinen',
+  ],
   basic: ['基础', 'perustaso'],
   beginner: ['初学', 'aloittelija'],
   elementary: ['初级', 'alkeistaso'],
@@ -383,8 +387,8 @@ function statusProblems(text: string, facts: readonly { body: string }[]): Probl
   for (const { body } of facts) {
     for (const word of statusWords) {
       const forms = [word, ...(statusTranslations[word] ?? [])];
-      if (forms.some((form) => has(body, form)) && !forms.some((form) => has(text, form)))
-        dropped.add(word);
+      const sourceWord = forms.find((form) => has(body, form));
+      if (sourceWord && !forms.some((form) => has(text, form))) dropped.add(sourceWord);
     }
   }
   return [...dropped].map((word) => ({
@@ -489,7 +493,7 @@ function checkStatement(
     ...nameProblems(text, source, where, vocabulary),
     ...statusProblems(
       text,
-      statement.facts.map((fact) => ({ body: tidy(fact.body) })),
+      statement.facts.map((fact) => ({ body: tokenText(tidy(fact.body)) })),
     ),
   ];
 }
