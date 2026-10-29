@@ -26,6 +26,40 @@ describe('schema', needsDatabase, () => {
     await db?.drop();
   });
 
+  test('job details enforce limits without requiring corrections on existing jobs', async () => {
+    const {
+      rows: [job],
+    } = await client.query('insert into job default values returning id');
+    assert.equal(
+      (await client.query('select * from job_details where job_id=$1', [job.id])).rowCount,
+      0,
+    );
+    for (const [title, company, location, url] of [
+      [' ', null, '', null],
+      ['x'.repeat(1001), null, '', null],
+      ['Engineer', 'x'.repeat(1001), '', null],
+      ['Engineer', null, 'x'.repeat(5001), null],
+      ['Engineer', null, '', 'http://example.com'],
+      ['Engineer', null, '', 'https://example.com/' + 'x'.repeat(2000)],
+    ]) {
+      await assert.rejects(
+        client.query('insert into job_details values($1,$2,$3,$4,$5)', [
+          job.id,
+          title,
+          company,
+          location,
+          url,
+        ]),
+        { code: '23514' },
+      );
+    }
+    await client.query('insert into job_details values($1,$2,null,$3,null)', [
+      job.id,
+      'Engineer',
+      '',
+    ]);
+  });
+
   async function row(text: string, values: unknown[] = []) {
     const result = await client.query(text, values);
     assert.equal(result.rowCount, 1, text);

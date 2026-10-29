@@ -129,6 +129,7 @@ describe('JD import and summary', needsDatabase, () => {
     for (const [method, url] of [
       ['GET', `/api/jobs/${uuid}`],
       ['DELETE', `/api/jobs/${uuid}`],
+      ['PUT', `/api/jobs/${uuid}/details`],
       ['POST', '/api/jobs'],
       ['POST', '/api/jobs/import-link'],
       ['POST', `/api/jobs/${uuid}/snapshots`],
@@ -146,6 +147,146 @@ describe('JD import and summary', needsDatabase, () => {
     }
     assert.deepEqual(deepseek.requests, []);
     assert.deepEqual(greenhouse.requested, []);
+  });
+
+  test('edits imported details without rewriting history and keeps clears after refresh', async () => {
+    const before = await paste({ title: 'Details test', url: 'https://example.com/details' });
+    const payload = { title: ' Engineer II ', company: null, location: ' Tampere ', url: null };
+    const response = await call({ method: 'PUT', url: `/api/jobs/${before.id}/details`, payload });
+    assert.equal(response.statusCode, 200, response.body);
+    const updated = response.json<JobDetail>();
+    assert.equal(updated.title, 'Engineer II');
+    assert.equal(updated.company, null);
+    assert.equal(updated.location, 'Tampere');
+    assert.equal(updated.url, null);
+    assert.equal(updated.canEditDetails, true);
+    assert.deepEqual(updated.snapshot, before.snapshot);
+    await call({
+      method: 'POST',
+      url: `/api/jobs/${before.id}/text`,
+      payload: { text: pastedText + '\nUpdated source.', url: 'https://example.com/details' },
+    });
+    const refreshed = await detail(before.id);
+    assert.equal(refreshed.company, null);
+    assert.equal(refreshed.url, null);
+    const listed = (await call({ method: 'GET', url: '/api/jobs' }))
+      .json<JobsResponse>()
+      .jobs.find((j) => j.id === before.id)!;
+    assert.deepEqual(
+      [listed.title, listed.company, listed.location, listed.url],
+      ['Engineer II', null, 'Tampere', null],
+    );
+    const data = JSON.parse(
+      unzip(await exportArchive(pool))
+        .get('data.json')!
+        .toString(),
+    );
+    assert.equal(
+      data.job_details.find((row: { job_id: string }) => row.job_id === before.id).location,
+      'Tampere',
+    );
+  });
+
+  test('rejects invalid job details and edits to missing or deleted jobs', async () => {
+    const job = await paste({
+      title: 'Invalid details test',
+      url: 'https://example.com/invalid-details',
+    });
+    const valid = { title: 'Engineer', company: null, location: '', url: null };
+    for (const fields of [
+      { title: '   ' },
+      { title: 'x'.repeat(1001) },
+      { company: 'x'.repeat(1001) },
+      { location: 'x'.repeat(5001) },
+      { url: 'https://example.com/' + 'x'.repeat(2000) },
+      { url: 'http://example.com/job' },
+      { url: 'https://user:secret@example.com/job' },
+      { extra: true },
+    ]) {
+      const response = await call({
+        method: 'PUT',
+        url: `/api/jobs/${job.id}/details`,
+        payload: { ...valid, ...fields },
+      });
+      assert.equal(response.statusCode, 400, response.body);
+    }
+    assert.equal(
+      (await call({ method: 'PUT', url: `/api/jobs/${uuid}/details`, payload: valid })).statusCode,
+      404,
+    );
+    await call({ method: 'DELETE', url: `/api/jobs/${job.id}` });
+    assert.equal(
+      (await call({ method: 'PUT', url: `/api/jobs/${job.id}/details`, payload: valid }))
+        .statusCode,
+      404,
+    );
+  });
+
+  test('edits list-only saved jobs without creating a snapshot', async () => {
+    const saved = await call({
+      method: 'POST',
+      url: '/api/saved-results',
+      payload: {
+        entries: [{ title: 'List only details', url: 'https://example.com/list-details' }],
+      },
+    });
+    assert.equal(saved.statusCode, 200);
+    const job = (await call({ method: 'GET', url: '/api/jobs' }))
+      .json<JobsResponse>()
+      .jobs.find((j) => j.title === 'List only details')!;
+    const response = await call({
+      method: 'PUT',
+      url: `/api/jobs/${job.id}/details`,
+      payload: { title: job.title, company: 'Acme Oy', location: '', url: job.url },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.equal(response.json<JobDetail>().snapshot, null);
+  });
+
+  test('only imported jobs may be edited and enabled alert-only jobs can be corrected', async () => {
+    const {
+      rows: [source],
+    } = await pool.query(
+      "insert into source(catalog_id,param) values('greenhouse_board','details-board') returning id",
+    );
+    const {
+      rows: [job],
+    } = await pool.query('insert into job default values returning id');
+    await pool.query(
+      `insert into job_posting(source_id,job_id,external_id,title,location,url)
+      values($1,$2,'details-posting','Discovered only','','https://example.com/discovered-details')`,
+      [source.id, job.id],
+    );
+    const payload = { title: 'Corrected title', company: null, location: '', url: null };
+    assert.equal((await detail(job.id)).canEditDetails, false);
+    assert.equal(
+      (await call({ method: 'PUT', url: `/api/jobs/${job.id}/details`, payload })).statusCode,
+      409,
+    );
+    const {
+      rows: [alertSource],
+    } = await pool.query(
+      "insert into source(catalog_id,param) values('linkedin_alert','details-alert') returning id",
+    );
+    const {
+      rows: [email],
+    } = await pool.query(
+      `insert into alert_email(source_id,message_key,sender,subject,jobs,unreadable)
+      values($1,'details-message','jobs@example.com','Jobs',1,0) returning id`,
+      [alertSource.id],
+    );
+    const {
+      rows: [alertJob],
+    } = await pool.query('insert into job default values returning id');
+    await pool.query(
+      `insert into alert_job(source_id,job_id,external_id,title,location,url,alert_email_id)
+      values($1,$2,'details-alert','Alert details','',null,$3)`,
+      [alertSource.id, alertJob.id, email.id],
+    );
+    assert.equal(
+      (await call({ method: 'PUT', url: `/api/jobs/${alertJob.id}/details`, payload })).statusCode,
+      200,
+    );
   });
 
   test('deletes only the selected duplicate from the list and keeps its text and application history', async () => {
@@ -187,6 +328,7 @@ describe('JD import and summary', needsDatabase, () => {
         url: 'https://careers.example.com/jobs/1',
         sources: [],
         canImport: false,
+        canEditDetails: true,
         saved: false,
         alerts: [],
         snapshot: {

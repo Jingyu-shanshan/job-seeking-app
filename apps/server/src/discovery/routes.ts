@@ -6,6 +6,7 @@ import { checkJobs } from '../matching/check.ts';
 import { loadCriteria } from '../matching/criteria.ts';
 import { findCatalogEntry } from '../sources/catalog.ts';
 import { type RateLimiter, runDiscovery } from './run.ts';
+import { loadJobDetails } from '../jd/details.ts';
 import { compareJobs } from '../rules/job-ranking.ts';
 
 // Discovery (T13): a run reads the user's sources, and the job list shows what they list now.
@@ -244,6 +245,9 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
       'select id from job where deleted_at is not null',
     );
     for (const row of removed.rows) jobs.delete(row.id);
+
+    const details = await loadJobDetails(pool, [...jobs.keys()]);
+    for (const [id, correction] of details) Object.assign(jobs.get(id)!, correction);
 
     const checks = await checkJobs(pool, [...jobs.values()], criteria);
     for (const job of jobs.values()) {

@@ -132,6 +132,17 @@ export const SnapshotSchema = Type.Object({
 
 export type Snapshot = Static<typeof SnapshotSchema>;
 
+export const JobDetailsSchema = Type.Object(
+  {
+    title: Type.String({ pattern: '\\S', maxLength: 1000 }),
+    company: Type.Union([Type.String({ maxLength: 1000 }), Type.Null()]),
+    location: Type.String({ maxLength: 5000 }),
+    url: Type.Union([Type.String({ maxLength: 2000 }), Type.Null()]),
+  },
+  { additionalProperties: false },
+);
+export type JobDetails = Static<typeof JobDetailsSchema>;
+
 export const JobDetailSchema = Type.Object({
   id: Type.String({ format: 'uuid' }),
   title: Type.String(),
@@ -141,6 +152,7 @@ export const JobDetailSchema = Type.Object({
   url: Type.Union([Type.String(), Type.Null()]),
   sources: Type.Array(JobSourceSchema),
   canImport: Type.Boolean(),
+  canEditDetails: Type.Boolean(),
   /** Whether the user saved the page in the desktop app or imported its link. */
   saved: Type.Boolean(),
   /** The job-alert emails of sources in use that listed the job (T20). */

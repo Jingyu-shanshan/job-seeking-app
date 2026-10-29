@@ -63,6 +63,8 @@ export {
   AddRequirementRequestSchema,
   EvidenceSchema,
   JobDetailSchema,
+  JobDetailsSchema,
+  type JobDetails,
   ImportJobLinkRequestSchema,
   JobReadingSchema,
   type ImportJobLinkRequest,
