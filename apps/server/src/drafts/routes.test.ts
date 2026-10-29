@@ -524,6 +524,36 @@ describe('drafts', needsDatabase, () => {
     }
   });
 
+  test('translated statements still pass the document checks after generation and reload', async () => {
+    const fresh = (await paste()).snapshot!.id;
+    await addFact('experience', 'Cut drafting time by about 30%.');
+    for (const [language, text] of [
+      ['zh', '撰写时间减少了约30%。'],
+      ['fi', 'Lyhensin kirjoitusaikaa noin 30 %.'],
+    ]) {
+      write.resume = (sent) => ({
+        headline: null,
+        summary: [{ text, facts: [ref(sent, 'drafting')] }],
+      });
+      write.coverLetter = (sent) => ({
+        paragraphs: [[{ about: 'me', text, facts: [ref(sent, 'drafting')] }]],
+      });
+      for (const kind of ['resume', 'cover_letter']) {
+        const res = await call({
+          method: 'POST',
+          url: `/api/snapshots/${fresh}/drafts`,
+          payload: { kind, language },
+        });
+        assert.equal(res.statusCode, 201, res.body);
+        const written = await read(res.json<Draft>().id);
+        assert.deepEqual(
+          written.statements.map((s) => [s.text, s.inDocument, s.problems]),
+          [[text, true, []]],
+        );
+      }
+    }
+  });
+
   test('rejects invalid output languages before calling the model', async () => {
     const fresh = (await paste()).snapshot!.id;
     const before = deepseek.requests.length;

@@ -35,15 +35,30 @@ const tidy = (text: string) =>
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const has = (haystack: string, needle: string) =>
-  new RegExp(`(?<![\\p{L}\\p{N}])${escape(needle)}(?![\\p{L}\\p{N}])`, 'iu').test(haystack);
+  /\p{Script=Han}/u.test(needle)
+    ? haystack.includes(needle)
+    : new RegExp(`(?<![\\p{L}\\p{N}])${escape(needle)}(?![\\p{L}\\p{N}])`, 'iu').test(haystack);
+
+// Han text has no word spaces; isolate adjacent Latin terms and digits for the existing checks.
+const tokenText = (text: string) =>
+  text.replace(
+    /(?<=\p{Script=Han})(?=[\p{Script=Latin}\p{N}])|(?<=[\p{Script=Latin}\p{N}])(?=\p{Script=Han})/gu,
+    ' ',
+  );
 
 // ---------- months ----------
 
 const monthNames = 'jan feb mar apr may jun jul aug sep oct nov dec'.split(' ');
+const finnishMonths =
+  'tammikuu helmikuu maaliskuu huhtikuu toukokuu kesäkuu heinäkuu elokuu syyskuu lokakuu marraskuu joulukuu'.split(
+    ' ',
+  );
 const monthWord =
-  'Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?';
+  'Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?' +
+  `|(?:${finnishMonths.join('|')})(?:ta|ssa|n)?`;
 const monthYear = new RegExp(`\\b(${monthWord})\\.?,?\\s+(\\d{4})\\b`, 'gi');
 const yearMonth = /\b(\d{4})[-/.](\d{1,2})\b/g;
+const chineseMonth = /(\d{4})\s*年\s*(\d{1,2})\s*月/gu;
 const monthSlashYear = /\b(\d{1,2})[/.](\d{4})\b/g;
 
 // ---------- numbers ----------
@@ -66,12 +81,31 @@ const numberPattern = new RegExp(
   'giu',
 );
 
-const qualifier = (words: string) => new RegExp(`(?<!\\p{L})(?:${words})\\s*$`, 'iu');
+const qualifier = (words: string, han: string) =>
+  new RegExp(`(?:(?<!\\p{L})(?:${words})|${han})\\s*$`, 'iu');
 
 const qualifierBefore: [Exclude<Qualifier, 'none'>, RegExp][] = [
-  ['approx', qualifier('about|approximately|approx\\.?|around|roughly|nearly|almost|circa|~')],
-  ['lower', qualifier('over|more than|at least|above|upwards of|>')],
-  ['upper', qualifier('up to|less than|fewer than|under|below|at most|<')],
+  [
+    'approx',
+    qualifier(
+      'about|approximately|approx\\.?|around|roughly|nearly|almost|circa|noin|suunnilleen|~',
+      '大约|约|大概',
+    ),
+  ],
+  [
+    'lower',
+    qualifier(
+      'over|more than|at least|above|upwards of|yli|vähintään|enemmän kuin|>',
+      '超过|至少|大于',
+    ),
+  ],
+  [
+    'upper',
+    qualifier(
+      'up to|less than|fewer than|under|below|at most|enintään|alle|korkeintaan|<',
+      '至多|最多|不超过|少于|小于',
+    ),
+  ],
 ];
 
 interface NumberUse {
@@ -95,7 +129,7 @@ function numbersIn(text: string): NumberUse[] {
         );
     const before = text.slice(Math.max(0, m.index - 20), m.index);
     const found = qualifierBefore.find(([, pattern]) => pattern.test(before));
-    const percent = text.charAt(m.index + whole.length) === '%' ? '%' : '';
+    const percent = /^\s*[%％]/u.test(text.slice(m.index + whole.length)) ? '%' : '';
     const written = `${whole}${percent}`;
     return {
       value,
@@ -118,7 +152,8 @@ function qualifierAllowed(used: Qualifier, source: readonly Qualifier[]): boolea
 }
 
 // The month of a numeric date is checked as a month, not as a number.
-const withoutMonths = (text: string) => text.replace(yearMonth, '$1').replace(monthSlashYear, '$2');
+const withoutMonths = (text: string) =>
+  text.replace(yearMonth, '$1').replace(monthSlashYear, '$2').replace(chineseMonth, '$1');
 
 function numberProblems(text: string, source: string, where: string): Problem[] {
   const available = new Map<string, NumberUse[]>();
@@ -153,8 +188,11 @@ function monthsIn(text: string): { key: string; phrase: string }[] {
     if (month >= 1 && month <= 12) found.push({ key: `${year}-${month}`, phrase });
   };
   for (const m of text.matchAll(monthYear)) {
-    add(m[2]!, monthNames.indexOf(m[1]!.slice(0, 3).toLowerCase()) + 1, m[0]);
+    const name = m[1]!.toLowerCase();
+    const finnish = finnishMonths.findIndex((month) => name.startsWith(month));
+    add(m[2]!, finnish >= 0 ? finnish + 1 : monthNames.indexOf(name.slice(0, 3)) + 1, m[0]);
   }
+  for (const m of text.matchAll(chineseMonth)) add(m[1]!, Number(m[2]), m[0]);
   for (const m of text.matchAll(yearMonth)) add(m[1]!, Number(m[2]), m[0]);
   for (const m of text.matchAll(monthSlashYear)) add(m[2]!, Number(m[1]), m[0]);
   return found;
@@ -185,8 +223,10 @@ const sentenceEnd = /(?<=[.!?])\s+|\n+/;
 /** The words of a text, split at sentence ends (or `boundary`), line breaks and list markers. */
 function wordsOf(text: string, boundary = sentenceEnd): Word[] {
   const words: Word[] = [];
-  for (const sentence of tidy(text).split(boundary)) {
-    const tokens = sentence.replace(/^\s*(?:[-*•·]|\d+[.)])\s+/, '').split(/\s+/);
+  for (const sentence of tokenText(tidy(text)).split(boundary)) {
+    const tokens = sentence
+      .replace(/^\s*(?:[-*•·]|\d+[.)])\s+/, '')
+      .split(/[\s，。：；！？（）]+/u);
     tokens.forEach((token, i) => {
       const word = token
         .replace(/^[("'[]+/, '')
@@ -318,11 +358,33 @@ const statusWords = [
   'B2',
 ];
 
+// shortcut: finite phrase equivalents, extend with regression cases for additional translations.
+const statusTranslations: Record<string, readonly string[]> = {
+  expected: ['预计', '预期', 'odotettu'],
+  'in progress': ['进行中', 'kesken'],
+  ongoing: ['正在进行', 'käynnissä'],
+  pursuing: ['攻读中', 'suorittamassa'],
+  'currently studying': ['在读', 'opiskelee parhaillaan'],
+  'currently learning': ['正在学习', 'opettelee parhaillaan'],
+  'not completed': ['尚未完成', 'ei suoritettu'],
+  unfinished: ['未完成', 'keskeneräinen'],
+  incomplete: ['未完成', 'keskeneräinen'],
+  basic: ['基础', 'perustaso'],
+  beginner: ['初学', 'aloittelija'],
+  elementary: ['初级', 'alkeistaso'],
+  intermediate: ['中级', 'keskitaso'],
+  conversational: ['日常会话', 'keskustelutaso'],
+  'familiar with': ['熟悉', 'perehtynyt'],
+  'exposure to': ['接触过', 'tutustunut'],
+};
+
 function statusProblems(text: string, facts: readonly { body: string }[]): Problem[] {
   const dropped = new Set<string>();
   for (const { body } of facts) {
     for (const word of statusWords) {
-      if (has(body, word) && !has(text, word)) dropped.add(word);
+      const forms = [word, ...(statusTranslations[word] ?? [])];
+      if (forms.some((form) => has(body, form)) && !forms.some((form) => has(text, form)))
+        dropped.add(word);
     }
   }
   return [...dropped].map((word) => ({
@@ -378,14 +440,14 @@ function checkStatement(
   { jobText, jobNames, vocabulary }: StatementContext,
 ): Problem[] {
   const problems = textProblems(statement.text);
-  const text = tidy(statement.text);
+  const text = tokenText(tidy(statement.text));
 
   if (statement.about === 'other') {
     const where = 'the job title or the company, and a connecting sentence cites nothing';
     return [
       ...problems,
-      ...numberProblems(text, tidy(jobNames), where),
-      ...nameProblems(text, tidy(jobNames), where, vocabulary, letterWords),
+      ...numberProblems(text, tokenText(tidy(jobNames)), where),
+      ...nameProblems(text, tokenText(tidy(jobNames)), where, vocabulary, letterWords),
     ];
   }
 
@@ -395,7 +457,7 @@ function checkStatement(
     if (quoteFinder(jobText)(statement.quote) < 0) {
       return [...problems, problem('quote_not_found', 'Its quote is not in the job text.')];
     }
-    const source = tidy(`${statement.quote}\n${jobNames}`);
+    const source = tokenText(tidy(`${statement.quote}\n${jobNames}`));
     const where = 'its quote from the job text';
     return [
       ...problems,
@@ -418,7 +480,7 @@ function checkStatement(
       problem('fact_changed', 'A fact it cites has changed, or may no longer appear in documents.'),
     );
   }
-  const source = tidy(statement.facts.map((fact) => fact.body).join('\n'));
+  const source = tokenText(tidy(statement.facts.map((fact) => fact.body).join('\n')));
   const where = 'the facts it cites';
   return [
     ...problems,
