@@ -226,9 +226,9 @@ describe('manual job searches', needsDatabase, () => {
     assert.equal(job.snapshot?.catalogId, 'greenhouse_board');
     assert.equal(job.snapshot?.summary, null);
     const beforeCounts = await counts();
-    const duplicate = (await verify(link)).json<JobDetail>();
-    assert.equal(duplicate.id, job.id);
-    assert.equal(duplicate.snapshot?.id, job.snapshot?.id);
+    const duplicate = await verify(link);
+    assert.equal(duplicate.statusCode, 409, duplicate.body);
+    assert.equal(duplicate.json().jobs[0].id, job.id);
     assert.deepEqual(await counts(), beforeCounts);
     assert.equal(beforeCounts.models, 0);
     const other = await verify('https://jobs.ashbyhq.com/acme/a2');

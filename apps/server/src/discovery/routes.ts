@@ -191,12 +191,21 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
       company: string | null;
       location: string;
       source_url: string;
+      catalog_id: string;
       first_seen_at: Date;
     }>(
-      `select distinct on (job_id) job_id, title, company, location, source_url,
-         min(captured_at) over (partition by job_id) as first_seen_at
-       from job_snapshot where catalog_id = 'paste'
-       order by job_id, last_captured_at desc, captured_at desc`,
+      `select * from (
+         select distinct on (n.job_id) n.job_id, n.title, n.company, n.location, n.source_url, n.catalog_id,
+           min(n.captured_at) over (partition by n.job_id) as first_seen_at
+         from job_snapshot n
+         order by n.job_id, n.last_captured_at desc, n.captured_at desc
+       ) n where exists (select 1 from job_snapshot p where p.job_id=n.job_id and p.catalog_id='paste') or (
+         n.catalog_id in ('company_page','greenhouse_board','ashby_board')
+         and not exists (select 1 from job_posting p where p.job_id=n.job_id)
+         and not exists (select 1 from saved_job s where s.job_id=n.job_id)
+         and not exists (select 1 from alert_job a join source s on s.id=a.source_id
+                         where a.job_id=n.job_id and s.enabled)
+       )`,
     );
     for (const row of pasted.rows) {
       const existing = jobs.get(row.job_id);
@@ -213,7 +222,7 @@ export const discoveryRoutes: FastifyPluginAsyncTypebox<DiscoveryRoutesOptions> 
         publishedAt: null,
         firstSeenAt: row.first_seen_at.toISOString(),
         sources: [],
-        origin: 'pasted',
+        origin: row.catalog_id === 'paste' ? 'pasted' : 'saved',
         needsText: false,
         ...unchecked(),
         imported: true,

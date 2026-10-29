@@ -7,7 +7,8 @@ import {
   type JobReading,
   type AlertListing,
   ModelUsageSchema,
-  PasteJobRequestSchema,
+  CreateImportedJobRequestSchema,
+  DuplicateJobResponseSchema,
   PasteTextRequestSchema,
   type Evidence,
   type JobDetail,
@@ -39,7 +40,7 @@ import { jobLink } from '../rules/job-link.ts';
 import { catalog, findCatalogEntry } from '../sources/catalog.ts';
 import { checkJobText } from './job-text.ts';
 import { summariseSnapshot } from './summarise.ts';
-import { saveJobPage } from './saved.ts';
+import { duplicateJobResponse, findDuplicateJobs, importJob } from './import.ts';
 import { canEditJobDetails, loadJobDetails } from './details.ts';
 import { readCompanyPage } from './company-page.ts';
 
@@ -49,6 +50,11 @@ export interface JdRoutesOptions {
   limiter: RateLimiter;
   deepseekApiKey: string | undefined;
 }
+
+const ImportConflictSchema = Type.Union([
+  DuplicateJobResponseSchema,
+  Type.Object({ statusCode: Type.Integer(), error: Type.String(), message: Type.String() }),
+]);
 
 const IdParamsSchema = Type.Object({ id: Type.String({ format: 'uuid' }) });
 
@@ -389,10 +395,10 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
     {
       schema: {
         body: ImportJobLinkRequestSchema,
-        response: { 200: JobDetailSchema },
+        response: { 200: JobDetailSchema, 409: ImportConflictSchema },
       },
     },
-    async (request) => {
+    async (request, reply) => {
       if (request.body.method === 'deepseek_fetch') {
         throw httpError(
           409,
@@ -402,6 +408,10 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
       const link = jobLink(request.body.url);
       const problem = jobLinkImportProblem(request.body.url);
       if (problem) throw httpError(400, problem);
+      if (!request.body.createNew) {
+        const duplicates = await findDuplicateJobs(pool, { url: request.body.url });
+        if (duplicates.length) return reply.code(409).send(duplicateJobResponse(duplicates));
+      }
       if (link) {
         const entry = findCatalogEntry(link.catalogId)!;
         if (entry.rateLimit) await limiter.wait(entry.id, entry.rateLimit);
@@ -417,16 +427,17 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
         if (error instanceof DiscoveryError) throw httpError(502, error.message);
         throw error;
       }
-      const saved = await saveJobPage(
+      const saved = await importJob(
         pool,
         {
           ...job,
           company: job.company ?? undefined,
         },
         link?.catalogId ?? 'company_page',
-        request.body.url.trim(),
+        { requestedUrl: request.body.url.trim(), createNew: request.body.createNew },
       );
-      return detailAfterChange(pool, saved.jobId);
+      if ('code' in saved) return reply.code(409).send(saved);
+      return reply.code(200).send(await detailAfterChange(pool, saved.jobId));
     },
   );
 
@@ -442,19 +453,18 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
 
   app.post(
     '/jobs',
-    { schema: { body: PasteJobRequestSchema, response: { 201: JobDetailSchema } } },
+    {
+      schema: {
+        body: CreateImportedJobRequestSchema,
+        response: { 201: JobDetailSchema, 409: ImportConflictSchema },
+      },
+    },
     async (request, reply) => {
-      const { title, company, location, url, text } = request.body;
-      if (!URL.canParse(url)) throw httpError(400, 'The link is not a valid https address.');
-      const body = checkJobText(text, 'Paste the job text.');
-      const { rows } = await pool.query<{ job_id: string }>(
-        `with new_job as (insert into job default values returning id)
-         insert into job_snapshot (job_id, body, catalog_id, title, company, location, source_url)
-         select id, $1, 'paste', $2, $3, $4, $5 from new_job
-         returning job_id`,
-        [body, title.trim(), company?.trim() || null, location?.trim() ?? '', new URL(url).href],
-      );
-      return reply.code(201).send(await detailAfterChange(pool, rows[0]!.job_id));
+      const saved = await importJob(pool, request.body, 'paste', {
+        createNew: request.body.createNew,
+      });
+      if ('code' in saved) return reply.code(409).send(saved);
+      return reply.code(201).send(await detailAfterChange(pool, saved.jobId));
     },
   );
 

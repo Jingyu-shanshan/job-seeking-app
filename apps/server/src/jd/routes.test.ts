@@ -102,7 +102,7 @@ describe('JD import and summary', needsDatabase, () => {
     return res.json<JobDetail>();
   };
 
-  const paste = async (fields: Record<string, string> = {}) => {
+  const paste = async (fields: Record<string, string | boolean> = {}) => {
     const res = await call({
       method: 'POST',
       url: '/api/jobs',
@@ -150,7 +150,11 @@ describe('JD import and summary', needsDatabase, () => {
   });
 
   test('edits imported details without rewriting history and keeps clears after refresh', async () => {
-    const before = await paste({ title: 'Details test', url: 'https://example.com/details' });
+    const before = await paste({
+      createNew: true,
+      title: 'Details test',
+      url: 'https://example.com/details',
+    });
     const payload = { title: ' Engineer II ', company: null, location: ' Tampere ', url: null };
     const response = await call({ method: 'PUT', url: `/api/jobs/${before.id}/details`, payload });
     assert.equal(response.statusCode, 200, response.body);
@@ -189,6 +193,7 @@ describe('JD import and summary', needsDatabase, () => {
 
   test('rejects invalid job details and edits to missing or deleted jobs', async () => {
     const job = await paste({
+      createNew: true,
       title: 'Invalid details test',
       url: 'https://example.com/invalid-details',
     });
@@ -289,9 +294,131 @@ describe('JD import and summary', needsDatabase, () => {
     );
   });
 
+  test('reports duplicates without writing, normalizes addresses and explicitly creates another', async () => {
+    const payload = {
+      title: 'Full-Stack Engineer',
+      company: 'Duplicate Acme Oy',
+      location: 'Helsinki',
+      url: 'https://example.com/duplicate-import',
+      text: pastedText,
+    };
+    const first = await call({ method: 'POST', url: '/api/jobs', payload });
+    assert.equal(first.statusCode, 201, first.body);
+    const before = first.json<JobDetail>();
+    const counts = async () =>
+      (
+        await pool.query(`select (select count(*) from job) as jobs,
+      (select count(*) from saved_job) as saves, (select count(*) from job_snapshot) as snapshots,
+      (select count(*) from job_reading) as readings, (select count(*) from model_call) as calls`)
+      ).rows[0];
+    const previousCounts = await counts();
+    const duplicate = await call({
+      method: 'POST',
+      url: '/api/jobs',
+      payload: { ...payload, url: payload.url + '?utm_source=test#top' },
+    });
+    assert.equal(duplicate.statusCode, 409, duplicate.body);
+    assert.equal(duplicate.json().code, 'duplicate_job');
+    assert.deepEqual(
+      duplicate.json().jobs.map((j: { id: string }) => j.id),
+      [before.id],
+    );
+    assert.deepEqual(await counts(), previousCounts);
+    const another = await call({
+      method: 'POST',
+      url: '/api/jobs',
+      payload: { ...payload, createNew: true },
+    });
+    assert.equal(another.statusCode, 201, another.body);
+    assert.notEqual(another.json<JobDetail>().id, before.id);
+    assert.deepEqual((await detail(before.id)).snapshot, before.snapshot);
+    const renamed = {
+      title: 'Different role',
+      company: null,
+      location: 'Tampere',
+      url: 'https://example.com/corrected-duplicate',
+    };
+    await call({ method: 'PUT', url: `/api/jobs/${before.id}/details`, payload: renamed });
+    const byName = await call({
+      method: 'POST',
+      url: '/api/jobs',
+      payload: {
+        ...payload,
+        title: 'Fullstack engineer',
+        company: 'duplicate acme',
+        location: 'Oulu',
+        url: 'https://example.com/other-address',
+      },
+    });
+    assert.equal(byName.statusCode, 409, byName.body);
+    assert.deepEqual(
+      byName.json().jobs.map((j: { id: string }) => j.id),
+      [another.json<JobDetail>().id],
+    );
+    const byOldUrl = await call({ method: 'POST', url: '/api/jobs', payload });
+    assert.equal(byOldUrl.statusCode, 409);
+    assert.deepEqual(
+      byOldUrl
+        .json()
+        .jobs.map((j: { id: string }) => j.id)
+        .sort(),
+      [before.id, another.json<JobDetail>().id].sort(),
+    );
+    const byNewUrl = await call({
+      method: 'POST',
+      url: '/api/jobs',
+      payload: { ...payload, url: renamed.url },
+    });
+    assert.equal(byNewUrl.statusCode, 409);
+    assert.equal(byNewUrl.json().jobs[0].id, before.id);
+  });
+
+  test('serializes concurrent normal imports and ignores deleted candidates', async () => {
+    const payload = {
+      title: 'Concurrent import',
+      url: 'https://example.com/concurrent-import',
+      text: pastedText,
+    };
+    const responses = await Promise.all(
+      [1, 2].map(() => call({ method: 'POST', url: '/api/jobs', payload })),
+    );
+    assert.deepEqual(responses.map((r) => r.statusCode).sort(), [201, 409]);
+    const first = responses.find((r) => r.statusCode === 201)!.json<JobDetail>();
+    await call({ method: 'DELETE', url: `/api/jobs/${first.id}` });
+    const next = await call({ method: 'POST', url: '/api/jobs', payload });
+    assert.equal(next.statusCode, 201, next.body);
+    assert.notEqual(next.json<JobDetail>().id, first.id);
+    const unrelated = await call({
+      method: 'POST',
+      url: '/api/jobs',
+      payload: { ...payload, url: 'https://example.com/missing-company' },
+    });
+    assert.equal(unrelated.statusCode, 201, unrelated.body);
+  });
+
+  test('recognizes LinkedIn aliases and missing company by address', async () => {
+    const payload = {
+      title: 'LinkedIn duplicate',
+      url: 'https://www.linkedin.com/jobs/view/987654321/',
+      text: pastedText,
+    };
+    const first = await call({ method: 'POST', url: '/api/jobs', payload });
+    assert.equal(first.statusCode, 201);
+    const duplicate = await call({
+      method: 'POST',
+      url: '/api/jobs',
+      payload: {
+        ...payload,
+        url: 'https://fi.linkedin.com/jobs/view/engineer-at-acme-987654321?utm_source=test',
+      },
+    });
+    assert.equal(duplicate.statusCode, 409, duplicate.body);
+    assert.equal(duplicate.json().jobs[0].id, first.json<JobDetail>().id);
+  });
+
   test('deletes only the selected duplicate from the list and keeps its text and application history', async () => {
-    const first = await paste({ title: 'Duplicate to remove' });
-    const second = await paste({ title: 'Duplicate to keep' });
+    const first = await paste({ createNew: true, title: 'Duplicate to remove' });
+    const second = await paste({ createNew: true, title: 'Duplicate to keep' });
     await pool.query(
       `insert into application (job_id, job_snapshot_id, status, submitted_at, method)
        values ($1, $2, 'submitted', now(), 'manual')`,
@@ -313,7 +440,7 @@ describe('JD import and summary', needsDatabase, () => {
   });
 
   test('saves a pasted job as its first snapshot and lists it', async () => {
-    const job = await paste({ text: `\r\n${pastedText}  \r\n\r\n\r\n` });
+    const job = await paste({ createNew: true, text: `\r\n${pastedText}  \r\n\r\n\r\n` });
     assert.deepEqual(
       {
         ...job,
@@ -462,7 +589,7 @@ describe('JD import and summary', needsDatabase, () => {
   });
 
   test('summarises a snapshot once, sending only the job text, and records the call', async () => {
-    const job = await paste();
+    const job = await paste({ createNew: true });
     const snapshotId = job.snapshot!.id;
 
     const withoutKey = buildApp(options());
@@ -529,7 +656,11 @@ describe('JD import and summary', needsDatabase, () => {
   });
 
   test('records a failed call, with its cost when DeepSeek did answer', async () => {
-    const job = await paste({ title: 'Failing job', text: `${pastedText}\nFailing.` });
+    const job = await paste({
+      createNew: true,
+      title: 'Failing job',
+      text: `${pastedText}\nFailing.`,
+    });
     const snapshotId = job.snapshot!.id;
     const before = await usage();
 
@@ -570,7 +701,11 @@ describe('JD import and summary', needsDatabase, () => {
   });
 
   test('lets the user add, correct and remove requirements, keeping the old ones', async () => {
-    const job = await paste({ title: 'Corrected job', text: `${pastedText}\nCorrected.` });
+    const job = await paste({
+      createNew: true,
+      title: 'Corrected job',
+      text: `${pastedText}\nCorrected.`,
+    });
     const snapshotId = job.snapshot!.id;
     const summarised = (await summarise(snapshotId)).json<JobDetail>();
     const kubernetes = summarised.snapshot!.requirements.find((r) => r.text === 'Kubernetes')!;
@@ -663,15 +798,40 @@ describe('JD import and summary', needsDatabase, () => {
       (await pool.query('select count(*)::int as n from source')).rows[0].n,
       sourcesBefore,
     );
-    const again = (await importLink()).json<JobDetail>();
-    assert.equal(again.id, job.id);
+    const duplicate = await importLink();
+    assert.equal(duplicate.statusCode, 409, duplicate.body);
+    assert.equal(duplicate.json().jobs[0].id, job.id);
+    const again = await detail(job.id);
     assert.equal(again.snapshot?.id, job.snapshot?.id);
-    assert.equal(again.snapshot?.readings?.length, 2);
+    assert.equal(again.snapshot?.readings?.length, 1);
+    const forced = await call({
+      method: 'POST',
+      url: '/api/jobs/import-link',
+      payload: {
+        url: 'https://job-boards.greenhouse.io/link-import/jobs/701?utm_source=alert',
+        createNew: true,
+      },
+    });
+    assert.equal(forced.statusCode, 200, forced.body);
+    const extra = forced.json<JobDetail>();
+    assert.notEqual(extra.id, job.id);
+    assert.equal(extra.canEditDetails, true);
+    assert.equal(extra.snapshot?.readings?.[0]?.method, 'greenhouse_board');
+    const list = (await call({ method: 'GET', url: '/api/jobs' })).json<JobsResponse>().jobs;
+    assert(list.some((j) => j.id === extra.id && j.imported && j.origin === 'saved'));
+    const both = await importLink();
+    assert.equal(both.statusCode, 409);
+    assert.deepEqual(
+      both
+        .json()
+        .jobs.map((j: { id: string }) => j.id)
+        .sort(),
+      [job.id, extra.id].sort(),
+    );
     const readings = (
       await pool.query('select * from job_reading where job_snapshot_id=$1', [job.snapshot!.id])
     ).rows;
-    assert.equal(readings.length, 2);
-    assert.notEqual(readings[0].id, readings[1].id);
+    assert.equal(readings.length, 1);
     await assert.rejects(
       pool.query("update job_reading set requested_url='https://other.example/job' where id=$1", [
         readings[0].id,
@@ -755,13 +915,42 @@ describe('JD import and summary', needsDatabase, () => {
     assert.equal(job.snapshot?.url, 'https://careers.example.com/jobs/billing');
     assert.match(job.snapshot!.text, /keep our invoices correct/);
     assert.equal(job.snapshot?.summary, null);
-    const again = (await importPage()).json<JobDetail>();
-    assert.equal(again.id, job.id);
-    assert.equal(again.snapshot?.id, job.snapshot?.id);
+    const duplicate = await importPage();
+    assert.equal(duplicate.statusCode, 409, duplicate.body);
+    assert.equal(duplicate.json().jobs[0].id, job.id);
+    assert.equal((await detail(job.id)).snapshot?.id, job.snapshot?.id);
     assert.equal(deepseek.requests.length, callsBefore);
     const analysed = await summarise(job.snapshot!.id);
     assert.equal(analysed.statusCode, 200, analysed.body);
     assert.ok(analysed.json<JobDetail>().snapshot?.summary);
+  });
+
+  test('does not silently merge a new link using corrected-away source names', async () => {
+    boards['corrected-import'] = [1201, 1202].map((id) => ({
+      id,
+      title: 'Old Source Title',
+      company_name: 'Corrected Import Co',
+      content: '<p>Build reliable systems.</p>',
+    }));
+    const first = await call({
+      method: 'POST',
+      url: '/api/jobs/import-link',
+      payload: { url: 'https://job-boards.greenhouse.io/corrected-import/jobs/1201' },
+    });
+    assert.equal(first.statusCode, 200, first.body);
+    const job = first.json<JobDetail>();
+    await call({
+      method: 'PUT',
+      url: `/api/jobs/${job.id}/details`,
+      payload: { title: 'New title', company: 'New company', location: '', url: job.url },
+    });
+    const next = await call({
+      method: 'POST',
+      url: '/api/jobs/import-link',
+      payload: { url: 'https://job-boards.greenhouse.io/corrected-import/jobs/1202' },
+    });
+    assert.equal(next.statusCode, 200, next.body);
+    assert.notEqual(next.json<JobDetail>().id, job.id);
   });
 
   test('Fetch import stays disabled before any network, fee reservation or data mutation', async () => {

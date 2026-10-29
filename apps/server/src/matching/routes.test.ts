@@ -153,13 +153,18 @@ describe('criteria and evidence matching', needsDatabase, () => {
   };
 
   let pasted = 0;
-  const paste = async (title = 'Platform Engineer', location = 'Helsinki, Finland') => {
+  const paste = async (
+    title = 'Platform Engineer',
+    location = 'Helsinki, Finland',
+    createNew = false,
+  ) => {
     const res = await call({
       method: 'POST',
       url: '/api/jobs',
       payload: {
         title,
         location,
+        ...(createNew ? { createNew: true } : {}),
         url: 'https://careers.example.com/jobs/1',
         // Each job its own text, so that each has its own summary.
         text: `${jobText}\nJob ${++pasted}.`,
@@ -288,9 +293,9 @@ describe('criteria and evidence matching', needsDatabase, () => {
     assert.equal(response.statusCode, 200, response.body);
     assert.deepEqual(response.json<Criteria>().location.places, ['Berlin', 'Canada']);
     const relevant = await paste('Backend Engineer', 'Berlin, Germany');
-    const other = await paste('Sales Manager', 'Berlin, Germany');
-    const remote = await paste('Platform Engineer', 'Remote - Canada');
-    const outside = await paste('Platform Engineer', 'Helsinki, Finland');
+    const other = await paste('Sales Manager', 'Berlin, Germany', true);
+    const remote = await paste('Platform Engineer', 'Remote - Canada', true);
+    const outside = await paste('Platform Engineer', 'Helsinki, Finland', true);
     const list = (await call({ method: 'GET', url: '/api/jobs' })).json<JobsResponse>();
     assert.equal(list.scope.area, 'custom');
     assert.deepEqual(list.scope.places, ['Berlin', 'Canada']);
@@ -320,10 +325,10 @@ describe('criteria and evidence matching', needsDatabase, () => {
   });
 
   test('sorts jobs by the hard criteria, with the reason for each, in the list and the job', async () => {
-    const backend = await paste('Backend Engineer');
-    const senior = await paste('Senior Backend Engineer');
-    const designer = await paste('Designer');
-    const berlin = await paste('Backend Engineer', 'Berlin, Germany');
+    const backend = await paste('Backend Engineer', 'Helsinki, Finland', true);
+    const senior = await paste('Senior Backend Engineer', 'Helsinki, Finland', true);
+    const designer = await paste('Designer', 'Helsinki, Finland', true);
+    const berlin = await paste('Backend Engineer', 'Berlin, Germany', true);
     await putCriteria({
       ...defaults,
       title: { strength: 'hard', words: ['backend'] },
@@ -390,7 +395,7 @@ describe('criteria and evidence matching', needsDatabase, () => {
   });
 
   test('matches a job text once, sending only checked requirements and facts that may go', async () => {
-    const job = await paste();
+    const job = await paste('Platform Engineer', 'Helsinki, Finland', true);
     const snapshotId = job.snapshot!.id;
     assert.equal(job.factsToSend, 0);
 
@@ -506,7 +511,7 @@ describe('criteria and evidence matching', needsDatabase, () => {
   });
 
   test('a match goes out of date when facts or requirements change, and stops counting', async () => {
-    const job = await summarise(await paste('Go Engineer'));
+    const job = await summarise(await paste('Go Engineer', 'Helsinki, Finland', true));
     const snapshotId = job.snapshot!.id;
     const go = await addFact('skill', 'Three years of Go in production.');
     await addFact('language', 'English at work every day.');
@@ -579,7 +584,7 @@ describe('criteria and evidence matching', needsDatabase, () => {
   });
 
   test('records a failed match with its cost, and keeps no outcome from it', async () => {
-    const job = await summarise(await paste('Failing Engineer'));
+    const job = await summarise(await paste('Failing Engineer', 'Helsinki, Finland', true));
     const snapshotId = job.snapshot!.id;
     const failures = async () =>
       (
@@ -642,7 +647,7 @@ describe('criteria and evidence matching', needsDatabase, () => {
   });
 
   test('matches one job text at a time', async () => {
-    const job = await summarise(await paste('Slow Engineer'));
+    const job = await summarise(await paste('Slow Engineer', 'Helsinki, Finland', true));
     const snapshotId = job.snapshot!.id;
     let release = () => {};
     answer = () => new Promise<Response>((resolve) => (release = () => resolve(normally())));

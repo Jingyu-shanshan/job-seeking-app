@@ -96,6 +96,7 @@ export const ImportJobLinkRequestSchema = Type.Object(
   {
     url: Type.String({ pattern: '^https://\\S+$', maxLength: 2000 }),
     method: Type.Optional(Type.Union([Type.Literal('direct'), Type.Literal('deepseek_fetch')])),
+    createNew: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },
 );
@@ -182,6 +183,26 @@ export const PasteJobRequestSchema = Type.Object({
 });
 
 export type PasteJobRequest = Static<typeof PasteJobRequestSchema>;
+
+export const CreateImportedJobRequestSchema = Type.Object({
+  ...PasteJobRequestSchema.properties,
+  createNew: Type.Optional(Type.Boolean()),
+});
+export type CreateImportedJobRequest = Static<typeof CreateImportedJobRequestSchema>;
+
+export const DuplicateJobSchema = Type.Object({
+  id: Type.String({ format: 'uuid' }),
+  title: Type.String(),
+  company: Type.Union([Type.String(), Type.Null()]),
+  location: Type.String(),
+});
+export type DuplicateJob = Static<typeof DuplicateJobSchema>;
+export const DuplicateJobResponseSchema = Type.Object({
+  code: Type.Literal('duplicate_job'),
+  message: Type.String(),
+  jobs: Type.Array(DuplicateJobSchema, { minItems: 1 }),
+});
+export type DuplicateJobResponse = Static<typeof DuplicateJobResponseSchema>;
 
 /** Body of `POST /api/jobs/:id/text`: job text the user pasted for a job the app already has. */
 export const PasteTextRequestSchema = Type.Object({
