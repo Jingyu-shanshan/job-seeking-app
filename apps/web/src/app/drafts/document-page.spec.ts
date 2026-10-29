@@ -118,6 +118,16 @@ describe('DocumentPage', () => {
     expect(text()).toContain('None yet.');
   });
 
+  it.each([
+    ['zh', '中文'],
+    ['fi', 'Suomi'],
+  ] as const)('marks %s content for reading and printing', async (language, label) => {
+    await load(resume({ language }));
+    expect(text()).toContain(`Document language: ${label}`);
+    expect(sheet().getAttribute('lang')).toBe(language);
+    expect(text(sheet())).not.toContain('Document language:');
+  });
+
   it('shows a cover letter with its greeting and sign-off', async () => {
     await load(
       resume({

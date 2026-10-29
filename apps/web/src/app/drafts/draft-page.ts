@@ -11,6 +11,7 @@ import {
   viewChildren,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { draftLanguageNames } from './draft-language';
 import type { Draft, DraftSection, DraftStatement } from '@jsa/shared';
 import { usd } from '../jobs/jobs-api';
 import { errorMessage } from '../sources/sources-api';
@@ -102,6 +103,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
                 {{ d.outdated.join(' ') }} You can write it again on the job page.
               </p>
             }
+            <p>Document language: {{ languageNames[d.language] }}.</p>
             <p class="review-counts">{{ counts() }}</p>
             <p class="notice">
               Passing deterministic checks does not prove that the meaning is correct. Inclusion is
@@ -366,6 +368,7 @@ export class DraftPage {
   protected readonly data = httpResource<Draft>(() => `/api/drafts/${this.id()}`);
   protected readonly loadError = computed(() => errorMessage(this.data.error()));
   protected readonly plural = plural;
+  protected readonly languageNames = draftLanguageNames;
   protected readonly usd = usd;
   protected readonly hasIncluded = computed(() =>
     this.data.value()?.statements.some((s) => s.inDocument),

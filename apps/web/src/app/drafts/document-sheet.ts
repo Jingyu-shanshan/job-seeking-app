@@ -1,5 +1,5 @@
 import { Component, input } from '@angular/core';
-import type { DocumentBlock, DraftKind } from '@jsa/shared';
+import type { DocumentBlock, DraftKind, DraftLanguage } from '@jsa/shared';
 
 /**
  * The finished document (T08) as an A4 sheet, the same on screen and in print. It renders the
@@ -9,7 +9,7 @@ import type { DocumentBlock, DraftKind } from '@jsa/shared';
  */
 @Component({
   selector: 'app-document-sheet',
-  host: { '[class.letter]': "kind() === 'cover_letter'" },
+  host: { '[attr.lang]': 'language()', '[class.letter]': "kind() === 'cover_letter'" },
   template: `
     @for (block of blocks(); track $index) {
       @switch (block.type) {
@@ -72,7 +72,9 @@ import type { DocumentBlock, DraftKind } from '@jsa/shared';
       color: #1a1a1a;
       color-scheme: light;
       box-shadow: 0 1px 6px rgb(0 0 0 / 30%);
-      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-family:
+        'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC',
+        sans-serif;
       font-size: 10.5pt;
       line-height: 1.4;
       font-variant-ligatures: none;
@@ -154,5 +156,6 @@ import type { DocumentBlock, DraftKind } from '@jsa/shared';
 })
 export class DocumentSheet {
   readonly blocks = input.required<readonly DocumentBlock[]>();
+  readonly language = input.required<DraftLanguage>();
   readonly kind = input.required<DraftKind>();
 }
