@@ -38,9 +38,27 @@ const defaults: RunConfig = {
       limits. Review drafts and PDFs on each job page. Every submission still needs your individual
       approval.
     </p>
+    <details class="run-help">
+      <summary>How jobs are found and matched</summary>
+      <p>
+        Runs read enabled Greenhouse and Ashby company boards from Sources. Add the companies you
+        want to follow there. Runs do not search the whole web or add new sources.
+      </p>
+      <p>
+        Criteria checks titles and locations first, using any existing job analysis too. Title
+        options match words or phrases, not synonyms. Hard conditions can exclude jobs; preferences
+        do not exclude them. Jobs are admitted in processing order, not by best match.
+      </p>
+      <p>
+        With new drafts enabled, the run reads job descriptions, summarises requirements and
+        compares them with your confirmed Facts that you allow sending to DeepSeek. Missing evidence
+        stays unknown. It checks Criteria again before writing drafts. Without new drafts, it skips
+        new AI summaries and matching. Every submission still needs your individual approval.
+      </p>
+    </details>
     <p class="hint">
-      The background run discovers jobs, reads descriptions, summarises, matches and writes drafts.
-      It never fills forms, approves or submits them.
+      Runs prepare jobs and drafts. The Runner handles application forms separately, after you start
+      a fill. Runs never fill forms, approve or submit them.
     </p>
     <details open>
       <summary>
@@ -48,43 +66,125 @@ const defaults: RunConfig = {
       </summary>
       <form [formRoot]="configForm">
         <fieldset class="form-fields" [disabled]="busy() || configForm().submitting()">
-          <label class="name">Preset name <input [formField]="configForm.name" /></label>
+          <div class="field name">
+            <label for="run-name">Preset name</label>
+            <input id="run-name" [formField]="configForm.name" aria-describedby="run-name-help" />
+            <p class="hint" id="run-name-help">A name to recognise and reuse these settings.</p>
+          </div>
           <div class="fields">
-            <label
-              >Jobs to consider
-              <input type="number" step="1" [formField]="configForm.discoveryLimit"
-            /></label>
-            <label
-              >New drafts <input type="number" step="1" [formField]="configForm.materialLimit"
-            /></label>
-            <label
-              >Approved submissions
-              <input type="number" step="1" [formField]="configForm.submissionLimit"
-            /></label>
-            <label
-              >External requests
-              <input type="number" step="1" [formField]="configForm.requestLimit"
-            /></label>
-            <label
-              >Running time (seconds)
-              <input type="number" step="1" [formField]="configForm.timeLimitSeconds"
-            /></label>
-            <label
-              >Estimated cost limit (USD)
-              <input type="number" step="0.01" [formField]="configForm.costLimitUsd"
-            /></label>
-            <label
-              >Repeat every (hours; 0 is off)
-              <input type="number" step="1" [formField]="configForm.intervalHours"
-            /></label>
+            <div class="field">
+              <label for="run-jobs">Max jobs</label>
+              <input
+                id="run-jobs"
+                type="number"
+                step="1"
+                [formField]="configForm.discoveryLimit"
+                aria-describedby="run-jobs-help"
+              />
+              <p class="hint" id="run-jobs-help">
+                Maximum jobs admitted after initial screening, not a target or a best-match ranking.
+              </p>
+            </div>
+            <div class="field">
+              <label for="run-drafts">Max new documents</label>
+              <input
+                id="run-drafts"
+                type="number"
+                step="1"
+                [formField]="configForm.materialLimit"
+                aria-describedby="run-drafts-help"
+              />
+              <p class="hint" id="run-drafts-help">
+                Each resume or cover letter counts as one. 0 skips new AI summaries, matching and
+                drafts.
+              </p>
+            </div>
+            <div class="field">
+              <label for="run-submissions">Submission limit</label>
+              <input
+                id="run-submissions"
+                type="number"
+                step="1"
+                [formField]="configForm.submissionLimit"
+                aria-describedby="run-submissions-help"
+              />
+              <p class="hint" id="run-submissions-help">
+                Each submission needs your approval. 0 blocks fills linked to this run.
+              </p>
+            </div>
+            <div class="field">
+              <label for="run-requests">Request limit</label>
+              <input
+                id="run-requests"
+                type="number"
+                step="1"
+                [formField]="configForm.requestLimit"
+                aria-describedby="run-requests-help"
+              />
+              <p class="hint" id="run-requests-help">
+                Shared by board reads, job text and AI calls. One job can use several requests.
+              </p>
+            </div>
+            <div class="field">
+              <label for="run-time">Time limit (seconds)</label>
+              <input
+                id="run-time"
+                type="number"
+                step="1"
+                [formField]="configForm.timeLimitSeconds"
+                aria-describedby="run-time-help"
+              />
+              <p class="hint" id="run-time-help">
+                Total running time, including request waits. 600 seconds is 10 minutes.
+              </p>
+            </div>
+            <div class="field">
+              <label for="run-cost">Estimated budget per run (USD)</label>
+              <input
+                id="run-cost"
+                type="number"
+                step="0.01"
+                [formField]="configForm.costLimitUsd"
+                aria-describedby="run-cost-help"
+              />
+              <p class="hint" id="run-cost-help">
+                0 blocks paid requests, including AI calls. This is an estimate, not a bill.
+              </p>
+            </div>
+            <div class="field">
+              <label for="run-repeat">Repeat interval (hours)</label>
+              <input
+                id="run-repeat"
+                type="number"
+                step="1"
+                [formField]="configForm.intervalHours"
+                aria-describedby="run-repeat-help"
+              />
+              <p class="hint" id="run-repeat-help">
+                0 turns repeat off. 48 means every 2 days. Saving a nonzero interval enables the
+                schedule.
+              </p>
+            </div>
           </div>
         </fieldset>
-        <p class="hint">
-          Each resume or cover letter counts as one draft. A failed draft keeps its slot for retry.
-          Requests include board reads, job text, summaries, matches and drafts. Complete boards are
-          saved; the job limit applies to jobs admitted to this run. Unknown locations stay in the
-          group to confirm.
-        </p>
+        <details class="run-help">
+          <summary>How limits and retries work</summary>
+          <p>
+            All limits apply together. A run can stop before reaching its job or document limit if
+            requests, time or estimated cost run out. Resume keeps all counts and costs; it does not
+            refill an exhausted budget.
+          </p>
+          <p>
+            Existing documents are skipped. A resume and cover letter for one job use two new
+            document slots. A failed draft keeps its slot for retry. Complete boards are saved; the
+            job limit applies only to jobs admitted to this run. Unknown information follows your
+            Criteria settings.
+          </p>
+          <p>
+            To prepare new documents, confirm your Facts, allow model use and set a positive
+            estimated budget. DeepSeek must also be configured for this app.
+          </p>
+        </details>
         <p class="notice">
           Preparing drafts sends job text and the facts you allowed to DeepSeek outside the EU. The
           cost budget uses peak-price estimates, not the provider’s bill. A request with unknown
@@ -92,12 +192,13 @@ const defaults: RunConfig = {
           and costs.
         </p>
         <p class="hint">
-          Cost, drafts, submissions and repeat are off by default. Saving a preset with repeat off
-          does not start a run; choose Start run separately.
+          Paid requests, new AI preparation, run-linked fills and repeat are off by default. Saving
+          a preset with repeat off does not start a run; choose Start run separately.
         </p>
         @if (model().intervalHours > 0) {
           <p>
-            Saving this preset enables a scheduled run every {{ model().intervalHours }} hours.
+            Saving this preset enables a scheduled run every {{ model().intervalHours }} hours. The
+            first scheduled run is due after this interval; choose Start run to run immediately.
             Repeating runs get a new budget each time while the server is online. A stopped or
             failed run pauses this preset’s schedule until you resume it. Missed times are not
             replayed.
@@ -348,9 +449,19 @@ const defaults: RunConfig = {
     form {
       margin-top: 1rem;
     }
-    label {
+    .field {
       display: grid;
-      gap: 0.25rem;
+      align-content: start;
+      gap: 0.5rem;
+      min-width: 0;
+    }
+    .field .hint {
+      margin: 0;
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+    .run-help summary {
+      cursor: pointer;
     }
     .name {
       max-width: 30rem;

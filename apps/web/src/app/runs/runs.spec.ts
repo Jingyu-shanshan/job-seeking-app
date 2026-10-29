@@ -80,6 +80,22 @@ describe('Runs', () => {
       'Every submission still needs your individual approval',
     );
   });
+  it('connects every field to a visible label and local help, with optional details collapsed', async () => {
+    http.expectOne('/api/runs').flush({ presets: [], runs: [] });
+    await fixture.whenStable();
+    const page = fixture.nativeElement as HTMLElement;
+    for (const input of page.querySelectorAll('input')) {
+      expect(page.querySelector(`label[for="${input.id}"]`)?.textContent?.trim()).toBeTruthy();
+      const helpId = input.getAttribute('aria-describedby');
+      expect(helpId).toBeTruthy();
+      const help = page.querySelector(`#${helpId}`);
+      expect(help?.textContent?.trim()).toBeTruthy();
+      expect(help?.closest('details')?.open).toBe(true);
+    }
+    const details = [...page.querySelectorAll<HTMLDetailsElement>('details.run-help')];
+    expect(details).toHaveLength(2);
+    expect(details.every((detail) => !detail.open)).toBe(true);
+  });
   it('saving a preset does not start a run, and exposes errors', async () => {
     http.expectOne('/api/runs').flush({ presets: [], runs: [] });
     await fixture.whenStable();
