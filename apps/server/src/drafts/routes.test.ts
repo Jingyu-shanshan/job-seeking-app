@@ -526,7 +526,7 @@ describe('drafts', needsDatabase, () => {
   });
 
   test('translated statements still pass the document checks after generation and reload', async () => {
-    const fresh = (await paste()).snapshot!.id;
+    const fresh = (await paste(true)).snapshot!.id;
     await addFact('experience', 'Cut drafting time by about 30%.');
     for (const [language, text] of [
       ['zh', '撰写时间减少了约30%。'],

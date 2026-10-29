@@ -356,12 +356,44 @@ try {
   assert(!JSON.stringify(searches).includes(account.email));
   assert(!JSON.stringify(searches).includes('Private sample note'));
   await page.getByText('Search snippet · not verified', { exact: true }).waitFor();
-  const verified = await action('Verify and save job', '/api/jobs/import-link');
+  const duplicateResponse = page.waitForResponse(
+    (r) => new URL(r.url()).pathname === '/api/jobs/import-link' && r.request().method() === 'POST',
+  );
+  await click('Verify and save job');
+  const duplicate = await duplicateResponse;
+  assert.equal(duplicate.status(), 409);
+  assert((await duplicate.json()).jobs.some((candidate) => candidate.id === job.id));
+  await page.getByRole('link', { name: 'Open ' + job.title, exact: true }).waitFor();
+  const verified = await action('Create another imported job', '/api/jobs/import-link');
+  assert.notEqual(verified.id, job.id);
   assert.equal(verified.snapshot.text, jd);
   assert.equal(verified.snapshot.readings[0].method, 'greenhouse_board');
   assert.equal(verified.snapshot.readings[0].requestedUrl, found.candidates[0].url);
   assert.deepEqual((await api('GET', '/api/sources')).sources, sourcesBeforeSearch);
   await page.getByRole('link', { name: 'Open saved job and review criteria', exact: true }).click();
+  await click('Edit details');
+  const details = page.locator('app-job-details-form');
+  await details.getByLabel('Company (optional)', { exact: true }).fill('Corrected Example Co');
+  await details.getByLabel('Location (optional)', { exact: true }).fill('Espoo');
+  const detailsResponse = page.waitForResponse(
+    (r) =>
+      new URL(r.url()).pathname === `/api/jobs/${verified.id}/details` &&
+      r.request().method() === 'PUT',
+  );
+  await click('Save details');
+  assert((await detailsResponse).ok());
+  const corrected = await api('GET', `/api/jobs/${verified.id}`);
+  assert.equal(corrected.company, 'Corrected Example Co');
+  assert.equal(corrected.location, 'Espoo');
+  assert.deepEqual(corrected.snapshot, verified.snapshot);
+  const listedCorrection = (await api('GET', '/api/jobs')).jobs.find(
+    (candidate) => candidate.id === verified.id,
+  );
+  assert.equal(listedCorrection.company, corrected.company);
+  assert.equal(listedCorrection.location, corrected.location);
+  check(
+    'Imported job details persist in detail and list without changing the original snapshot; duplicates link to existing jobs and require explicit creation',
+  );
   await page.getByText('Successful link reads (up to 20 most recent)', { exact: true }).click();
   await page.getByText('Requested link: ' + found.candidates[0].url, { exact: true }).waitFor();
   check(
