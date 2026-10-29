@@ -67,10 +67,11 @@ async function documentState(pool: Pool, draftId: string) {
   const document: DraftDocument = {
     draftId,
     kind: draft.kind,
+    language: draft.language,
     jobId: draft.jobId,
     title: draft.title,
     company: draft.company,
-    fileName: documentFileName(draft.kind, draft, profile),
+    fileName: documentFileName(draft.kind, draft, profile, draft.language),
     blocks,
     missing: documentMissing(draft, profile),
     outdated: draft.outdated,

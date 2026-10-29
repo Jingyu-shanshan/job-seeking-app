@@ -321,16 +321,16 @@ describe('schema', needsDatabase, () => {
     });
   });
 
-  async function newArtifact(snapshotId: string, kind = 'resume') {
+  async function newArtifact(snapshotId: string, kind = 'resume', language?: string) {
     const call = await row(
       `insert into model_call (purpose, job_snapshot_id, model, started_at, duration_ms)
        values ('draft', $1, 'some-model', now(), 900) returning id`,
       [snapshotId],
     );
     return row(
-      `insert into artifact (job_snapshot_id, kind, model_call_id)
-       values ($1, $2, $3) returning id, model_call_id`,
-      [snapshotId, kind, call.id],
+      `insert into artifact (job_snapshot_id, kind, model_call_id${language === undefined ? '' : ', language'})
+       values ($1, $2, $3${language === undefined ? '' : ', $4'}) returning *`,
+      [snapshotId, kind, call.id, ...(language === undefined ? [] : [language])],
     );
   }
 
@@ -342,6 +342,20 @@ describe('schema', needsDatabase, () => {
     'insert into artifact_claim_fact (artifact_claim_id, artifact_id, fact_version_id) values ($1, $2, $3)';
 
   describe('drafts', () => {
+    test('defaults existing draft inserts to English and constrains output languages', async () => {
+      const snapshot = await newSnapshot();
+      const artifact = await newArtifact(snapshot.id);
+      assert.equal(
+        (await client.query('select language from artifact where id = $1', [artifact.id])).rows[0]
+          .language,
+        'en',
+      );
+      for (const language of ['zh', 'fi']) {
+        assert.equal((await newArtifact(snapshot.id, 'resume', language)).language, language);
+      }
+      await assert.rejects(newArtifact(snapshot.id, 'resume', 'de'), { code: '23514' });
+    });
+
     test('come from one model call each', async () => {
       const snapshot = await newSnapshot();
       const artifact = await newArtifact(snapshot.id);

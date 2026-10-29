@@ -3,6 +3,7 @@ import type {
   Draft,
   DraftAbout,
   DraftKind,
+  DraftLanguage,
   DraftLine,
   DraftSection,
   DraftSummary,
@@ -34,6 +35,7 @@ export interface StoredStatement {
 export interface StoredDraft {
   id: string;
   kind: DraftKind;
+  language: DraftLanguage;
   jobId: string;
   snapshotId: string;
   title: string;
@@ -55,6 +57,7 @@ async function loadStored(pool: Pool | PoolClient, ids: readonly string[]): Prom
   const { rows } = await pool.query<{
     id: string;
     kind: DraftKind;
+    language: DraftLanguage;
     job_id: string;
     job_snapshot_id: string;
     title: string;
@@ -67,7 +70,7 @@ async function loadStored(pool: Pool | PoolClient, ids: readonly string[]): Prom
     newer_text: boolean;
     pdfs: number;
   }>(
-    `select a.id, a.kind, s.job_id, a.job_snapshot_id, s.title, s.company, s.body, a.created_at,
+    `select a.id, a.kind, a.language, s.job_id, a.job_snapshot_id, s.title, s.company, s.body, a.created_at,
        c.model, c.cost_usd,
        array(select f.fact_version_id::text from artifact_fact f where f.artifact_id = a.id)
          as sent_facts,
@@ -87,6 +90,7 @@ async function loadStored(pool: Pool | PoolClient, ids: readonly string[]): Prom
       {
         id: row.id,
         kind: row.kind,
+        language: row.language,
         jobId: row.job_id,
         snapshotId: row.job_snapshot_id,
         title: row.title,
@@ -197,6 +201,7 @@ export function checkDraft(stored: StoredDraft, facts: FactState): Draft {
   return {
     id: stored.id,
     kind: stored.kind,
+    language: stored.language,
     jobId: stored.jobId,
     snapshotId: stored.snapshotId,
     title: stored.title,
@@ -257,6 +262,7 @@ export function summariseDraft(draft: Draft, pdfs: number): DraftSummary {
   return {
     id: draft.id,
     kind: draft.kind,
+    language: draft.language,
     createdAt: draft.createdAt,
     statements: draft.statements.length,
     rejected: draft.statements.filter((s) => s.problems.length > 0).length,

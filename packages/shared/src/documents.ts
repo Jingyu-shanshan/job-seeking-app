@@ -1,5 +1,5 @@
 import Type, { type Static } from 'typebox';
-import { DraftKindSchema } from './drafts.ts';
+import { DraftKindSchema, DraftLanguageSchema } from './drafts.ts';
 
 /**
  * One block of a finished document, in order (T08). The server builds the blocks from the
@@ -45,6 +45,7 @@ export type DocumentPdf = Static<typeof DocumentPdfSchema>;
 export const DraftDocumentSchema = Type.Object({
   draftId: Type.String({ format: 'uuid' }),
   kind: DraftKindSchema,
+  language: DraftLanguageSchema,
   jobId: Type.String({ format: 'uuid' }),
   title: Type.String(),
   company: Type.Union([Type.String(), Type.Null()]),

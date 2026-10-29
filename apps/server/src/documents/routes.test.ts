@@ -17,7 +17,6 @@ import { Pool } from 'pg';
 import { buildApp } from '../app.ts';
 import { createAccount } from '../auth.ts';
 import { loadConfig } from '../config.ts';
-import { resumeSystemPrompt } from '../drafts/write.ts';
 import { documentPieces } from '../rules/document.ts';
 import { createTestDatabase, needsDatabase, type TestDatabase } from '../testing/database.ts';
 import { chatCompletion, fakeDeepSeek } from '../testing/deepseek.ts';
@@ -107,7 +106,9 @@ describe('review and PDF', needsDatabase, () => {
   let cookie: string;
   const deepseek = fakeDeepSeek(async () => {
     const sent = deepseek.requests.at(-1)!;
-    const write = sent.body.messages[0]!.content === resumeSystemPrompt ? resume : coverLetter;
+    const write = sent.body.messages[0]!.content.startsWith('You write the content of a resume')
+      ? resume
+      : coverLetter;
     return chatCompletion(JSON.stringify(write(JSON.parse(sent.body.messages[1]!.content))));
   });
 
@@ -549,5 +550,35 @@ describe('review and PDF', needsDatabase, () => {
       documentPieces(later.blocks).some((piece) => piece.startsWith('At Acme Oy')),
       false,
     );
+  });
+  test('builds documents in their stored language while old English PDFs stay current', async () => {
+    const oldDocument = await documentOf(letter.id);
+    for (const [language, heading, greeting] of [
+      ['zh', '工作经历', '尊敬的招聘负责人：'],
+      ['fi', 'Työkokemus', 'Hyvä rekrytoija,'],
+    ]) {
+      for (const kind of ['resume', 'cover_letter']) {
+        const written = await ok<Draft>(
+          {
+            method: 'POST',
+            url: `/api/snapshots/${resumeDraft.snapshotId}/drafts`,
+            payload: { kind, language },
+          },
+          201,
+        );
+        const document = await documentOf(written.id);
+        assert.equal(document.language, language);
+        assert.ok(document.fileName.endsWith(` - ${language}`));
+        const pieces = documentPieces(document.blocks);
+        assert.ok(pieces.includes(kind === 'resume' ? heading! : greeting!));
+        if (language === 'fi') {
+          const kept = await upload(written.id, pdfOf(wrapped(pieces)));
+          assert.equal(kept.statusCode, 201, kept.body);
+          assert.deepEqual(kept.json<PdfCheck>().problems, []);
+          assert.equal((await documentOf(written.id)).pdfs[0]!.current, true);
+        }
+      }
+    }
+    assert.deepEqual(await documentOf(letter.id), oldDocument);
   });
 });

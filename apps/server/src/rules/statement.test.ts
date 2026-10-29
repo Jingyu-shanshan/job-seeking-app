@@ -245,3 +245,98 @@ test('knows a statement that is a cited fact word for word', () => {
   );
   assert.equal(isVerbatim('Led five developers.', [facts.team]), false);
 });
+
+test('checks numbers and qualifiers across English, Chinese and Finnish', () => {
+  const approximate = [
+    'Cut time by about 30%.',
+    '处理时间减少了约30%。',
+    'Lyhensin käsittelyaikaa noin 30 %.',
+  ];
+  const lower = ['Built over 10 tools.', '编写了超过10个工具。', 'Rakensin yli 10 työkalua.'];
+  const upper = ['Led up to 5 people.', '管理至多5人。', 'Johdin enintään 5 henkilöä.'];
+  for (const texts of [approximate, lower, upper]) {
+    for (const source of texts) {
+      for (const text of texts) passes(me(text, { body: source }));
+    }
+  }
+  for (const text of ['处理时间减少了约40%。', 'Lyhensin käsittelyaikaa noin 40 %.']) {
+    fails(me(text, facts.result), 'number');
+  }
+  for (const text of ['处理时间减少了30%。', 'Lyhensin käsittelyaikaa 30 %.']) {
+    fails(me(text, facts.result), 'qualifier');
+  }
+  fails(me('编写了10个工具。', { body: lower[1]! }), 'qualifier');
+  fails(me('Johdin 5 henkilöä.', { body: upper[2]! }), 'qualifier');
+});
+
+test('keeps translated proficiency and completion status without upgrading it', () => {
+  for (const states of [
+    ['basic', '基础', 'perustaso'],
+    ['expected', '预计', 'odotettu'],
+    ['in progress', '进行中', 'kesken'],
+  ]) {
+    for (const source of states) {
+      for (const state of states) {
+        passes(me(`Go (${state})`, { body: `Go (${source})` }));
+      }
+      fails(me('Go', { body: `Go (${source})` }), 'status');
+    }
+  }
+  passes(me('Finnish：基础（A2）', facts.finnish));
+  passes(me('Finnish: perustaso (A2)', facts.finnish));
+  fails(me('Finnish (A2)', facts.finnish), 'status');
+  fails(me('Finnish：精通（A2）', facts.finnish), 'status');
+  fails(me('Finnish: sujuva (A2)', facts.finnish), 'status');
+  fails(me('毕业于2027年。', { body: '预计2027年毕业。' }), 'status');
+});
+
+test('checks Chinese and Finnish months against the original date', () => {
+  const dates = ['March 2021', '2021年3月', 'maaliskuu 2021', '2021-03'];
+  for (const date of dates) {
+    for (const source of dates) passes(me(date, { body: source }));
+  }
+  for (const date of ['2021年4月', 'huhtikuu 2021', '2021-04']) {
+    fails(me(date, { body: 'March 2021' }), 'date');
+  }
+});
+
+test('Chinese text cannot hide invented tools or numbers and translated quotes remain invalid', () => {
+  passes(me('使用Go和PostgreSQL构建API。', facts.role));
+  fails(me('使用AWS构建API。', facts.role), 'term', 'AWS');
+  fails(other('期待与团队合作40年。'), 'number');
+  fails(job('你们使用Go。', '你们使用Go。'), 'quote_not_found');
+  fails(me('联系test@example.com。', facts.role), 'sensitive');
+  fails(me('约30%。'), 'uncited');
+});
+
+test('Chinese upper limits cannot be mistaken for an over claim', () => {
+  const upper = { body: '编写了不超过10个工具。' };
+  passes(me('Built up to 10 tools.', upper));
+  passes(me('编写了不超过10个工具。', { body: 'Built up to 10 tools.' }));
+  fails(me('Built over 10 tools.', upper), 'qualifier');
+  fails(me('编写了超过10个工具。', upper), 'qualifier');
+});
+
+test('equivalent unfinished states form one completion constraint', () => {
+  const statuses = [
+    'unfinished',
+    'incomplete',
+    'not completed',
+    '未完成',
+    '尚未完成',
+    'keskeneräinen',
+    'ei suoritettu',
+  ];
+  for (const source of statuses) {
+    for (const status of statuses) passes(me(`Go (${status})`, { body: `Go (${source})` }));
+    fails(me('Go', { body: `Go (${source})` }), 'status');
+  }
+});
+
+test('proficiency levels next to Han characters must survive translation', () => {
+  const chinese = { body: 'Finnish：基础A2' };
+  passes(me('Finnish: basic (A2)', chinese));
+  passes(me('Finnish：基础A2', facts.finnish));
+  fails(me('Finnish：基础', chinese), 'status', 'A2');
+  fails(me('Finnish: basic', chinese), 'status', 'A2');
+});

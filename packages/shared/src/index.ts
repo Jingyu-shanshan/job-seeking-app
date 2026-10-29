@@ -163,6 +163,7 @@ export {
 export {
   DraftAboutSchema,
   DraftKindSchema,
+  DraftLanguageSchema,
   DraftLineSchema,
   DraftSchema,
   DraftSectionSchema,
@@ -175,6 +176,7 @@ export {
   type Draft,
   type DraftAbout,
   type DraftKind,
+  type DraftLanguage,
   type DraftLine,
   type DraftSection,
   type DraftStatement,

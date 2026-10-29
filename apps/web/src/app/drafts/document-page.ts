@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { Title } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
+import { draftLanguageNames } from './draft-language';
 import type { DraftDocument, DraftKind } from '@jsa/shared';
 import { maxPdfBytes } from '@jsa/shared/limits';
 import { errorMessage } from '../sources/sources-api';
@@ -38,6 +39,7 @@ const kindNames: Record<DraftKind, string> = { resume: 'Resume', cover_letter: '
           >
         </p>
         <h1>{{ kindNames[d.kind] }} for {{ d.title }}{{ d.company ? ' at ' + d.company : '' }}</h1>
+        <p>Document language: {{ languageNames[d.language] }}.</p>
         @if (d.outdated.length) {
           <p class="notice">{{ d.outdated.join(' ') }}</p>
         }
@@ -125,7 +127,7 @@ const kindNames: Record<DraftKind, string> = { resume: 'Resume', cover_letter: '
         </p>
         <h2>The document</h2>
       </div>
-      <app-document-sheet [blocks]="d.blocks" [kind]="d.kind" />
+      <app-document-sheet [blocks]="d.blocks" [kind]="d.kind" [language]="d.language" />
     } @else if (data.isLoading()) {
       <p role="status">Loading the document…</p>
     } @else {
@@ -197,6 +199,7 @@ export class DocumentPage {
   protected readonly data = httpResource<DraftDocument>(() => `/api/drafts/${this.id()}/document`);
   protected readonly loadError = computed(() => errorMessage(this.data.error()));
   protected readonly kindNames = kindNames;
+  protected readonly languageNames = draftLanguageNames;
   protected readonly busy = signal(false);
   protected readonly status = signal('');
   protected readonly problems = signal<string[]>([]);

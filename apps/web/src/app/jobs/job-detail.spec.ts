@@ -14,6 +14,7 @@ import type {
   SummaryFields,
 } from '@jsa/shared';
 import { JobDetailPage } from './job-detail';
+import { JobDrafts } from './job-drafts';
 
 const jobId = '00000000-0000-4000-8000-000000000001';
 const snapshotId = '00000000-0000-4000-8000-000000000002';
@@ -699,6 +700,7 @@ describe('JobDetailPage', () => {
             {
               id: '00000000-0000-4000-8000-000000000020',
               kind: 'resume',
+              language: 'en',
               createdAt: '2026-10-05T08:00:00.000Z',
               statements: 12,
               rejected: 2,
@@ -723,7 +725,7 @@ describe('JobDetailPage', () => {
 
     button('Write a cover letter')!.click();
     const request = http.expectOne(`/api/snapshots/${snapshotId}/drafts`);
-    expect(request.request.body).toEqual({ kind: 'cover_letter' });
+    expect(request.request.body).toEqual({ kind: 'cover_letter', language: 'en' });
     await settle();
     expect(text(page().querySelector(':scope > [role=status]'))).toContain(
       'Writing the cover letter with DeepSeek.',
@@ -737,11 +739,102 @@ describe('JobDetailPage', () => {
     http.expectOne('/api/model-usage').flush(usage);
   });
 
+  it.each([
+    ['resume', 'zh', 'Write a resume'],
+    ['cover_letter', 'fi', 'Write a cover letter'],
+  ])('writes %s in the selected language %s', async (kind, language, label) => {
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    await load(detail({ snapshot: snapshot() }));
+    const select = page().querySelector<HTMLSelectElement>(`#draft-language-${kind}`)!;
+    expect(select.value).toBe('en');
+    expect(text(page().querySelector(`label[for="draft-language-${kind}"]`))).toBe(
+      kind === 'resume' ? 'Resume language' : 'Cover letter language',
+    );
+    select.value = language!;
+    select.dispatchEvent(new Event('change'));
+    await settle();
+    const other = page().querySelector<HTMLSelectElement>(
+      `#draft-language-${kind === 'resume' ? 'cover_letter' : 'resume'}`,
+    )!;
+    expect(other.value).toBe('en');
+    button(label!)!.click();
+    const request = http.expectOne(`/api/snapshots/${snapshotId}/drafts`);
+    expect(request.request.body).toEqual({ kind, language });
+    await settle();
+    expect(select.disabled).toBe(true);
+    expect(other.disabled).toBe(true);
+    request.flush({ message: 'Please try again.' }, { status: 502, statusText: 'Bad Gateway' });
+    await settle();
+    http.expectOne('/api/model-usage').flush(usage);
+    await settle();
+    expect(select.value).toBe(language);
+    expect(select.disabled).toBe(false);
+    expect(text(page().querySelector('[role=alert]'))).toContain('Please try again.');
+  });
+
+  it('defaults to the latest draft language and allows generating another language', async () => {
+    await load(
+      detail({
+        snapshot: snapshot({
+          drafts: [
+            {
+              id: '00000000-0000-4000-8000-000000000020',
+              kind: 'resume',
+              language: 'zh',
+              createdAt: '2026-10-05T08:00:00.000Z',
+              statements: 1,
+              rejected: 0,
+              outdated: [],
+              pdfs: 1,
+            },
+          ],
+        }),
+      }),
+    );
+    const select = page().querySelector<HTMLSelectElement>('#draft-language-resume')!;
+    expect(select.value).toBe('zh');
+    expect(button('Write again')).toBeUndefined();
+    select.value = 'fi';
+    select.dispatchEvent(new Event('change'));
+    await settle();
+    expect(button('Write again')).toBeDefined();
+    select.value = 'zh';
+    select.dispatchEvent(new Event('change'));
+    await settle();
+    expect(button('Write again')).toBeUndefined();
+  });
+
+  it('preserves a language choice on refresh and resets it for a different job text', async () => {
+    await load(detail({ snapshot: snapshot() }));
+    const child = TestBed.createComponent(JobDrafts);
+    child.componentRef.setInput('job', detail({ snapshot: snapshot() }));
+    child.detectChanges();
+    const select = () =>
+      (child.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+        '#draft-language-resume',
+      )!;
+    select().value = 'fi';
+    select().dispatchEvent(new Event('change'));
+    child.detectChanges();
+    child.componentRef.setInput('job', detail({ snapshot: snapshot(), title: 'Updated job' }));
+    child.detectChanges();
+    expect(select().value).toBe('fi');
+    child.componentRef.setInput('job', detail({ snapshot: snapshot({ id: 'another-snapshot' }) }));
+    child.detectChanges();
+    expect(select().value).toBe('en');
+    child.destroy();
+  });
+
   it('says why no draft can be written yet, and shows a refusal', async () => {
     await load(detail({ factsToDraft: 0, snapshot: snapshot() }));
     const drafts = section('Drafts')!;
     expect(text(drafts)).toContain('None of your facts may be used yet.');
     expect(button('Write a resume')!.disabled).toBe(true);
+    expect(
+      [...page().querySelectorAll<HTMLSelectElement>('select[id^=draft-language-]')].every(
+        (s) => s.disabled,
+      ),
+    ).toBe(true);
   });
 
   it('shows the server’s message when writing fails', async () => {
@@ -822,6 +915,7 @@ describe('JobDetailPage', () => {
           drafts: ['resume', 'cover_letter'].map((kind, i) => ({
             id: `${jobId.slice(0, -1)}${i + 4}`,
             kind: kind as 'resume' | 'cover_letter',
+            language: 'en' as const,
             createdAt: '2026-10-18T08:00:00Z',
             statements: 2,
             rejected: 0,
@@ -850,6 +944,7 @@ describe('JobDetailPage', () => {
             {
               id: snapshotId,
               kind: 'resume',
+              language: 'en',
               createdAt: '2026-10-18T08:00:00Z',
               statements: 2,
               rejected: 0,

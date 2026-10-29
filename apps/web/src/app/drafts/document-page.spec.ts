@@ -29,6 +29,7 @@ async function settle() {
 const resume = (fields: Partial<DraftDocument> = {}): DraftDocument => ({
   draftId,
   kind: 'resume',
+  language: 'en',
   jobId: '00000000-0000-4000-8000-000000000002',
   title: 'Payments Engineer',
   company: 'Example Pay',
@@ -115,6 +116,16 @@ describe('DocumentPage', () => {
       'Test Person - Resume - Example Pay - Payments Engineer',
     );
     expect(text()).toContain('None yet.');
+  });
+
+  it.each([
+    ['zh', '中文'],
+    ['fi', 'Suomi'],
+  ] as const)('marks %s content for reading and printing', async (language, label) => {
+    await load(resume({ language }));
+    expect(text()).toContain(`Document language: ${label}`);
+    expect(sheet().getAttribute('lang')).toBe(language);
+    expect(text(sheet())).not.toContain('Document language:');
   });
 
   it('shows a cover letter with its greeting and sign-off', async () => {

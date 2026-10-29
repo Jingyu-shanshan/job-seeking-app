@@ -46,6 +46,7 @@ function statement(fields: Partial<DraftStatement>): DraftStatement {
 const resume = (fields: Partial<Draft> = {}): Draft => ({
   id: draftId,
   kind: 'resume',
+  language: 'en',
   jobId,
   snapshotId: '00000000-0000-4000-8000-000000000003',
   title: 'Payments Engineer',
@@ -116,6 +117,11 @@ describe('DraftPage', () => {
   const check = (startsWith: string) => text(item(startsWith).querySelector('app-statement-check'));
   const buttonIn = (el: Element, label: string) =>
     [...el.querySelectorAll('button')].find((b) => text(b) === label);
+
+  it('identifies the draft output language', async () => {
+    await load(resume({ language: 'fi' }));
+    expect(text()).toContain('Document language: Suomi');
+  });
 
   it('shows every statement where it goes, with what its checks found', async () => {
     await TestBed.inject(Router).navigateByUrl('/?run=sample-run');
