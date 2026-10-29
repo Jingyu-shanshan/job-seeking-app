@@ -7,12 +7,6 @@ export const DraftLanguageSchema = Type.Union([
   Type.Literal('fi'),
 ]);
 export type DraftLanguage = Static<typeof DraftLanguageSchema>;
-export const draftLanguageNames: Record<DraftLanguage, string> = {
-  en: 'English',
-  zh: '中文',
-  fi: 'Suomi',
-};
-
 export const DraftKindSchema = Type.Union([Type.Literal('resume'), Type.Literal('cover_letter')]);
 
 export type DraftKind = Static<typeof DraftKindSchema>;

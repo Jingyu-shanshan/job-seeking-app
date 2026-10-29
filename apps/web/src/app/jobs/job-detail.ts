@@ -11,7 +11,7 @@ import {
   signal,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import type { DraftKind, JobDetail, JobVerdict, ModelUsage } from '@jsa/shared';
+import type { WriteDraftRequest, JobDetail, JobVerdict, ModelUsage } from '@jsa/shared';
 import { JobForm } from '../answers/job-form';
 import { JobApplicationsView } from '../applications/job-applications';
 import { JobFill } from '../runner/job-fill';
@@ -634,12 +634,14 @@ export class JobDetailPage {
     this.usage.reload();
   }
 
-  protected async writeDraft(snapshotId: string, kind: DraftKind) {
+  protected async writeDraft(snapshotId: string, request: WriteDraftRequest) {
     this.busy.set(true);
     this.failure.set('');
-    this.status.set(`Writing the ${draftNames[kind]} with DeepSeek. This can take a minute.`);
+    this.status.set(
+      `Writing the ${draftNames[request.kind]} with DeepSeek. This can take a minute.`,
+    );
     try {
-      const draft = await this.api.writeDraft(snapshotId, kind);
+      const draft = await this.api.writeDraft(snapshotId, request);
       this.status.set('');
       await this.router.navigate(['/drafts', draft.id], { queryParamsHandling: 'preserve' });
     } catch (error) {

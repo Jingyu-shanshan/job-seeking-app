@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { DraftLine, DraftSection, DraftStatement, Profile } from '@jsa/shared';
+import type { DraftLanguage, DraftLine, DraftSection, DraftStatement, Profile } from '@jsa/shared';
 import {
   documentBlocks,
   documentFileName,
@@ -57,6 +57,7 @@ const contact = {
 test('a resume: name, headline, contact details, summary, then each section with entries', () => {
   const resume = {
     kind: 'resume' as const,
+    language: 'en' as const,
     statements: [
       statement('headline', 0, 'sentence', 'Backend developer'),
       statement('summary', 0, 'sentence', 'Builds invoice APIs in Go.'),
@@ -112,6 +113,7 @@ test('a resume: name, headline, contact details, summary, then each section with
 test('a cover letter: the app writes the greeting and the sign-off', () => {
   const letter = {
     kind: 'cover_letter' as const,
+    language: 'en' as const,
     statements: [
       statement('letter', 0, 'sentence', 'I am applying for the Payments Engineer role.'),
       statement('letter', 0, 'sentence', 'You move money for 40,000 merchants.'),
@@ -136,6 +138,7 @@ test('only the details the user filled in appear', () => {
   const bare = { name: '', email: '', phone: '', location: '', links: [] };
   const letter = {
     kind: 'cover_letter' as const,
+    language: 'en' as const,
     statements: [statement('letter', 0, 'sentence', 'I am applying.')],
   };
   assert.deepEqual(documentBlocks(letter, bare), [
@@ -143,7 +146,7 @@ test('only the details the user filled in appear', () => {
     { type: 'paragraph', text: 'I am applying.' },
     { type: 'closing', lines: ['Kind regards,'] },
   ]);
-  assert.deepEqual(documentBlocks({ kind: 'resume', statements: [] }, bare), []);
+  assert.deepEqual(documentBlocks({ kind: 'resume', language: 'en', statements: [] }, bare), []);
 });
 
 test('a PDF needs a name and at least one statement in the document', () => {
@@ -174,4 +177,85 @@ test('the file name says whose it is, what it is and which job it is for', () =>
   assert.ok(
     documentFileName('resume', { title: 'x'.repeat(300), company: null }, profile).length <= 150,
   );
+});
+
+test('localizes headings, greetings and closings using the stored language', () => {
+  const cases: [DraftLanguage, string[], string, string][] = [
+    [
+      'en',
+      ['Experience', 'Projects', 'Skills', 'Education', 'Languages', 'Certifications'],
+      'Dear Hiring Manager,',
+      'Kind regards,',
+    ],
+    [
+      'zh',
+      ['工作经历', '项目经历', '技能', '教育经历', '语言能力', '证书'],
+      '尊敬的招聘负责人：',
+      '此致敬礼',
+    ],
+    [
+      'fi',
+      ['Työkokemus', 'Projektit', 'Osaaminen', 'Koulutus', 'Kielitaito', 'Sertifikaatit'],
+      'Hyvä rekrytoija,',
+      'Ystävällisin terveisin,',
+    ],
+  ];
+  for (const [language, headings, greeting, closing] of cases) {
+    const blocks = documentBlocks(
+      {
+        kind: 'resume',
+        language,
+        statements: [
+          statement('experience', 0, 'title', 'Acme Oy'),
+          statement('projects', 0, 'title', 'API'),
+          statement('skills', 0, 'title', 'Go'),
+          statement('education', 0, 'title', '2021-03'),
+          statement('languages', 0, 'title', 'A2'),
+          statement('certifications', 0, 'title', 'AWS'),
+        ],
+      },
+      profile,
+    );
+    assert.deepEqual(
+      blocks.filter((b) => b.type === 'heading').map((b) => b.text),
+      headings,
+    );
+    const letter = documentPieces(
+      documentBlocks(
+        {
+          kind: 'cover_letter',
+          language,
+          statements: [statement('letter', 0, 'sentence', 'Go API')],
+        },
+        profile,
+      ),
+    );
+    assert.ok(letter.includes(greeting));
+    assert.ok(letter.includes(closing));
+    assert.ok(letter.includes(profile.name));
+    assert.ok(letter.includes(profile.email));
+  }
+});
+
+test('distinguishes language filenames and preserves old English filenames', () => {
+  const job = { title: 'Engineer', company: null };
+  assert.equal(documentFileName('resume', job, profile, 'en'), 'Test Person - Resume - Engineer');
+  assert.equal(
+    documentFileName('resume', job, profile, 'zh'),
+    'Test Person - Resume - Engineer - zh',
+  );
+  assert.equal(
+    documentFileName('cover_letter', job, profile, 'fi'),
+    'Test Person - Cover letter - Engineer - fi',
+  );
+  for (const language of ['zh', 'fi'] as const) {
+    const name = documentFileName(
+      'resume',
+      { title: 'x'.repeat(300), company: null },
+      profile,
+      language,
+    );
+    assert.ok(name.endsWith(` - ${language}`));
+    assert.ok(name.length <= 150);
+  }
 });

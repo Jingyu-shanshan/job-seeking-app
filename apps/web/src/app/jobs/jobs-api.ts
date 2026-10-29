@@ -3,7 +3,7 @@ import { Service, inject } from '@angular/core';
 import type {
   AddRequirementRequest,
   Draft,
-  DraftKind,
+  WriteDraftRequest,
   ImportAlertEmailResponse,
   ImportJobLinkRequest,
   JobDetail,
@@ -69,8 +69,8 @@ export class JobsApi {
   }
 
   /** Writes a resume or cover letter draft for a job text with DeepSeek. */
-  writeDraft(snapshotId: string, kind: DraftKind): Promise<Draft> {
-    return firstValueFrom(this.http.post<Draft>(`/api/snapshots/${snapshotId}/drafts`, { kind }));
+  writeDraft(snapshotId: string, request: WriteDraftRequest): Promise<Draft> {
+    return firstValueFrom(this.http.post<Draft>(`/api/snapshots/${snapshotId}/drafts`, request));
   }
 
   addRequirement(snapshotId: string, requirement: AddRequirementRequest): Promise<JobDetail> {

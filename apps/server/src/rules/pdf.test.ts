@@ -119,3 +119,23 @@ test('lists at most eight problems of a kind', () => {
   assert.equal(problems[8], 'And 4 more like these.');
   assert.match(problems[9]!, /not in the document: “Something else entirely”/);
 });
+
+test('verifies Chinese and Finnish PDF text and rejects missing, extra or clipped text', () => {
+  for (const lines of [
+    ['工作经历', '使用Go构建API，处理时间减少了约30%。'],
+    ['Työkokemus', 'Lyhensin käsittelyaikaa noin 30 %.'],
+  ]) {
+    assert.deepEqual(pdfTextProblems(lines, [page(...lines)]), []);
+    assert.ok(pdfTextProblems(lines, [page(lines[0]!)]).some((p) => p.includes('not in the PDF')));
+    assert.ok(
+      pdfTextProblems(lines, [page(...lines, 'EXTRA')]).some((p) =>
+        p.includes('not in the document'),
+      ),
+    );
+    assert.ok(
+      pdfTextProblems(lines, [page(lines[0]!, { text: lines[1], y: -5 })]).some((p) =>
+        p.includes('off page'),
+      ),
+    );
+  }
+});

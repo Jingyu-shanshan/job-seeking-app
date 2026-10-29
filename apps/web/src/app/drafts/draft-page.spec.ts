@@ -118,6 +118,11 @@ describe('DraftPage', () => {
   const buttonIn = (el: Element, label: string) =>
     [...el.querySelectorAll('button')].find((b) => text(b) === label);
 
+  it('identifies the draft output language', async () => {
+    await load(resume({ language: 'fi' }));
+    expect(text()).toContain('Document language: Suomi');
+  });
+
   it('shows every statement where it goes, with what its checks found', async () => {
     await TestBed.inject(Router).navigateByUrl('/?run=sample-run');
     await load(resume());
