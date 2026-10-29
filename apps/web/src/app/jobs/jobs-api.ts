@@ -7,6 +7,7 @@ import type {
   ImportAlertEmailResponse,
   ImportJobLinkRequest,
   JobDetail,
+  JobDetails,
   JobSearchRequest,
   JobSearchResponse,
   PasteJobRequest,
@@ -19,6 +20,10 @@ export class JobsApi {
 
   paste(job: PasteJobRequest): Promise<JobDetail> {
     return firstValueFrom(this.http.post<JobDetail>('/api/jobs', job));
+  }
+
+  updateDetails(jobId: string, details: JobDetails): Promise<JobDetail> {
+    return firstValueFrom(this.http.put<JobDetail>(`/api/jobs/${jobId}/details`, details));
   }
 
   remove(jobId: string): Promise<void> {

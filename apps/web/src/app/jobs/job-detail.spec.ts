@@ -63,6 +63,7 @@ const detail = (fields: Partial<JobDetail> = {}): JobDetail => ({
   url: 'https://job-boards.example.com/acme/jobs/1',
   sources: [{ id: '00000000-0000-4000-8000-000000000003', catalogId: 'b', param: 'acme' }],
   canImport: true,
+  canEditDetails: false,
   saved: false,
   alerts: [],
   snapshot: null,
@@ -162,6 +163,65 @@ describe('JobDetailPage', () => {
   });
 
   afterEach(() => http.verify());
+
+  it('opens and saves imported job details without changing the original text', async () => {
+    await load(detail({ canEditDetails: true, snapshot: snapshot() }));
+    button('Edit details')!.click();
+    await settle();
+    const form = page().querySelector('app-job-details-form')!;
+    const field = (label: string) =>
+      [...form.querySelectorAll('label')]
+        .find((el) => text(el).startsWith(label))!
+        .querySelector('input')!;
+    for (const [label, value] of [
+      ['Job title', 'Engineer II'],
+      ['Company', ''],
+      ['Location', 'Espoo'],
+      ['Job link', ''],
+    ]) {
+      const input = field(label);
+      input.value = value;
+      input.dispatchEvent(new Event('input'));
+    }
+    await settle();
+    button('Save details')!.click();
+    await settle();
+    const request = http.expectOne(`/api/jobs/${jobId}/details`);
+    expect(request.request.method).toBe('PUT');
+    expect(request.request.body).toEqual({
+      title: 'Engineer II',
+      company: null,
+      location: 'Espoo',
+      url: null,
+    });
+    request.flush(
+      detail({
+        canEditDetails: true,
+        title: 'Engineer II',
+        company: null,
+        location: 'Espoo',
+        url: null,
+        snapshot: snapshot(),
+      }),
+    );
+    await settle();
+    expect(page().querySelector('h1')!.textContent).toBe('Engineer II');
+    expect(page().querySelector('app-job-details-form')).toBeNull();
+    expect(document.activeElement).toBe(button('Edit details'));
+  });
+
+  it('cancels edits without writing and hides editing for discovered jobs', async () => {
+    await load(detail());
+    expect(button('Edit details')).toBeUndefined();
+    fixture.componentInstance['data'].set(detail({ canEditDetails: true }));
+    await settle();
+    button('Edit details')!.click();
+    await settle();
+    button('Cancel')!.click();
+    await settle();
+    http.expectNone((request) => request.method === 'PUT');
+    expect(document.activeElement).toBe(button('Edit details'));
+  });
 
   it('shows successful link provenance separately from immutable text and supports older snapshots', async () => {
     await load(

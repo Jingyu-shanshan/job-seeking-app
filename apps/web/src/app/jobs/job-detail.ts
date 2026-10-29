@@ -19,6 +19,7 @@ import { errorMessage } from '../sources/sources-api';
 import { criterionLabels, describeResult } from './criteria-text';
 import { JobDrafts, draftNames } from './job-drafts';
 import { JobSummaryView, outcomeLabels } from './job-summary';
+import { JobDetailsForm } from './job-details-form';
 import { JobsApi, usd } from './jobs-api';
 import { PasteTextForm } from './paste-text-form';
 import { findQuote } from './quote-span';
@@ -45,6 +46,7 @@ const verdictLines: Record<JobVerdict, string> = {
     JobDrafts,
     JobFill,
     JobForm,
+    JobDetailsForm,
     JobSummaryView,
     PasteTextForm,
     RouterLink,
@@ -61,6 +63,24 @@ const verdictLines: Record<JobVerdict, string> = {
           · <a [href]="job.url" target="_blank" rel="noopener noreferrer">Job page</a>
         }
       </p>
+      @if (job.canEditDetails) {
+        @if (editingDetails()) {
+          <app-job-details-form
+            [job]="job"
+            (saved)="data.set($event); closeDetails()"
+            (cancelled)="closeDetails()"
+          />
+        } @else {
+          <button
+            id="edit-job-details"
+            type="button"
+            (click)="editingDetails.set(true)"
+            [disabled]="busy()"
+          >
+            Edit details
+          </button>
+        }
+      }
       <p>{{ listing() }}</p>
       <nav aria-label="Job stages">
         <ol class="stages">
@@ -534,6 +554,15 @@ export class JobDetailPage {
     const heading = this.host.nativeElement.querySelector<HTMLElement>(`#${id}-heading`);
     heading?.focus();
     heading?.scrollIntoView?.({ block: 'start' });
+  }
+
+  protected readonly editingDetails = signal(false);
+  protected closeDetails() {
+    this.editingDetails.set(false);
+    afterNextRender(
+      () => this.host.nativeElement.querySelector<HTMLElement>('#edit-job-details')?.focus(),
+      { injector: this.injector },
+    );
   }
 
   protected readonly textOpen = signal(false);
