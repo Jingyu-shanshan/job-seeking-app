@@ -500,6 +500,8 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
       if (url) {
         if (!URL.canParse(url)) throw httpError(400, 'Enter a valid https link.');
         const parsed = new URL(url);
+        if (parsed.href.length > 2000)
+          throw httpError(400, 'The job link is too long. Use a shorter link.');
         if (parsed.protocol !== 'https:' || parsed.username || parsed.password)
           throw httpError(400, 'Enter an https link without a user name or password.');
       }

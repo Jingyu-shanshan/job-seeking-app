@@ -63,6 +63,8 @@ export class JobDetailsForm {
         if (!url) return undefined;
         if (URL.canParse(url)) {
           const parsed = new URL(url);
+          if (parsed.href.length > 2000)
+            return { kind: 'url', message: 'The job link is too long. Use a shorter link.' };
           if (parsed.protocol === 'https:' && !parsed.username && !parsed.password)
             return undefined;
         }

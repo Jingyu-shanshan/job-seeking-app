@@ -73,6 +73,15 @@ describe('JobDetailsForm', () => {
     },
   );
 
+  it('rejects a link whose encoded address exceeds the storage limit', async () => {
+    const { http, fill, save, page } = setup();
+    fill('Job link', 'https://example.com/' + '中'.repeat(300));
+    await settle();
+    await save();
+    http.expectNone('/api/jobs/job-1/details');
+    expect(page.textContent).toContain('The job link is too long. Use a shorter link.');
+  });
+
   it('rejects whitespace titles before saving', async () => {
     const { http, fill, save } = setup();
     fill('Job title', '   ');

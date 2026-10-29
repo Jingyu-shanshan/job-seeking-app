@@ -294,6 +294,71 @@ describe('JD import and summary', needsDatabase, () => {
     );
   });
 
+  test('uses current job metadata for duplicate names and presentation while keeping historical addresses', async () => {
+    const page = {
+      title: 'Original Duplicate Title',
+      company: 'Current Metadata Co',
+      location: 'Helsinki',
+      url: 'https://example.com/current-metadata',
+      text: 'A current metadata test job.',
+    };
+    const saved = await saveJobPage(pool, page, 'desktop_save');
+    await saveJobPage(
+      pool,
+      { ...page, title: 'Senior Duplicate Title', location: 'Tampere' },
+      'desktop_save',
+    );
+    const current = await detail(saved.jobId);
+    assert.equal(current.title, 'Senior Duplicate Title');
+    const duplicate = await call({ method: 'POST', url: '/api/jobs', payload: page });
+    assert.equal(duplicate.statusCode, 409, duplicate.body);
+    assert.deepEqual(duplicate.json().jobs, [
+      {
+        id: saved.jobId,
+        title: current.title,
+        company: current.company,
+        location: current.location,
+      },
+    ]);
+    const obsoleteName = await call({
+      method: 'POST',
+      url: '/api/jobs',
+      payload: { ...page, url: 'https://example.com/unrelated-current-metadata' },
+    });
+    assert.equal(obsoleteName.statusCode, 201, obsoleteName.body);
+    const currentName = await call({
+      method: 'POST',
+      url: '/api/jobs',
+      payload: { ...page, title: current.title, url: 'https://example.com/new-current-metadata' },
+    });
+    assert.equal(currentName.statusCode, 409, currentName.body);
+    assert.equal(currentName.json().jobs[0].id, saved.jobId);
+  });
+
+  test('rejects URLs that exceed the storage limit after encoding without saving edits or jobs', async () => {
+    const job = await paste({
+      createNew: true,
+      title: 'Encoded URL test',
+      url: 'https://example.com/encoded-url-test',
+    });
+    const url = 'https://example.com/' + '中'.repeat(300);
+    const payload = { title: 'Changed title', company: null, location: 'Tampere', url };
+    const edited = await call({ method: 'PUT', url: `/api/jobs/${job.id}/details`, payload });
+    assert.equal(edited.statusCode, 400, edited.body);
+    assert.match(edited.json().message, /link.*too long/i);
+    assert.equal((await detail(job.id)).title, job.title);
+    const count = async () => (await pool.query('select count(*)::int as n from job')).rows[0].n;
+    const before = await count();
+    const imported = await call({
+      method: 'POST',
+      url: '/api/jobs',
+      payload: { ...payload, text: 'Encoded URL job text.' },
+    });
+    assert.equal(imported.statusCode, 400, imported.body);
+    assert.match(imported.json().message, /link.*too long/i);
+    assert.equal(await count(), before);
+  });
+
   test('reports duplicates without writing, normalizes addresses and explicitly creates another', async () => {
     const payload = {
       title: 'Full-Stack Engineer',
