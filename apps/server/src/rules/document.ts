@@ -1,11 +1,18 @@
-import type { DocumentBlock, Draft, DraftKind, DraftStatement, Profile } from '@jsa/shared';
+import type {
+  DocumentBlock,
+  Draft,
+  DraftKind,
+  DraftLanguage,
+  DraftStatement,
+  Profile,
+} from '@jsa/shared';
 import { entrySections } from './draft.ts';
 
 // The finished document (T08): the statements in the document, in their places, with the user's
 // details written by the app. The web page renders these blocks and adds no text of its own, and
 // an uploaded PDF must have exactly their text (rules/pdf.ts), so both come from here.
 
-const headings: Record<(typeof entrySections)[number], string> = {
+const englishHeadings: Record<(typeof entrySections)[number], string> = {
   experience: 'Experience',
   projects: 'Projects',
   skills: 'Skills',
@@ -22,6 +29,37 @@ export const kindNames: Record<DraftKind, string> = {
 // The cover letter's opening and sign-off, written by the app (T07 asks DeepSeek for neither).
 export const salutation = 'Dear Hiring Manager,';
 export const signOff = 'Kind regards,';
+
+const documentText = {
+  en: { headings: englishHeadings, salutation, signOff },
+  zh: {
+    headings: {
+      experience: '工作经历',
+      projects: '项目经历',
+      skills: '技能',
+      education: '教育经历',
+      languages: '语言能力',
+      certifications: '证书',
+    },
+    salutation: '尊敬的招聘负责人：',
+    signOff: '此致敬礼',
+  },
+  fi: {
+    headings: {
+      experience: 'Työkokemus',
+      projects: 'Projektit',
+      skills: 'Osaaminen',
+      education: 'Koulutus',
+      languages: 'Kielitaito',
+      certifications: 'Sertifikaatit',
+    },
+    salutation: 'Hyvä rekrytoija,',
+    signOff: 'Ystävällisin terveisin,',
+  },
+} satisfies Record<
+  DraftLanguage,
+  { headings: Record<(typeof entrySections)[number], string>; salutation: string; signOff: string }
+>;
 
 /** A link as documents show it: without the scheme, `www.` or a trailing slash. */
 export function linkText(url: string): string {
@@ -46,9 +84,10 @@ const sentences = (statements: readonly DraftStatement[]) =>
 
 /** The document's blocks in order, from the statements that go into it. */
 export function documentBlocks(
-  draft: Pick<Draft, 'kind' | 'statements'>,
+  draft: Pick<Draft, 'kind' | 'statements' | 'language'>,
   profile: Profile,
 ): DocumentBlock[] {
+  const { headings, salutation, signOff } = documentText[draft.language];
   const kept = draft.statements.filter((s) => s.inDocument);
   const name: DocumentBlock[] = profile.name ? [{ type: 'name', text: profile.name }] : [];
 
@@ -135,16 +174,20 @@ export function documentFileName(
   kind: DraftKind,
   job: { title: string; company: string | null },
   profile: Pick<Profile, 'name'>,
+  language: DraftLanguage = 'en',
 ): string {
-  return [profile.name, kindNames[kind], job.company ?? '', job.title]
-    .map((part) =>
-      part
-        .replace(/[\p{Cc}\\/:*?"<>|]+/gu, ' ')
-        .replace(/\s+/g, ' ')
-        .trim(),
-    )
-    .filter((part) => part !== '')
-    .join(' - ')
-    .slice(0, 150)
-    .trim();
+  const suffix = language === 'en' ? '' : ` - ${language}`;
+  return (
+    [profile.name, kindNames[kind], job.company ?? '', job.title]
+      .map((part) =>
+        part
+          .replace(/[\p{Cc}\\/:*?"<>|]+/gu, ' ')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      )
+      .filter((part) => part !== '')
+      .join(' - ')
+      .slice(0, 150 - suffix.length)
+      .trim() + suffix
+  );
 }
