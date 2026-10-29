@@ -4,17 +4,19 @@ import { FormField, FormRoot, form, maxLength, required, validate } from '@angul
 import { RouterLink } from '@angular/router';
 import type {
   JobDetail,
+  DuplicateJob,
   JobSearchCandidate,
   JobSearchRequest,
   JobSearchResponse,
   ToolCalls,
 } from '@jsa/shared';
 import { errorMessage } from '../sources/sources-api';
-import { JobsApi } from './jobs-api';
+import { JobsApi, duplicateJobs } from './jobs-api';
+import { DuplicateJobNotice } from './duplicate-job';
 
 @Component({
   selector: 'app-search-jobs',
-  imports: [FormField, FormRoot, RouterLink],
+  imports: [FormField, FormRoot, RouterLink, DuplicateJobNotice],
   template: `
     <h1>Search for job links</h1>
     <p><a routerLink="/jobs">Back to jobs</a></p>
@@ -122,6 +124,13 @@ import { JobsApi } from './jobs-api';
                 }}
               </button>
             }
+            @if (duplicates()[candidate.url]; as jobs) {
+              <app-duplicate-job
+                [jobs]="jobs"
+                [busy]="!!verifying()"
+                (createAnother)="verify(candidate, true)"
+              />
+            }
             @if (errors()[candidate.url]; as message) {
               <p role="alert">{{ message }}</p>
               <p>
@@ -184,6 +193,7 @@ export class SearchJobs {
   protected readonly checking = signal(false);
   protected readonly verifying = signal('');
   protected readonly saved = signal<Record<string, JobDetail>>({});
+  protected readonly duplicates = signal<Record<string, DuplicateJob[] | null>>({});
   protected readonly errors = signal<Record<string, string>>({});
   protected readonly searchForm = form(
     this.model,
@@ -240,15 +250,22 @@ export class SearchJobs {
       this.checking.set(false);
     }
   }
-  protected async verify(candidate: JobSearchCandidate) {
-    if (this.verifying()) return;
+  protected async verify(candidate: JobSearchCandidate, createNew = false) {
+    if (this.verifying() || (createNew && !this.duplicates()[candidate.url])) return;
     this.verifying.set(candidate.url);
     this.errors.update((errors) => ({ ...errors, [candidate.url]: '' }));
     try {
-      const job = await this.api.importLink(candidate.url);
+      const job = await this.api.importLink(candidate.url, 'direct', createNew);
+      this.duplicates.update((jobs) => ({ ...jobs, [candidate.url]: null }));
       this.saved.update((saved) => ({ ...saved, [candidate.url]: job }));
     } catch (error) {
-      this.errors.update((errors) => ({ ...errors, [candidate.url]: errorMessage(error) }));
+      const jobs = duplicateJobs(error);
+      if (jobs || !createNew)
+        this.duplicates.update((duplicates) => ({ ...duplicates, [candidate.url]: jobs }));
+      this.errors.update((errors) => ({
+        ...errors,
+        [candidate.url]: jobs ? '' : errorMessage(error),
+      }));
     } finally {
       this.verifying.set('');
     }

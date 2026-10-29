@@ -57,7 +57,10 @@ const verdictLines: Record<JobVerdict, string> = {
       @let job = data.value();
       <h1>{{ job.title }}</h1>
       <p>
-        {{ job.company ?? job.sources[0]?.param ?? 'Company not given' }} ·
+        {{
+          job.company ?? (job.canEditDetails ? null : job.sources[0]?.param) ?? 'Company not given'
+        }}
+        ·
         {{ job.location || 'No location given' }}
         @if (job.url) {
           · <a [href]="job.url" target="_blank" rel="noopener noreferrer">Job page</a>

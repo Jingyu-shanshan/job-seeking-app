@@ -387,6 +387,13 @@ describe('Jobs', () => {
     expect(text(section('Your imported jobs')!.querySelectorAll('.state')[2]!)).toBe('Ruled out');
   });
 
+  it('does not replace an imported job’s cleared company with its board name', async () => {
+    await load([job({ title: 'Corrected role', imported: true, company: null })]);
+    expect(text(section('Your imported jobs')!.querySelector('.company'))).toBe(
+      'Company not given',
+    );
+  });
+
   it('labels a matching role without treating a hard failure as recommended', async () => {
     await load([
       job({

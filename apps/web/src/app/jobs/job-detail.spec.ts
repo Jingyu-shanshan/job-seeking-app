@@ -206,6 +206,9 @@ describe('JobDetailPage', () => {
     );
     await settle();
     expect(page().querySelector('h1')!.textContent).toBe('Engineer II');
+    expect(page().querySelector('h1')!.nextElementSibling!.textContent).toContain(
+      'Company not given',
+    );
     expect(page().querySelector('app-job-details-form')).toBeNull();
     expect(document.activeElement).toBe(button('Edit details'));
   });

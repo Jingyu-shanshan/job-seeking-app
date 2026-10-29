@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Service, inject } from '@angular/core';
 import type {
   AddRequirementRequest,
@@ -10,7 +10,8 @@ import type {
   JobDetails,
   JobSearchRequest,
   JobSearchResponse,
-  PasteJobRequest,
+  CreateImportedJobRequest,
+  DuplicateJob,
 } from '@jsa/shared';
 import { firstValueFrom } from 'rxjs';
 
@@ -18,7 +19,7 @@ import { firstValueFrom } from 'rxjs';
 export class JobsApi {
   private readonly http = inject(HttpClient);
 
-  paste(job: PasteJobRequest): Promise<JobDetail> {
+  paste(job: CreateImportedJobRequest): Promise<JobDetail> {
     return firstValueFrom(this.http.post<JobDetail>('/api/jobs', job));
   }
 
@@ -34,11 +35,16 @@ export class JobsApi {
     return firstValueFrom(this.http.post<JobSearchResponse>('/api/job-searches', request));
   }
 
-  importLink(url: string, method: ImportJobLinkRequest['method'] = 'direct'): Promise<JobDetail> {
+  importLink(
+    url: string,
+    method: ImportJobLinkRequest['method'] = 'direct',
+    createNew = false,
+  ): Promise<JobDetail> {
     return firstValueFrom(
       this.http.post<JobDetail>('/api/jobs/import-link', {
         url,
         ...(method === 'direct' ? {} : { method }),
+        ...(createNew ? { createNew: true } : {}),
       }),
     );
   }
@@ -87,4 +93,38 @@ export class JobsApi {
 
 export function usd(amount: number): string {
   return `$${amount.toFixed(amount < 0.01 ? 4 : 2)}`;
+}
+
+export function duplicateJobs(error: unknown): DuplicateJob[] | null {
+  if (!(error instanceof HttpErrorResponse) || error.status !== 409) return null;
+  const body: unknown = error.error;
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    !('code' in body) ||
+    body.code !== 'duplicate_job' ||
+    !('jobs' in body)
+  )
+    return null;
+  const jobs: unknown = body.jobs;
+  if (
+    !Array.isArray(jobs) ||
+    !jobs.length ||
+    !jobs.every(
+      (job: unknown) =>
+        !!job &&
+        typeof job === 'object' &&
+        'id' in job &&
+        typeof job.id === 'string' &&
+        !!job.id &&
+        'title' in job &&
+        typeof job.title === 'string' &&
+        'company' in job &&
+        (job.company === null || typeof job.company === 'string') &&
+        'location' in job &&
+        typeof job.location === 'string',
+    )
+  )
+    return null;
+  return jobs as DuplicateJob[];
 }
