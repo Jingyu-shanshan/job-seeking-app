@@ -116,6 +116,62 @@ describe('Search for job links', () => {
     expect(page().querySelector('article a')?.getAttribute('href')).toBe('/jobs/saved-job');
     http.expectNone((r) => r.url.includes('/summary') || r.url.includes('/sources'));
   });
+  it('shows duplicate links without analysis and confirms only the selected candidate', async () => {
+    await finishSearch();
+    button('Verify and save job').click();
+    await settle();
+    http.expectOne('/api/jobs/import-link').flush(
+      {
+        code: 'duplicate_job',
+        message: 'This job is already added.',
+        jobs: [{ id: 'job-1', title: 'Engineer', company: null, location: '' }],
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await settle();
+    expect(page().querySelector('a[href="/jobs/job-1"]')).not.toBeNull();
+    http.expectNone(() => true);
+    button('Create another imported job').click();
+    await settle();
+    const request = http.expectOne('/api/jobs/import-link');
+    expect(request.request.body).toEqual({ url: candidate.url, createNew: true });
+    request.flush({ id: 'job-2', title: 'Engineer', location: '', verdict: 'to_confirm' });
+    await settle();
+    expect(page().querySelector('a[href="/jobs/job-2"]')).not.toBeNull();
+    http.expectNone((request) => request.url.includes('/summary'));
+  });
+
+  it('keeps confirmation scoped to its candidate and preserves it after a failed create', async () => {
+    await finishSearch();
+    const other = { ...candidate, url: 'https://job-boards.greenhouse.io/acme/jobs/22' };
+    fixture.componentInstance['result'].set({ ...searchResult, candidates: [candidate, other] });
+    await settle();
+    const articles = () => [...page().querySelectorAll('article')];
+    articles()[0].querySelector('button')!.click();
+    await settle();
+    http.expectOne('/api/jobs/import-link').flush(
+      {
+        code: 'duplicate_job',
+        jobs: [{ id: 'job-1', title: 'Engineer', company: null, location: '' }],
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await settle();
+    articles()[1].querySelector('button')!.click();
+    await settle();
+    const second = http.expectOne('/api/jobs/import-link');
+    expect(second.request.body).toEqual({ url: other.url });
+    second.flush({ message: 'Unavailable.' }, { status: 502, statusText: 'Bad Gateway' });
+    await settle();
+    button('Create another imported job').click();
+    await settle();
+    const forced = http.expectOne('/api/jobs/import-link');
+    expect(forced.request.body).toEqual({ url: candidate.url, createNew: true });
+    forced.flush({ message: 'Try again.' }, { status: 503, statusText: 'Unavailable' });
+    await settle();
+    expect(button('Create another imported job')).toBeDefined();
+  });
+
   it('retains candidate results and input on an expired job and retries verification without another search', async () => {
     await finishSearch();
     button('Verify and save job').click();

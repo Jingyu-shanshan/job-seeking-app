@@ -37,6 +37,8 @@ insert into fact_version (fact_id, version, body, source, status, may_send_to_mo
   values (:'fact_id', 2, 'Maintained the invoice export service.', 'sample', 'confirmed', true, true)
   returning id as fact_version_id \gset
 insert into job default values returning id as job_id \gset
+insert into job_details (job_id, title, company, location, url)
+  values (:'job_id', 'Billing engineer', 'Example Oy', 'Helsinki, Finland', 'https://example.com/jobs/1');
 insert into job_snapshot (job_id, body, catalog_id, title, company, location, source_url)
   values (:'job_id', 'Billing engineer (Helsinki). You keep invoices correct. Kehittäjä – 开发者.',
     'paste', 'Billing engineer', 'Example Oy', 'Helsinki, Finland', 'https://example.com/jobs/1')

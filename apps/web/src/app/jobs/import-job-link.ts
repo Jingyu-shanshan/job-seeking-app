@@ -6,17 +6,19 @@ import {
   maxLength,
   pattern,
   required,
+  submit,
   validate,
 } from '@angular/forms/signals';
 import { Router, RouterLink } from '@angular/router';
-import type { JobDetail } from '@jsa/shared';
+import type { JobDetail, DuplicateJob } from '@jsa/shared';
 import { jobLinkImportProblem } from '@jsa/shared/job-link-import';
 import { errorMessage } from '../sources/sources-api';
-import { JobsApi } from './jobs-api';
+import { JobsApi, duplicateJobs } from './jobs-api';
+import { DuplicateJobNotice } from './duplicate-job';
 
 @Component({
   selector: 'app-import-job-link',
-  imports: [FormField, FormRoot, RouterLink],
+  imports: [FormField, FormRoot, RouterLink, DuplicateJobNotice],
   template: `
     <section aria-labelledby="link-import-title">
       <h2 id="link-import-title">Have a job link?</h2>
@@ -91,6 +93,13 @@ import { JobsApi } from './jobs-api';
           its original text or continue there.
         </p>
       }
+      @if (duplicates(); as jobs) {
+        <app-duplicate-job
+          [jobs]="jobs"
+          [busy]="linkForm().submitting()"
+          (createAnother)="createAnother()"
+        />
+      }
       <details>
         <summary>Page needs a login, or cannot be imported?</summary>
         <p>
@@ -122,6 +131,11 @@ export class ImportJobLink {
   private readonly model = signal<{ url: string; method: 'direct' | 'deepseek_fetch' }>({
     url: '',
     method: 'direct',
+  });
+  private createNew = false;
+  protected readonly duplicates = linkedSignal({
+    source: () => this.model(),
+    computation: (): DuplicateJob[] | null => null,
   });
   protected readonly imported = linkedSignal({
     source: () => `${this.model().method}/${this.model().url}`,
@@ -161,8 +175,13 @@ export class ImportJobLink {
             let job = this.imported();
             if (!job) {
               this.phase.set('Reading the job…');
-              job = await this.api.importLink(f().value().url.trim(), f().value().method);
+              job = await this.api.importLink(
+                f().value().url.trim(),
+                f().value().method,
+                this.createNew,
+              );
               this.imported.set(job);
+              this.duplicates.set(null);
             }
             if (!job.snapshot) throw new Error('The imported job has no original text.');
             if (!job.snapshot.summary) {
@@ -172,11 +191,22 @@ export class ImportJobLink {
             }
             await this.router.navigate(['/jobs', job.id]);
           } catch (error) {
-            this.failure.set(errorMessage(error));
+            const jobs = duplicateJobs(error);
+            if (jobs || !this.createNew) this.duplicates.set(jobs);
+            this.failure.set(jobs ? '' : errorMessage(error));
           }
           return undefined;
         },
       },
     },
   );
+  protected async createAnother() {
+    if (!this.duplicates() || this.linkForm().submitting()) return;
+    this.createNew = true;
+    try {
+      await submit(this.linkForm);
+    } finally {
+      this.createNew = false;
+    }
+  }
 }

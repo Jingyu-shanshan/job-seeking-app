@@ -60,9 +60,17 @@ export {
   type Outcome,
 } from './criteria.ts';
 export {
+  CreateImportedJobRequestSchema,
+  type CreateImportedJobRequest,
+  DuplicateJobSchema,
+  type DuplicateJob,
+  DuplicateJobResponseSchema,
+  type DuplicateJobResponse,
   AddRequirementRequestSchema,
   EvidenceSchema,
   JobDetailSchema,
+  JobDetailsSchema,
+  type JobDetails,
   ImportJobLinkRequestSchema,
   JobReadingSchema,
   type ImportJobLinkRequest,

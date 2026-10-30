@@ -142,6 +142,39 @@ describe('ImportJobLink', () => {
     expect(page().querySelector('input')?.value).toContain('/jobs/2');
   });
 
+  it('stops analysis on duplicates and only imports another after confirmation', async () => {
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    await fill('https://boards.greenhouse.io/acme/jobs/1');
+    await submit();
+    http.expectOne('/api/jobs/import-link').flush(
+      {
+        code: 'duplicate_job',
+        message: 'This job is already added.',
+        jobs: [{ id: 'job-1', title: 'Engineer', company: 'Acme', location: '' }],
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await settle();
+    expect(page().querySelector('a[href="/jobs/job-1"]')).not.toBeNull();
+    expect(navigate).not.toHaveBeenCalled();
+    http.expectNone(() => true);
+    [...page().querySelectorAll('button')]
+      .find((b) => b.textContent!.includes('Create another imported job'))!
+      .click();
+    await settle();
+    const request = http.expectOne('/api/jobs/import-link');
+    expect(request.request.body.createNew).toBe(true);
+    request.flush({ ...job, id: 'job-2', snapshot: { ...job.snapshot, summary: {} } });
+    await settle();
+    expect(navigate).toHaveBeenCalledWith(['/jobs', 'job-2']);
+    await fill('https://boards.greenhouse.io/acme/jobs/2');
+    await submit();
+    const next = http.expectOne('/api/jobs/import-link');
+    expect(next.request.body.createNew).toBeUndefined();
+    next.flush({ message: 'Unavailable.' }, { status: 502, statusText: 'Bad Gateway' });
+    await settle();
+  });
+
   it('opens an existing analysed job without another model call', async () => {
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     await fill('https://boards.greenhouse.io/acme/jobs/1');

@@ -38,7 +38,9 @@ import { describeResult, listedResults } from './criteria-text';
               <td class="job">
                 <a class="title" [routerLink]="['/jobs', job.id]">{{ job.title }}</a>
                 <span class="company">{{
-                  job.company ?? job.sources[0]?.param ?? 'Company not given'
+                  job.company ??
+                    (job.imported ? null : job.sources[0]?.param) ??
+                    'Company not given'
                 }}</span>
                 <span class="meta">{{ job.location || 'No location given' }}</span>
                 @if (job.url) {

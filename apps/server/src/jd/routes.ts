@@ -2,11 +2,13 @@ import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import {
   AddRequirementRequestSchema,
   JobDetailSchema,
+  JobDetailsSchema,
   ImportJobLinkRequestSchema,
   type JobReading,
   type AlertListing,
   ModelUsageSchema,
-  PasteJobRequestSchema,
+  CreateImportedJobRequestSchema,
+  DuplicateJobResponseSchema,
   PasteTextRequestSchema,
   type Evidence,
   type JobDetail,
@@ -38,7 +40,8 @@ import { jobLink } from '../rules/job-link.ts';
 import { catalog, findCatalogEntry } from '../sources/catalog.ts';
 import { checkJobText } from './job-text.ts';
 import { summariseSnapshot } from './summarise.ts';
-import { saveJobPage } from './saved.ts';
+import { duplicateJobResponse, findDuplicateJobs, importJob } from './import.ts';
+import { canEditJobDetails, loadJobDetails } from './details.ts';
 import { readCompanyPage } from './company-page.ts';
 
 export interface JdRoutesOptions {
@@ -47,6 +50,11 @@ export interface JdRoutesOptions {
   limiter: RateLimiter;
   deepseekApiKey: string | undefined;
 }
+
+const ImportConflictSchema = Type.Union([
+  DuplicateJobResponseSchema,
+  Type.Object({ statusCode: Type.Integer(), error: Type.String(), message: Type.String() }),
+]);
 
 const IdParamsSchema = Type.Object({ id: Type.String({ format: 'uuid' }) });
 
@@ -180,7 +188,7 @@ export async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetai
     alerted.rows[0] ??
     postings[0];
   // A job an alert email names without a link takes its address from its text, once it has one.
-  const head = first
+  const sourceHead = first
     ? {
         title: first.title,
         company: first.company,
@@ -193,7 +201,8 @@ export async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetai
         location: current.location,
         url: current.source_url,
       };
-  if (!head) return undefined;
+  if (!sourceHead) return undefined;
+  const head = (await loadJobDetails(pool, [jobId])).get(jobId) ?? sourceHead;
 
   const sources: JobSource[] = postings
     .filter((p) => p.closed_at === null && p.enabled && findCatalogEntry(p.catalog_id))
@@ -209,6 +218,7 @@ export async function loadJobDetail(pool: Pool, jobId: string): Promise<JobDetai
     ...head,
     sources,
     canImport: importSources(postings).length > 0,
+    canEditDetails: await canEditJobDetails(pool, jobId),
     saved: saved !== undefined,
     alerts,
     snapshot: current ? await loadSnapshot(pool, current, facts) : null,
@@ -385,10 +395,10 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
     {
       schema: {
         body: ImportJobLinkRequestSchema,
-        response: { 200: JobDetailSchema },
+        response: { 200: JobDetailSchema, 409: ImportConflictSchema },
       },
     },
-    async (request) => {
+    async (request, reply) => {
       if (request.body.method === 'deepseek_fetch') {
         throw httpError(
           409,
@@ -398,6 +408,10 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
       const link = jobLink(request.body.url);
       const problem = jobLinkImportProblem(request.body.url);
       if (problem) throw httpError(400, problem);
+      if (!request.body.createNew) {
+        const duplicates = await findDuplicateJobs(pool, { url: request.body.url });
+        if (duplicates.length) return reply.code(409).send(duplicateJobResponse(duplicates));
+      }
       if (link) {
         const entry = findCatalogEntry(link.catalogId)!;
         if (entry.rateLimit) await limiter.wait(entry.id, entry.rateLimit);
@@ -413,16 +427,17 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
         if (error instanceof DiscoveryError) throw httpError(502, error.message);
         throw error;
       }
-      const saved = await saveJobPage(
+      const saved = await importJob(
         pool,
         {
           ...job,
           company: job.company ?? undefined,
         },
         link?.catalogId ?? 'company_page',
-        request.body.url.trim(),
+        { requestedUrl: request.body.url.trim(), createNew: request.body.createNew },
       );
-      return detailAfterChange(pool, saved.jobId);
+      if ('code' in saved) return reply.code(409).send(saved);
+      return reply.code(200).send(await detailAfterChange(pool, saved.jobId));
     },
   );
 
@@ -438,19 +453,71 @@ export const jdRoutes: FastifyPluginAsyncTypebox<JdRoutesOptions> = async (
 
   app.post(
     '/jobs',
-    { schema: { body: PasteJobRequestSchema, response: { 201: JobDetailSchema } } },
+    {
+      schema: {
+        body: CreateImportedJobRequestSchema,
+        response: { 201: JobDetailSchema, 409: ImportConflictSchema },
+      },
+    },
     async (request, reply) => {
-      const { title, company, location, url, text } = request.body;
-      if (!URL.canParse(url)) throw httpError(400, 'The link is not a valid https address.');
-      const body = checkJobText(text, 'Paste the job text.');
-      const { rows } = await pool.query<{ job_id: string }>(
-        `with new_job as (insert into job default values returning id)
-         insert into job_snapshot (job_id, body, catalog_id, title, company, location, source_url)
-         select id, $1, 'paste', $2, $3, $4, $5 from new_job
-         returning job_id`,
-        [body, title.trim(), company?.trim() || null, location?.trim() ?? '', new URL(url).href],
+      const saved = await importJob(pool, request.body, 'paste', {
+        createNew: request.body.createNew,
+      });
+      if ('code' in saved) return reply.code(409).send(saved);
+      return reply.code(201).send(await detailAfterChange(pool, saved.jobId));
+    },
+  );
+
+  app.put(
+    '/jobs/:id/details',
+    {
+      preValidation: async (request) => {
+        if (
+          request.body &&
+          typeof request.body === 'object' &&
+          Object.keys(request.body).some(
+            (key) => !['title', 'company', 'location', 'url'].includes(key),
+          )
+        )
+          throw httpError(400, 'Only title, company, location and url may be edited.');
+      },
+      schema: {
+        params: IdParamsSchema,
+        body: JobDetailsSchema,
+        response: { 200: JobDetailSchema },
+      },
+    },
+    async (request) => {
+      const jobId = request.params.id;
+      const exists = await pool.query('select 1 from job where id = $1 and deleted_at is null', [
+        jobId,
+      ]);
+      if (!exists.rowCount) throw httpError(404, 'There is no such job.');
+      if (!(await canEditJobDetails(pool, jobId)))
+        throw httpError(409, 'Import this job before editing its details.');
+      const { title, company, location } = request.body;
+      const url = request.body.url?.trim() || null;
+      if (url) {
+        if (!URL.canParse(url)) throw httpError(400, 'Enter a valid https link.');
+        const parsed = new URL(url);
+        if (parsed.href.length > 2000)
+          throw httpError(400, 'The job link is too long. Use a shorter link.');
+        if (parsed.protocol !== 'https:' || parsed.username || parsed.password)
+          throw httpError(400, 'Enter an https link without a user name or password.');
+      }
+      await pool.query(
+        `insert into job_details (job_id, title, company, location, url) values ($1,$2,$3,$4,$5)
+       on conflict (job_id) do update set title=excluded.title, company=excluded.company,
+         location=excluded.location, url=excluded.url`,
+        [
+          jobId,
+          title.trim(),
+          company?.trim() || null,
+          location.trim(),
+          url ? new URL(url).href : null,
+        ],
       );
-      return reply.code(201).send(await detailAfterChange(pool, rows[0]!.job_id));
+      return detailAfterChange(pool, jobId);
     },
   );
 

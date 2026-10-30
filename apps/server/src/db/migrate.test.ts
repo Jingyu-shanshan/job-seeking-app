@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import { after, before, describe, test } from 'node:test';
 import { Pool } from 'pg';
+import { runner } from 'node-pg-migrate';
 import { createTestDatabase, needsDatabase, type TestDatabase } from '../testing/database.ts';
 import { migrate, migrationsDir } from './migrate.ts';
 
@@ -33,12 +34,20 @@ describe('migrations', needsDatabase, () => {
   });
 
   test('adding draft language preserves existing immutable English content', async () => {
-    const oldDb = await createTestDatabase();
+    const oldDb = await createTestDatabase({ migrated: false });
     const pool = new Pool({ connectionString: oldDb.url });
     try {
-      // Restore the schema immediately before the feature in this throwaway database.
-      await pool.query('alter table artifact drop column language');
-      await pool.query("delete from pgmigrations where name = '1793232000000_draft-language'");
+      const earlier = readdirSync(migrationsDir).filter(
+        (file) => file.endsWith('.sql') && file < '1793232000000_draft-language.sql',
+      ).length;
+      await runner({
+        databaseUrl: oldDb.url,
+        dir: migrationsDir,
+        direction: 'up',
+        count: earlier,
+        migrationsTable: 'pgmigrations',
+        log: quiet,
+      });
       const {
         rows: [old],
       } = await pool.query(`with j as (
